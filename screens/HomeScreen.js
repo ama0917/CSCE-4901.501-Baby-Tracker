@@ -26,7 +26,7 @@ const HomeScreen = ({ navigation }) => {
         </View>
 
         <Text style={styles.title}>Welcome to Baby Tracker</Text>
-        <Text style={styles.subtitle}>👶 Select a Baby</Text>
+        <Text style={styles.subtitle}>Select a profile</Text>
 
         <View style={styles.profileList}>
           {profiles.map((name, index) => (
@@ -94,10 +94,14 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#fff9b0',
+    backgroundColor: '#fffbe6',
     justifyContent: 'center',
     alignItems: 'center',
     marginVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
     elevation: 4,
   },
   avatar: {
@@ -116,7 +120,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   addButton: {
-    backgroundColor: '#ffe0b3',
+    backgroundColor: '#eaffd0',
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',

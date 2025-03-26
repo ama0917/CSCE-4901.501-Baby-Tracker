@@ -1,13 +1,8 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Image,
-} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
+const navigation = useNavigation();
 const HomeScreen = ({ navigation }) => {
   const profiles = ['Baby 👶 1', 'Baby 🐣 2', 'Baby 🧸 3'];
 
@@ -17,7 +12,7 @@ const HomeScreen = ({ navigation }) => {
         {/* Top bar with logo and settings */}
         <View style={styles.topBar}>
           <Image
-            source={require('../assets/logo.png')} // adjust path if needed
+            source={require('../assets/logo.png')} 
             style={styles.logo}
           />
           <TouchableOpacity onPress={() => console.log('Settings pressed')}>
@@ -30,7 +25,8 @@ const HomeScreen = ({ navigation }) => {
 
         <View style={styles.profileList}>
           {profiles.map((name, index) => (
-            <TouchableOpacity key={index} style={styles.profileBubble}>
+            <TouchableOpacity key={index} style={styles.profileBubble}
+            onPress={() => navigation.navigate('ChildDashboard')}>
               <Text style={styles.avatar}>👶</Text>
               <Text style={styles.profileText}>{name}</Text>
             </TouchableOpacity>
@@ -39,7 +35,7 @@ const HomeScreen = ({ navigation }) => {
 
         {/* Edit and Add buttons */}
         <TouchableOpacity style={styles.editButton}>
-          <Text style={styles.buttonText}>✏️ Edit Child</Text>
+          <Text style={styles.buttonText}>✏️ Edit Profiles</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.addButton}>
@@ -54,7 +50,7 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
     paddingBottom: 30,
-    backgroundColor: '#dff6ff',
+    backgroundColor: '#E3F2FD',
   },
   container: {
     paddingTop: 60,
@@ -66,8 +62,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    width: 90,
-    height: 90,
+    width: 100,
+    height: 100,
     resizeMode: 'contain',
   },
   settingsIcon: {
@@ -78,7 +74,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#444',
     textAlign: 'center',
-    marginTop: 10,
+    marginTop: 5,
   },
   subtitle: {
     fontSize: 18,

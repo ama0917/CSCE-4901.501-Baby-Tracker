@@ -40,9 +40,10 @@ export default function LoginScreen() {
         <TouchableOpacity>
           <Text style={styles.forgotText}>Forgot Password?</Text>
         </TouchableOpacity>
-
+        
+        {/*temporary navigation to home after selecting login */}
         <TouchableOpacity style={styles.loginButton}
-          onPress={() => navigation.navigate('Home')}>
+          onPress={() => navigation.navigate('Home')}>  
           <Text style={styles.loginText}>Login</Text>
         </TouchableOpacity>
 

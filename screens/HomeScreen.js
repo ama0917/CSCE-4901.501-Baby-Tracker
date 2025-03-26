@@ -2,8 +2,8 @@ import React from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
-const navigation = useNavigation();
-const HomeScreen = ({ navigation }) => {
+const HomeScreen = () => {
+  const navigation = useNavigation();
   const profiles = ['Baby 👶 1', 'Baby 🐣 2', 'Baby 🧸 3'];
 
   return (

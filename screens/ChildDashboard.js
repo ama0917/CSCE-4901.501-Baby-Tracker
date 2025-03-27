@@ -1,16 +1,18 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 export default function ChildDashboard() {
   const navigation = useNavigation();
+  const route = useRoute();
+  const { name } = route.params || { name: "Baby"}; // Just incase there isnt a name issued
 
   return (
     <View style={styles.container}>
       {/* Header Section */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.navigate('Home')}>
-          <Text style={styles.backButton}>« Back to Home</Text>
+          <Text style={styles.backButton}>« Home</Text>
         </TouchableOpacity>
         <Image source={require('../assets/logo.png')} style={styles.logo} />
         <TouchableOpacity>
@@ -19,19 +21,19 @@ export default function ChildDashboard() {
       </View>
       
       {/* Baby Name and Profile */}
-      <Text style={styles.title}>Dashboard</Text>
+      <Text style={styles.title}>{name}'s Dashboard</Text>
       <Image source={require('../assets/happy-baby.png')} style={styles.profileImage} />
       
       {/* Log Activities */}
       <Text style={styles.sectionTitle}>Log Activities</Text>
       <View style={styles.activitiesContainer}>
         <TouchableOpacity style={styles.activityButton}>
-          <Image source={require('../assets/diaper.png')} style={styles.activityIcon} />
-          <Text style={styles.activityText}>Diaper Change/Potty</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.activityButton}>
           <Image source={require('../assets/bottle.png')} style={styles.activityIcon} />
           <Text style={styles.activityText}>Feeding</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.activityButton}>
+          <Image source={require('../assets/diaper.png')} style={styles.activityIcon} />
+          <Text style={styles.activityText}>Diaper</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.activityButton}>
           <Image source={require('../assets/sleep.png')} style={styles.activityIcon} />
@@ -39,12 +41,12 @@ export default function ChildDashboard() {
         </TouchableOpacity>
       </View>
       
-      {/* History Section with Scroll */}
+      {/* History Section with Scroll, Information is for testing the look  */}
       <Text style={styles.sectionTitle}>History</Text>
       <ScrollView style={styles.historyContainer}>
         <View style={styles.historyItem}>
           <Image source={require('../assets/bottle.png')} style={styles.historyIcon} />
-          <Text style={styles.historyText}>Feeding - 3:00 PM</Text>
+          <Text style={styles.historyText}>Feeding - 3:00 PM</Text> 
         </View>
         <View style={styles.historyItem}>
           <Image source={require('../assets/diaper.png')} style={styles.historyIcon} />
@@ -65,20 +67,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#E3F2FD',
     alignItems: 'center',
     paddingTop: 40,
+    paddingBottom: 40.
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '90%',
     alignItems: 'center',
+    marginBottom: 20,
   },
   backButton: {
-    fontSize: 16,
-    color: '#000',
+    fontSize: 14,
+    color: '#007AFF',
   },
   settings: {
-    fontSize: 16,
-    color: '#000',
+    fontSize: 20,
+    color: '#007AFF',
   },
   babyIcon: {
     width: 40,
@@ -90,44 +94,60 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   profileImage: {
-    width: 80,
-    height: 80,
+    width: 90,
+    height: 85,
     marginVertical: 10,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginTop: 20,
+    marginTop: 30,
+    marginBottom: 10,
   },
   activitiesContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     width: '90%',
-    marginVertical: 10,
+    marginVertical: 20,
   },
   activityButton: {
     alignItems: 'center',
+    backgroundColor: '#FFF9B0',
+    padding: 10,
+    borderRadius: 60,
+    width: 90,
   },
   activityIcon: {
-    width: 50,
-    height: 50,
+    width: 40,
+    height: 40,
+    marginBottom: 5,
   },
   activityText: {
     fontSize: 12,
     textAlign: 'center',
+    fontWeight: '600',
   },
   historyContainer: {
     width: '90%',
-    maxHeight: 200,
-    borderRadius: 10,
-    backgroundColor: '#F5F5F5',
-    padding: 10,
-    marginVertical: 10,
+    maxHeight: 220,
+    borderRadius: 30,
+    backgroundColor: '#FFF',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    marginVertical: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
   },
   historyItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 5,
+    marginVertical: 8,
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
   },
   historyIcon: {
     width: 30,
@@ -138,7 +158,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   logo: {
-    width: 100,
+    width:100,
     height: 100,
     resizeMode: 'contain',
    },

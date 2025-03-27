@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { Text, TextInput, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function LoginScreen() {
   const navigation = useNavigation();
@@ -8,49 +9,45 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
- 
-
   return (
-    
-      <View style={styles.container}>
-        <Image source={require('../assets/logo.png')} 
-          style={styles.logoImage} />
-        <Text style={styles.logo}>Baby Tracker</Text>
-        <Text style={styles.title}>LOGIN</Text>
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.container}>
+      <Image source={require('../assets/logo.png')} style={styles.logoImage} />
 
+      <Text style={styles.title}>LOGIN</Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        placeholderTextColor="#aaa"
+        value={email}
+        onChangeText={setEmail}
+      />
+      <TouchableOpacity style={styles.passwordContainer}>
         <TextInput
-          style={styles.input}
-          placeholder="Email"
+          style={styles.passwordInput}
+          placeholder="Password"
           placeholderTextColor="#aaa"
-          value={email}
-          onChangeText={setEmail} />
-        <View style={styles.passwordContainer}>
-          <TextInput
-            style={styles.passwordInput}
-            placeholder="Password"
-            placeholderTextColor="#aaa"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={!showPassword} />
-          <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-            <Text style={styles.showText}>{showPassword ? "Hide" : "Show"}</Text>
-          </TouchableOpacity>
-        </View>
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!showPassword}
+        />
+        <Text style={styles.showText} onPress={() => setShowPassword(!showPassword)}>
+          {showPassword ? 'Hide' : 'Show'}
+        </Text>
+      </TouchableOpacity>
 
-        <TouchableOpacity>
-          <Text style={styles.forgotText}>Forgot Password?</Text>
-        </TouchableOpacity>
-        
-        {/*temporary navigation to home after selecting login */}
-        <TouchableOpacity style={styles.loginButton}
-          onPress={() => navigation.navigate('Home')}>  
-          <Text style={styles.loginText}>Login</Text>
-        </TouchableOpacity>
+      <TouchableOpacity>
+        <Text style={styles.forgotText}>Forgot Password?</Text>
+      </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-          <Text style={styles.signupText}>Not a member? Sign up.</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity style={styles.loginButton} onPress={() => navigation.navigate('Home')}>
+        <Text style={styles.loginText}>Login</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
+        <Text style={styles.signupText}>Not a member? Sign up.</Text>
+      </TouchableOpacity>
+    </LinearGradient>
   );
 }
 
@@ -59,15 +56,16 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#E3F2FD',
   },
-  logo: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
+  logoImage: {
+    width: 180,
+    height: 180,
+    resizeMode: 'contain',
+    marginBottom: 10,
   },
   title: {
-    fontSize: 20,
+    fontSize: 22,
+    fontWeight: 'bold',
     marginBottom: 20,
   },
   input: {
@@ -85,15 +83,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 5,
     marginBottom: 15,
+    paddingHorizontal: 10,
   },
   passwordInput: {
     flex: 1,
     height: 40,
-    paddingHorizontal: 10,
   },
   showText: {
-    paddingHorizontal: 10,
     color: '#007AFF',
+    fontWeight: '600',
   },
   forgotText: {
     color: '#007AFF',
@@ -112,11 +110,4 @@ const styles = StyleSheet.create({
     marginTop: 20,
     color: '#007AFF',
   },
-  logoImage: {
-    width: 150,
-    height: 150,
-    resizeMode: 'contain',
-    marginBottom: 10,
-  },
-  
 });

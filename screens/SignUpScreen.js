@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, TextInput, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function SignUpScreen() {
   const navigation = useNavigation();
@@ -10,8 +11,8 @@ export default function SignUpScreen() {
   const [showPassword, setShowPassword] = useState(false);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.logo}>Baby Tracker</Text>
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.container}>
+      <Image source={require('../assets/logo.png')} style={styles.logoImage} />
       <Text style={styles.title}>SIGN UP</Text>
 
       <TextInput
@@ -21,7 +22,7 @@ export default function SignUpScreen() {
         value={email}
         onChangeText={setEmail}
       />
-      <View style={styles.passwordContainer}>
+      <TouchableOpacity style={styles.passwordContainer}>
         <TextInput
           style={styles.passwordInput}
           placeholder="Enter Password"
@@ -30,10 +31,10 @@ export default function SignUpScreen() {
           onChangeText={setPassword}
           secureTextEntry={!showPassword}
         />
-        <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-          <Text style={styles.showText}>{showPassword ? "Hide" : "Show"}</Text>
-        </TouchableOpacity>
-      </View>
+        <Text style={styles.showText} onPress={() => setShowPassword(!showPassword)}>
+          {showPassword ? 'Hide' : 'Show'}
+        </Text>
+      </TouchableOpacity>
 
       <TextInput
         style={styles.input}
@@ -51,25 +52,25 @@ export default function SignUpScreen() {
       <TouchableOpacity onPress={() => navigation.navigate('Login')}>
         <Text style={styles.loginText}>Already have an account? Login.</Text>
       </TouchableOpacity>
-    </View>
+    </LinearGradient>
   );
 }
 
-// ✅ Define the missing styles properly
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#E3F2FD',
   },
-  logo: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
+  logoImage: {
+    width: 180,
+    height: 180,
+    resizeMode: 'contain',
+    marginBottom: 10,
   },
   title: {
-    fontSize: 20,
+    fontSize: 22,
+    fontWeight: 'bold',
     marginBottom: 20,
   },
   input: {
@@ -87,15 +88,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 5,
     marginBottom: 15,
+    paddingHorizontal: 10,
   },
   passwordInput: {
     flex: 1,
     height: 40,
-    paddingHorizontal: 10,
   },
   showText: {
-    paddingHorizontal: 10,
     color: '#007AFF',
+    fontWeight: '600',
   },
   signupButton: {
     backgroundColor: '#FFD700',
@@ -112,4 +113,3 @@ const styles = StyleSheet.create({
     color: '#007AFF',
   },
 });
-

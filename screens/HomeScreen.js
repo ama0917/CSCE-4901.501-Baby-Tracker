@@ -26,7 +26,7 @@ const HomeScreen = () => {
         <View style={styles.profileList}>
           {profiles.map((name, index) => (
             <TouchableOpacity key={index} style={styles.profileBubble}
-            onPress={() => navigation.navigate('ChildDashboard')}>
+            onPress={() => navigation.navigate('ChildDashboard',{ name })}>
               <Text style={styles.avatar}>👶</Text>
               <Text style={styles.profileText}>{name}</Text>
             </TouchableOpacity>

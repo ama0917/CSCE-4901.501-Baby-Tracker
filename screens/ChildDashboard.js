@@ -19,7 +19,7 @@ export default function ChildDashboard() {
       </View>
       
       {/* Baby Name and Profile */}
-      <Text style={styles.title}>Baby #1 Dashboard</Text>
+      <Text style={styles.title}>Dashboard</Text>
       <Image source={require('../assets/happy-baby.png')} style={styles.profileImage} />
       
       {/* Log Activities */}

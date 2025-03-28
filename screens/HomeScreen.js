@@ -2,6 +2,7 @@ import React from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
+
 const HomeScreen = () => {
   const navigation = useNavigation();
   const profiles = ['Baby 👶 1', 'Baby 🐣 2', 'Baby 🧸 3'];
@@ -62,12 +63,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    width: 100,
-    height: 100,
+    width: 65,
+    height: 65,
     resizeMode: 'contain',
+    marginBottom: 20,
   },
   settingsIcon: {
-    fontSize: 26,
+    fontSize: 30,
+    marginBottom: 20,
   },
   title: {
     fontSize: 22,

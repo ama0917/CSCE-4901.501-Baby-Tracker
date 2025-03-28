@@ -58,10 +58,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoImage: {
-    width: 180,
-    height: 180,
+    width: 90,
+    height: 90,
     resizeMode: 'contain',
-    marginBottom: 10,
+    marginBottom: 60,
   },
   title: {
     fontSize: 22,

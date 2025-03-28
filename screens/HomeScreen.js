@@ -16,7 +16,7 @@ const HomeScreen = () => {
             source={require('../assets/logo.png')} 
             style={styles.logo}
           />
-          <TouchableOpacity onPress={() => console.log('Settings pressed')}>
+          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
             <Text style={styles.settingsIcon}>⚙️</Text>
           </TouchableOpacity>
         </View>

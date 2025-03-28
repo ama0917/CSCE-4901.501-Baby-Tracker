@@ -15,7 +15,7 @@ export default function ChildDashboard() {
           <Text style={styles.backButton}>« Home</Text>
         </TouchableOpacity>
         <Image source={require('../assets/logo.png')} style={styles.logo} />
-        <TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
           <Text style={styles.settings}>⚙</Text>
         </TouchableOpacity>
       </View>
@@ -81,8 +81,7 @@ const styles = StyleSheet.create({
     color: '#007AFF',
   },
   settings: {
-    fontSize: 20,
-    color: '#007AFF',
+    fontSize: 30,
   },
   babyIcon: {
     width: 40,

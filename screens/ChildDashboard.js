@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
   },
   activityButton: {
     alignItems: 'center',
-    backgroundColor: '#FFF9B0',
+    backgroundColor: '#fffbe6',
     padding: 10,
     borderRadius: 60,
     width: 90,
@@ -158,8 +158,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   logo: {
-    width:100,
-    height: 100,
+    width:65,
+    height: 65,
     resizeMode: 'contain',
+    alignItems: 'center',
+    marginTop: 10,
    },
 });

@@ -6,6 +6,7 @@ import SignUpScreen from './screens/SignUpScreen';
 import HomeScreen from './screens/HomeScreen';
 import ChildDashboard from './screens/ChildDashboard';
 import SettingsScreen from './screens/SettingsScreen';
+import AddChildScreen from './screens/AddChildScreen';
 
 
 
@@ -20,6 +21,7 @@ export default function App() {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="ChildDashboard" component={ChildDashboard} />
         <Stack.Screen name="Settings" component={SettingsScreen}/>
+        <Stack.Screen name="AddChild" component={AddChildScreen} />
 
 
       </Stack.Navigator>

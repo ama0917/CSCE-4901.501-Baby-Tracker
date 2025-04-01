@@ -1,21 +1,32 @@
-import React from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { useNavigation, useRoute, useIsFocused } from '@react-navigation/native';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
-  const profiles = ['Baby 👶 1', 'Baby 🐣 2', 'Baby 🧸 3'];
+  const route = useRoute();
+  const isFocused = useIsFocused();
+
+  const [profiles, setProfiles] = useState([
+    {
+      name: 'Baby Luna',
+      image: null, 
+    }
+  ]);
+
+  useEffect(() => {
+    if (isFocused && route.params?.newProfile) {
+      setProfiles(prev => [...prev, route.params.newProfile]);
+      navigation.setParams({ newProfile: null });
+    }
+  }, [isFocused, route.params]);
 
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.container}>
-        {/* Top bar with logo and settings */}
+        {/* Top bar */}
         <View style={styles.topBar}>
-          <Image
-            source={require('../assets/logo.png')} 
-            style={styles.logo}
-          />
+          <Image source={require('../assets/logo.png')} style={styles.logo} />
           <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
             <Text style={styles.settingsIcon}>⚙️</Text>
           </TouchableOpacity>
@@ -25,21 +36,28 @@ const HomeScreen = () => {
         <Text style={styles.subtitle}>Select a profile</Text>
 
         <View style={styles.profileList}>
-          {profiles.map((name, index) => (
-            <TouchableOpacity key={index} style={styles.profileBubble}
-            onPress={() => navigation.navigate('ChildDashboard',{ name })}>
-              <Text style={styles.avatar}>👶</Text>
-              <Text style={styles.profileText}>{name}</Text>
+          {profiles.map((profile, index) => (
+            <TouchableOpacity
+              key={index}
+              style={styles.profileBubble}
+              onPress={() => navigation.navigate('ChildDashboard', { name: profile.name })}
+            >
+              {profile.image ? (
+                <Image source={{ uri: profile.image }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatar}>👶</Text>
+              )}
+              <Text style={styles.profileText}>{profile.name}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Edit and Add buttons */}
+        {/* Buttons */}
         <TouchableOpacity style={styles.editButton}>
           <Text style={styles.buttonText}>✏️ Edit Profiles</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.addButton}>
+        <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate('AddChild')}>
           <Text style={styles.buttonText}>➕ Add Child</Text>
         </TouchableOpacity>
       </View>
@@ -105,6 +123,11 @@ const styles = StyleSheet.create({
   },
   avatar: {
     fontSize: 28,
+  },
+  avatarImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
   },
   profileText: {
     fontSize: 14,

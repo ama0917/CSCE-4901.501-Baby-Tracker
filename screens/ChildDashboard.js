@@ -27,20 +27,26 @@ export default function ChildDashboard() {
       {/* Log Activities */}
       <Text style={styles.sectionTitle}>Log Activities</Text>
       <View style={styles.activitiesContainer}>
-        <TouchableOpacity style={styles.activityButton}>
+        <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('FeedingForm')}>
           <Image source={require('../assets/bottle.png')} style={styles.activityIcon} />
           <Text style={styles.activityText}>Feeding</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.activityButton}>
+        <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('DiaperChangeForm')}>
           <Image source={require('../assets/diaper.png')} style={styles.activityIcon} />
           <Text style={styles.activityText}>Diaper</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.activityButton}>
-          <Image source={require('../assets/sleep.png')} style={styles.activityIcon} />
+        <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('SleepingForm')}>
+          <Image source={require('../assets/sleep.png')} style={styles.activityIcon}/>
           <Text style={styles.activityText}>Sleep</Text>
         </TouchableOpacity>
       </View>
       
+      {/* View Reports Button */}
+      <TouchableOpacity style={styles.reportsButton} onPress={() => navigation.navigate('ReportsScreen')}>
+        <Text style={styles.reportsText}>View Reports</Text>
+      </TouchableOpacity>
+
+
       {/* History Section with Scroll, Information is for testing the look  */}
       <Text style={styles.sectionTitle}>History</Text>
       <ScrollView style={styles.historyContainer}>

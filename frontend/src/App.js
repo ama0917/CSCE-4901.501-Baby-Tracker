@@ -11,10 +11,13 @@ import ReportsScreen from './screens/ReportsScreen';
 import FeedingForm from './screens/FeedingForm';
 import DiaperChangeForm from './screens/DiaperChangeForm';
 import SleepingForm from './screens/SleepingForm';
+import useTokenRefresh from './hooks/useTokenRefresh'; // Import the hook
 
 const Stack = createStackNavigator();
 
 export default function App() {
+  useTokenRefresh(); // Use the hook to refresh tokens periodically
+
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -22,13 +25,13 @@ export default function App() {
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="ChildDashboard" component={ChildDashboard} />
-        <Stack.Screen name="Settings" component={SettingsScreen}/>
+        <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="AddChild" component={AddChildScreen} />
         <Stack.Screen name="ReportsScreen" component={ReportsScreen} />
         <Stack.Screen name="FeedingForm" component={FeedingForm} />
         <Stack.Screen name="DiaperChangeForm" component={DiaperChangeForm} />
         <Stack.Screen name="SleepingForm" component={SleepingForm} />
-
+        
       </Stack.Navigator>
     </NavigationContainer>
   );

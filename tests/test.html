@@ -1,0 +1,19 @@
+<!-- Include Firebase from CDN -->
+<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth.js"></script>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+  };
+  firebase.initializeApp(firebaseConfig);
+
+  firebase.auth().signInWithEmailAndPassword("testuser@example.com", "password123")
+    .then(userCred => userCred.user.getIdToken())
+    .then(token => {
+      console.log("🔥 ID Token:", token);
+    })
+    .catch(console.error);
+</script>

@@ -1,7 +1,7 @@
 import firebase_admin
 from firebase_admin import credentials, auth
 
-cred = credentials.Certificate("firebase-service-account.json")
+cred = credentials.Certificate("backend/firebase-service-account.json")
 firebase_admin.initialize_app(cred)
 
 # Replace this with the email of an existing user in Firebase Auth

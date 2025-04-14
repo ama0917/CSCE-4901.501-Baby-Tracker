@@ -5,8 +5,8 @@ firebase_config = {
     "authDomain": "csce-4901-testdatabase.firebaseapp.com",
     "projectId": "csce-4901-testdatabase",
     "storageBucket": "csce-4901-testdatabase.appspot.com",
-    "messagingSenderId": "your-sender-id",       # (Optional)
-    "appId": "your-app-id",                       # (Optional)
+    "messagingSenderId": "your-sender-id",      
+    "appId": "your-app-id",                       
     "databaseURL": ""                             # Not needed for Firestore
 
 }

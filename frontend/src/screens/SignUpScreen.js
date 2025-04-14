@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Text, TextInput, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SignUpScreen() {
   const navigation = useNavigation();
@@ -9,6 +11,31 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  const handleSignUp = async () => {
+    if (!email || !password || !confirmPassword) {
+      Alert.alert('Error', 'All fields are required.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match.');
+      return;
+    }
+
+    try {
+      const auth = getAuth();
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const token = await userCredential.user.getIdToken();
+      await AsyncStorage.setItem('token', token);
+
+      Alert.alert('Success', 'Account created successfully!');
+      navigation.navigate('Home'); // Navigate to the Home screen
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Signup Failed", error.message);
+    }
+  };
 
   return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.container}>
@@ -45,7 +72,7 @@ export default function SignUpScreen() {
         secureTextEntry
       />
 
-      <TouchableOpacity style={styles.signupButton}>
+      <TouchableOpacity style={styles.signupButton} onPress={handleSignUp}>
         <Text style={styles.signupText}>Sign-up</Text>
       </TouchableOpacity>
 

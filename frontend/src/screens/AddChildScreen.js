@@ -1,62 +1,70 @@
 import React, { useState } from 'react';
-import {View,  Text,  TextInput,  TouchableOpacity,  StyleSheet,  Image,  Alert,  ScrollView,} from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import { useNavigation } from '@react-navigation/native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createChild } from '../services/childService';
+import { useAuthContext } from '../contexts/useAuthContext';
 
-{/* Child profiles are currently not persistent throughtout the app*/}
-const AddChildScreen = () => {
-  const navigation = useNavigation();
-
+const AddChildScreen = ({ navigation }) => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [gender, setGender] = useState('');
-  const [birthDate, setBirthDate] = useState({month:'',day: '', year: ''});
+  const [birthDate, setBirthDate] = useState({ month: '', day: '', year: '' });
   const [notes, setNotes] = useState('');
-  const [image, setImage] = useState(null);
+  const { setChildId } = useAuthContext();
 
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-
-    if (!result.canceled) {
-      setImage(result.assets[0].uri);
-    }
-  };
-
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!firstName || !birthDate.month || !birthDate.day || !birthDate.year) {
       Alert.alert('Missing Info', 'Please fill out required fields.');
       return;
     }
-  
-    const newProfile = {
+    // Validate birth date
+    const childData = {
       name: `${firstName} ${lastName}`,
       gender,
-      birthDate,
+      dob: `${birthDate.year}-${birthDate.month}-${birthDate.day}`,
       notes,
-      image,
     };
+    // Validate date format
+    try {
+      const response = await createChild(childData);
+      
+      if (response?.child_id) {
+        // Build a child profile to store
+        const newChild = {
+          id: response.child_id,
+          name: `${firstName} ${lastName}`,
+          dob: childData.dob,
+        };
   
-    // updates homescreen with new child added
-    navigation.navigate('Home', { newProfile });
+        // Fetch any existing children
+        const stored = await AsyncStorage.getItem('children');
+        const children = stored ? JSON.parse(stored) : [];
+  
+        // Append and store back
+        children.push(newChild);
+        await AsyncStorage.setItem('children', JSON.stringify(children));
+  
+        // Also save last used child_id if needed
+        await AsyncStorage.setItem('child_id', response.child_id);
+        setChildId(response.child_id);
+  
+        Alert.alert('Success', 'Child added successfully!');
+        navigation.navigate('ChildDashboard');
+      } else {
+        Alert.alert('Error', 'Failed to add child. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error adding child:', error);
+      Alert.alert('Error', 'An error occurred while adding the child.');
+    }
   };
   
+
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <TouchableOpacity onPress={() => navigation.goBack()}>
         <Text style={styles.backButton}>« Home</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={pickImage} style={styles.imageWrapper}>
-        {image ? (
-          <Image source={{ uri: image }} style={styles.profilePic} />
-        ) : (
-          <Text style={styles.imagePlaceholder}>Add Photo</Text>
-        )}
       </TouchableOpacity>
 
       <Text style={styles.header}>Add Child</Text>
@@ -149,29 +157,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 20,
   },
-  imageWrapper: {
-    alignSelf: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 60,
-    width: 100,
-    height: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  imagePlaceholder: {
-    fontSize: 15,
-  },
-  profilePic: {
-    width: 100,
-    height: 100,
-    borderRadius: 60,
-  },
   header: {
     fontSize: 22,
     fontWeight: '600',
@@ -213,10 +198,10 @@ const styles = StyleSheet.create({
   birthInput: {
     backgroundColor: '#fff',
     borderRadius: 10,
-    flex: 1,
-    marginRight: 10,
     padding: 12,
     textAlign: 'center',
+    flex: 1,
+    marginRight: 10,
   },
   notesInput: {
     backgroundColor: '#fff',

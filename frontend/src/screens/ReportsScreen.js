@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1976d2',
+    color: '#000',
   },
   screenTitle: {
     fontSize: 24,

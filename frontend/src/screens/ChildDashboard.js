@@ -14,7 +14,7 @@ export default function ChildDashboard() {
         <TouchableOpacity onPress={() => navigation.navigate('Home')}>
           <Text style={styles.backButton}>« Home</Text>
         </TouchableOpacity>
-        <Image source={require('../public/assets/logo.png')} style={styles.logo} />
+        <Image source={require('../assets/logo.png')} style={styles.logo} />
         <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
           <Text style={styles.settings}>⚙</Text>
         </TouchableOpacity>
@@ -22,21 +22,21 @@ export default function ChildDashboard() {
       
       {/* Baby Name and Profile */}
       <Text style={styles.title}>{name}'s Dashboard</Text>
-      <Image source={require('../public/assets/happy-baby.png')} style={styles.profileImage} />
+      <Image source={require('../assets/happy-baby.png')} style={styles.profileImage} />
       
       {/* Log Activities */}
       <Text style={styles.sectionTitle}>Log Activities</Text>
       <View style={styles.activitiesContainer}>
         <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('FeedingForm')}>
-          <Image source={require('../public/assets/bottle.png')} style={styles.activityIcon} />
+          <Image source={require('../assets/bottle.png')} style={styles.activityIcon} />
           <Text style={styles.activityText}>Feeding</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('DiaperChangeForm')}>
-          <Image source={require('../public/assets/diaper.png')} style={styles.activityIcon} />
+          <Image source={require('../assets/diaper.png')} style={styles.activityIcon} />
           <Text style={styles.activityText}>Diaper</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('SleepingForm')}>
-          <Image source={require('../public/assets/sleep.png')} style={styles.activityIcon}/>
+          <Image source={require('../assets/sleep.png')} style={styles.activityIcon}/>
           <Text style={styles.activityText}>Sleep</Text>
         </TouchableOpacity>
       </View>
@@ -51,15 +51,15 @@ export default function ChildDashboard() {
       <Text style={styles.sectionTitle}>History</Text>
       <ScrollView style={styles.historyContainer}>
         <View style={styles.historyItem}>
-          <Image source={require('../public/assets/bottle.png')} style={styles.historyIcon} />
+          <Image source={require('../assets/bottle.png')} style={styles.historyIcon} />
           <Text style={styles.historyText}>Feeding - 3:00 PM</Text> 
         </View>
         <View style={styles.historyItem}>
-          <Image source={require('../public/assets/diaper.png')} style={styles.historyIcon} />
+          <Image source={require('../assets/diaper.png')} style={styles.historyIcon} />
           <Text style={styles.historyText}>Diaper Change - 2:30 PM</Text>
         </View>
         <View style={styles.historyItem}>
-          <Image source={require('../public/assets/sleep.png')} style={styles.historyIcon} />
+          <Image source={require('../assets/sleep.png')} style={styles.historyIcon} />
           <Text style={styles.historyText}>Nap - 12:00 PM</Text>
         </View>
       </ScrollView>

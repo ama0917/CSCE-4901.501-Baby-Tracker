@@ -7,10 +7,13 @@ import {
   StyleSheet, 
   SafeAreaView,
   Image,
-  Platform
+  Platform,
+  Alert
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useAuthContext } from '../contexts/useAuthContext';
+import { getFreshToken } from '../services/auth';
 
 const FeedingForm = ({ navigation }) => {
   const [selectedTime, setSelectedTime] = useState(new Date());
@@ -19,14 +22,14 @@ const FeedingForm = ({ navigation }) => {
   const [amount, setAmount] = useState('');
   const [mealType, setMealType] = useState('');
   const [showMealPicker, setShowMealPicker] = useState(false);
+  const { childId } = useAuthContext();
 
   // Handle Time Selection with improved UX
   const handleTimeChange = (event, selected) => {
-    // Only for Android we immediately update the time as user scrolls
+  // Only for Android we immediately update the time as user scrolls
     if (Platform.OS === 'android') {
       if (selected) setSelectedTime(selected);
-      // Don't close the picker on Android until user presses "OK"
-      if (event.type === 'set') { // User pressed "OK"
+      if (event.type === 'set') {
         setShowTimePicker(false);
       }
     } else {
@@ -35,8 +38,7 @@ const FeedingForm = ({ navigation }) => {
       // Don't close picker automatically on iOS
     }
   };
-  
-  // Function to close the time picker (for iOS and manual close)
+
   const confirmTimePicker = () => {
     setShowTimePicker(false);
   };
@@ -47,22 +49,36 @@ const FeedingForm = ({ navigation }) => {
     const minutes = date.getMinutes().toString().padStart(2, '0');
     const ampm = hours >= 12 ? 'p.m.' : 'a.m.';
     hours = hours % 12;
-    hours = hours ? hours : 12; // the hour '0' should be '12'
+    hours = hours ? hours : 12;
     return `${hours}:${minutes} ${ampm}`;
   };
 
-  const handleCompleteLog = () => {
-    // Here you would handle saving the data
-    console.log({
-      time: formatTime(selectedTime),
-      foodType,
-      amount,
-      mealType
-    });
-    
-    // Navigate back to dashboard or confirm screen
-    // navigation.navigate('Dashboard');
-    alert('Feeding log saved successfully!');
+  const handleCompleteLog = async () => {
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`http://<backend_url>/log?child_id=${childId}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          activity: 'Feeding',
+          timestamp: new Date().toISOString(),
+          type: `${foodType} ${amount} ${mealType}`.trim(),
+        }),
+      });
+
+      if (res.ok) {
+        Alert.alert("Success", "Feeding log submitted!");
+        navigation.goBack(); // Navigate back to the previous screen
+      } else {
+        Alert.alert("Error", "Failed to submit feeding log.");
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Error", "An error occurred while submitting the feeding log.");
+    }
   };
 
   return (
@@ -213,7 +229,7 @@ const styles = StyleSheet.create({
   },
   logoText: {
     fontSize: 18,
-    color: '#007bff',
+    color: '#000000',
   },
   title: {
     fontSize: 24,
@@ -236,6 +252,7 @@ const styles = StyleSheet.create({
   },
   timeButtonText: {
     fontSize: 16,
+    color: '#000',
   },
   timePicker: {
     backgroundColor: Platform.OS === 'ios' ? '#fff' : 'transparent',

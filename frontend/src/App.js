@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { AuthProvider } from './contexts/useAuthContext';
 import LoginScreen from './screens/LoginScreen';
 import SignUpScreen from './screens/SignUpScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -11,14 +12,16 @@ import ReportsScreen from './screens/ReportsScreen';
 import FeedingForm from './screens/FeedingForm';
 import DiaperChangeForm from './screens/DiaperChangeForm';
 import SleepingForm from './screens/SleepingForm';
-import useTokenRefresh from './hooks/useTokenRefresh'; // Import the hook
+import useTokenRefresh from './hooks/useTokenRefresh';
+import { addChild } from './api';
 
 const Stack = createStackNavigator();
 
 export default function App() {
-  useTokenRefresh(); // Use the hook to refresh tokens periodically
+  useTokenRefresh();
 
   return (
+    <AuthProvider>
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Login" component={LoginScreen} />
@@ -34,5 +37,6 @@ export default function App() {
         
       </Stack.Navigator>
     </NavigationContainer>
+    </AuthProvider>
   );
 }

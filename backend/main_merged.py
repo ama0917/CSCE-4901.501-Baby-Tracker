@@ -58,13 +58,29 @@ async def add_child(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     current_user=Depends(get_current_user)
 ):
+    """
+    Endpoint to add a new child to the current user's account.
+    Ensures the user document exists in Firestore before adding the child.
+    """
     try:
+        # Ensure the user document exists in Firestore
+        db.collection("users").document(current_user["uid"]).set({
+            "email": current_user["email"],
+            "created": firestore.SERVER_TIMESTAMP
+        }, merge=True)
+
+        # Convert the child data to a dictionary and format the date of birth
         child_data = child.dict()
-        child_data["dob"] = child_data["dob"].isoformat()  # Convert date to string
-        doc_ref = db.collection("users").document(current_user["uid"]).collection("children").document()
+        child_data["dob"] = child_data["dob"].isoformat()  # Convert date to ISO format string
+
+        # Add the child to the Firestore database under the current user's collection
+        doc_ref = db.collection("users").document(current_user["uid"]).collection("children").document() 
         doc_ref.set(child_data)
-        return {"message": "Child added successfully"}
+
+        # Return a success message along with the generated child ID
+        return {"message": "Child added successfully", "child_id": doc_ref.id}
     except Exception as e:
+        # Raise an HTTP exception if an error occurs
         raise HTTPException(status_code=500, detail=f"Failed to add child: {e}")
 
 @app.get("/children/", status_code=status.HTTP_200_OK)

@@ -3,11 +3,14 @@ import { Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert } from 'rea
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth } from './firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetchChildren } from '../services/childService';
+import { useAuthContext } from '../contexts/useAuthContext';
 
 export default function LoginScreen() {
   const navigation = useNavigation();
+  const { selectChild } = useAuthContext();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -17,8 +20,15 @@ export default function LoginScreen() {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const idToken = await userCredential.user.getIdToken();
       await AsyncStorage.setItem('token', idToken);
+
+      // Fetch children and select the first child by default
+      const children = await fetchChildren();
+      if (children.length > 0) {
+        await selectChild(children[0].id); // Default to the first child
+      }
+
       Alert.alert("Login Successful");
-      navigation.navigate('Home'); // Navigate to Home on successful login
+      navigation.navigate('Home'); // Navigate to home on successful login
     } catch (error) {
       console.error(error);
       Alert.alert("Login Failed", error.message);

@@ -1,62 +1,85 @@
-import axios from "axios";
+import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAuth } from 'firebase/auth';
 
-const BASE_URL = "http://192.168.4.67:8000"; // Replace with your backend URL
+const BASE_URL = 'http://192.168.1.73:8000'; // Replace with your actual backend URL
 
-// Function to fetch a new token
+// Get new token
 const fetchToken = async () => {
   const auth = getAuth();
   const user = auth.currentUser;
   if (user) {
-    return await user.getIdToken(true); // Force refresh
+    return await user.getIdToken(true);
   }
   return null;
 };
 
-// Set up an Axios instance
+// Axios instance for requests
 const api = axios.create({
   baseURL: BASE_URL,
   headers: {
-    "Content-Type": "application/json",
+    'Content-Type': 'application/json',
   },
 });
 
-// Add an interceptor to include the Firebase token in requests
+// Inject token into every axios request
 api.interceptors.request.use(async (config) => {
-  const token = await fetchToken(); // Fetch a new token on every request
+  const token = await fetchToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
-    // Optionally store the refreshed token in AsyncStorage
-    await AsyncStorage.setItem('token', token);
+    await AsyncStorage.setItem('token', token); // optional
   }
   return config;
-}, (error) => {
-  return Promise.reject(error);
-});
+}, (error) => Promise.reject(error));
 
-// Function to call API using fetch
+// fetch-based API call for fallback
 export const callApi = async (endpoint, method = "GET", body = null) => {
-  const token = await fetchToken(); // Fetch a new token for fetch requests
-  const response = await fetch(`${BASE_URL}/${endpoint}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
-    body: body ? JSON.stringify(body) : null
-  });
-  return response.json();
+  try {
+    const token = await fetchToken();
+    const response = await fetch(`${BASE_URL}/${endpoint}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: body ? JSON.stringify(body) : null
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Request failed: ${response.status} - ${errorText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('API call error:', error);
+    throw error;
+  }
 };
 
-// Add a child
+// Add child & store returned child ID
 export const addChild = async (childData) => {
-  return await callApi("children/", "POST", childData);
+  const response = await callApi("children/", "POST", childData);
+  return response;
 };
 
-// Get all children
+// Fetch all children
 export const getChildren = async () => {
   return await callApi("children/", "GET");
+};
+
+// Handle and persist child selection
+export const handleAddChild = async (childName, childDOB, setChildId) => {
+  try {
+    const response = await addChild({ name: childName, dob: childDOB });
+    const id = response?.child_id || response?.id;
+    if (id) {
+      await AsyncStorage.setItem('child_id', id);
+      setChildId(id);
+    }
+  } catch (error) {
+    console.error("Error adding child:", error);
+  }
 };
 
 export default api;

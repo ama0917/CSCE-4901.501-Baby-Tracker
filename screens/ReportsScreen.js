@@ -1,21 +1,23 @@
 import React, { useState } from 'react';
-import { View, Text, Dimensions, TouchableOpacity, ScrollView, Alert, StyleSheet, SafeAreaView, Platform, StatusBar } from 'react-native';
+import { View, Text, Dimensions, TouchableOpacity, ScrollView, Alert, StyleSheet, SafeAreaView, Platform, StatusBar, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { LineChart } from 'react-native-chart-kit';
+import { LineChart, BarChart } from 'react-native-chart-kit';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { AntDesign, Feather } from '@expo/vector-icons';
+import { AntDesign, Feather, FontAwesome } from '@expo/vector-icons';
 
 const screenWidth = Dimensions.get('window').width;
 
+// Enhanced chart configuration with better margins and styling
 const chartConfig = {
   backgroundGradientFrom: "#f0f9ff",
   backgroundGradientTo: "#f0f9ff",
   decimalPlaces: 1,
   color: (opacity = 1) => `rgba(25, 118, 210, ${opacity})`,
-  labelColor: () => '#333',
+  labelColor: () => '#555',
   propsForLabels: {
-    fontSize: 12,
+    fontSize: 10,
+    fontWeight: '500',
   },
   propsForDots: {
     r: "4",
@@ -31,25 +33,28 @@ const chartConfig = {
     fontSize: 10,
   },
   paddingRight: 30,
-  paddingTop: 10,
+  paddingLeft: 40, // Increased padding to prevent y-axis label cutoff
+  paddingTop: 15,
   formatYLabel: (value) => String(value),
+  useShadowColorFromDataset: false,
 };
 
 const ReportsScreen = () => {
   const navigation = useNavigation();
   const [reportRange, setReportRange] = useState("Weekly");
   const [expandedSection, setExpandedSection] = useState("Feeding"); // Default expanded section
+  const [showDataLabels, setShowDataLabels] = useState(false);
 
   const mockData = {
     Weekly: {
       labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
       feeding: {
         count: [4, 5, 3, 4, 5, 6, 5],
-        duration: [120, 135, 110, 125, 140, 150, 130], // in minutes
+        ounces: [20, 22, 18, 21, 24, 26, 23], // Changed from duration to ounces
       },
       diaper: {
         wet: [4, 5, 3, 5, 4, 5, 3],
-        soiled: [2, 3, 2, 4, 3, 2, 2],
+        bm: [2, 3, 2, 4, 3, 2, 2], // Changed from soiled to bm
       },
       sleeping: {
         nighttime: [8, 7.5, 9, 8, 8.5, 7, 8.2],
@@ -60,11 +65,11 @@ const ReportsScreen = () => {
       labels: ["Wk1", "Wk2", "Wk3", "Wk4"],
       feeding: {
         count: [30, 28, 32, 31],
-        duration: [850, 820, 890, 860], // in minutes
+        ounces: [150, 140, 160, 155], // Changed from duration to ounces
       },
       diaper: {
         wet: [28, 26, 30, 27],
-        soiled: [20, 18, 22, 19],
+        bm: [20, 18, 22, 19], // Changed from soiled to bm
       },
       sleeping: {
         nighttime: [58, 60, 56, 62],
@@ -76,11 +81,11 @@ const ReportsScreen = () => {
       labels: ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"],
       feeding: {
         count: [120, 115, 125, 118, 122, 130, 126, 120, 115, 118, 124, 128],
-        duration: [3600, 3450, 3750, 3540, 3660, 3900, 3780, 3600, 3450, 3540, 3720, 3840], // in minutes
+        ounces: [600, 580, 620, 590, 610, 650, 630, 600, 570, 590, 620, 640], // Changed from duration to ounces
       },
       diaper: {
         wet: [112, 105, 115, 108, 114, 120, 118, 112, 106, 110, 116, 120],
-        soiled: [80, 75, 85, 79, 82, 88, 86, 80, 76, 82, 86, 90],
+        bm: [80, 75, 85, 79, 82, 88, 86, 80, 76, 82, 86, 90], // Changed from soiled to bm
       },
       sleeping: {
         nighttime: [240, 230, 250, 235, 245, 260, 255, 240, 235, 240, 250, 255],
@@ -90,54 +95,194 @@ const ReportsScreen = () => {
   };
 
   const current = mockData[reportRange];
+  
+  // Get trend indicators for summary cards
+  const getTrend = (dataSet) => {
+    if (dataSet.length < 2) return "neutral";
+    
+    const lastValue = dataSet[dataSet.length - 1];
+    const previousValue = dataSet[dataSet.length - 2];
+    
+    if (lastValue > previousValue) return "up";
+    if (lastValue < previousValue) return "down";
+    return "neutral";
+  };
+
+  // Get color based on trend (contextual - depends on what's being measured)
+  const getTrendColor = (trend, metric) => {
+    // For sleep and feeding, more is generally better
+    if (metric === "sleep" || metric === "feeding") {
+      if (trend === "up") return "#4caf50";
+      if (trend === "down") return "#f57c00"; 
+    } 
+    // For diapers, it depends on context but we're neutral here
+    else {
+      if (trend === "up") return "#f57c00";
+      if (trend === "down") return "#4caf50";
+    }
+    return "#9e9e9e"; // neutral color
+  };
 
   const toggleSection = (section) => {
     setExpandedSection(expandedSection === section ? null : section);
+  };
+
+  // Select the appropriate chart type based on data and time range
+  const chooseChartType = (title) => {
+    // Use bar charts for comparative data (feeding, diaper) and line charts for trend data (sleep)
+    if (title === "Sleeping") {
+      return "line";
+    } else if (reportRange === "Weekly") {
+      return "line"; // Line charts work well for small data sets
+    } else {
+      return "bar"; // Bar charts are better for comparing across larger time periods
+    }
+  };
+
+  // Calculate combined wet+BM total for each date point
+  const getCombinedDiaperCounts = () => {
+    return current.diaper.wet.map((wetCount, index) => 
+      wetCount + current.diaper.bm[index]
+    );
   };
 
   const renderChart = (title, datasets, yLabel, colors = ['#1976d2', '#4caf50']) => {
     if (expandedSection !== title) return null;
     
     const adjustedWidth = screenWidth - 40;
+    const chartType = chooseChartType(title);
+    
+    // Special handling for diaper section to add Wet+BM dataset
+    let displayDatasets = {...datasets};
+    let displayColors = [...colors];
+    
+    if (title === "Diaper Changes/Potty") {
+      // Add the combined total as a third dataset
+      displayDatasets = {
+        ...datasets,
+        "wet+bm": getCombinedDiaperCounts()
+      };
+      displayColors = [...colors, '#7b1fa2']; // Add a third color for the combined data
+    }
     
     const chartData = {
       labels: current.labels,
-      datasets: Object.entries(datasets).map(([key, data], index) => ({
+      datasets: Object.entries(displayDatasets).map(([key, data], index) => ({
         data,
-        color: () => colors[index % colors.length],
+        color: () => displayColors[index % displayColors.length],
         strokeWidth: 2,
       }))
     };
     
-    const legend = Object.keys(datasets).map((key, index) => (
+    // Create the legend for the chart
+    const legendLabels = {
+      "count": "Feedings",
+      "ounces": "Ounces", // Changed from duration
+      "wet": "Wet",
+      "bm": "BM", // Changed from soiled
+      "wet+bm": "Wet+BM",
+      "nighttime": "Nighttime",
+      "naps": "Naps"
+    };
+    
+    const legend = Object.keys(displayDatasets).map((key, index) => (
       <View key={key} style={styles.legendItem}>
-        <View style={[styles.legendColor, { backgroundColor: colors[index % colors.length] }]} />
-        <Text style={styles.legendText}>{key.charAt(0).toUpperCase() + key.slice(1)}</Text>
+        <View style={[styles.legendColor, { backgroundColor: displayColors[index % displayColors.length] }]} />
+        <Text style={styles.legendText}>{legendLabels[key] || key.charAt(0).toUpperCase() + key.slice(1)}</Text>
       </View>
     ));
 
+    // Calculate summary metrics for this section
+    const summaryMetrics = Object.entries(displayDatasets).map(([key, data]) => {
+      const total = data.reduce((sum, val) => sum + val, 0);
+      const avg = (total / data.length).toFixed(1);
+      const trend = getTrend(data);
+      let metric = title.toLowerCase();
+      
+      return { key, avg, trend, metric };
+    });
+
     return (
       <View style={styles.chartContainer}>
-        <LineChart
-          data={chartData}
-          width={adjustedWidth}
-          height={220}
-          yAxisLabel=""
-          yAxisSuffix={yLabel}
-          fromZero
-          chartConfig={chartConfig}
-          bezier
-          style={styles.chart}
-          withInnerLines={true}
-          withOuterLines={true}
-          withVerticalLines={false}
-          withHorizontalLines={true}
-          withVerticalLabels={true}
-          withHorizontalLabels={true}
-          yAxisInterval={1}
-        />
+        {/* Summary cards at the top of each chart */}
+        <View style={styles.summaryCardsContainer}>
+          {summaryMetrics.map((item) => (
+            <View key={item.key} style={styles.summaryCard}>
+              <Text style={styles.summaryTitle}>
+                {legendLabels[item.key] || item.key.charAt(0).toUpperCase() + item.key.slice(1)}
+              </Text>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryValue}>
+                  {item.avg} {yLabel}
+                </Text>
+                <View style={styles.trendIndicator}>
+                  <AntDesign 
+                    name={item.trend === "up" ? "arrowup" : item.trend === "down" ? "arrowdown" : "minus"} 
+                    size={12} 
+                    color={getTrendColor(item.trend, item.metric)} 
+                  />
+                </View>
+              </View>
+              <Text style={styles.summarySubtitle}>
+                Avg. per {reportRange === "Weekly" ? "day" : reportRange === "Monthly" ? "week" : "month"}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Render either a line chart or bar chart based on data type */}
+        {chartType === "line" ? (
+          <LineChart
+            data={chartData}
+            width={adjustedWidth}
+            height={220}
+            yAxisLabel=""
+            yAxisSuffix={yLabel}
+            fromZero
+            chartConfig={{
+              ...chartConfig,
+              paddingLeft: 40, // Increased to prevent y-axis labels being cut off
+            }}
+            bezier
+            style={styles.chart}
+            withInnerLines={true}
+            withOuterLines={true}
+            withVerticalLines={false}
+            withHorizontalLines={true}
+            withDots={true}
+          />
+        ) : (
+          <BarChart
+            data={chartData}
+            width={adjustedWidth}
+            height={220}
+            yAxisLabel=""
+            yAxisSuffix={yLabel}
+            fromZero
+            chartConfig={{
+              ...chartConfig,
+              paddingLeft: 40, // Increased to prevent y-axis labels being cut off
+              barPercentage: 0.7,
+            }}
+            style={styles.chart}
+            withInnerLines={true}
+            showBarTops={true}
+            showValuesOnTopOfBars={showDataLabels}
+          />
+        )}
+        
         <View style={styles.legendContainer}>
           {legend}
+          
+          {/* Option to toggle data labels */}
+          <TouchableOpacity 
+            style={styles.dataLabelToggle}
+            onPress={() => setShowDataLabels(!showDataLabels)}
+          >
+            <Text style={styles.dataLabelText}>
+              {showDataLabels ? "Hide Values" : "Show Values"}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -148,14 +293,17 @@ const ReportsScreen = () => {
     let csv = `Baby Tracker Report (${reportRange})\n\n`;
     
     // Add Feeding Data
-    csv += "Date,Feeding Count,Feeding Duration (min)\n";
+    csv += "Date,Feeding Count,Feeding Ounces\n"; // Changed from duration to ounces
     current.labels.forEach((label, index) => {
-      csv += `${label},${current.feeding.count[index]},${current.feeding.duration[index]}\n`;
+      csv += `${label},${current.feeding.count[index]},${current.feeding.ounces[index]}\n`; // Changed from duration to ounces
     });
     
-    csv += "\nDate,Wet Diapers,Soiled Diapers\n";
+    csv += "\nDate,Wet Diapers,BM Diapers,Total Diapers\n"; // Added Total column and changed soiled to BM
     current.labels.forEach((label, index) => {
-      csv += `${label},${current.diaper.wet[index]},${current.diaper.soiled[index]}\n`;
+      const wetCount = current.diaper.wet[index];
+      const bmCount = current.diaper.bm[index]; // Changed from soiled to bm
+      const totalCount = wetCount + bmCount;
+      csv += `${label},${wetCount},${bmCount},${totalCount}\n`;
     });
     
     csv += "\nDate,Nighttime Sleep (hrs),Naps (hrs)\n";
@@ -183,10 +331,23 @@ const ReportsScreen = () => {
     
     return (
       <TouchableOpacity 
-        style={styles.sectionHeader} 
+        style={[styles.sectionHeader, isExpanded && styles.sectionHeaderActive]} 
         onPress={() => toggleSection(title)}
       >
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={styles.sectionHeaderContent}>
+          {/* Add appropriate icon for each section */}
+          <View style={styles.sectionIconContainer}>
+            <FontAwesome 
+              name={
+                title === "Feeding" ? "spoon" : 
+                title === "Sleeping" ? "moon-o" : "baby"
+              } 
+              size={18} 
+              color="#1976d2" 
+            />
+          </View>
+          <Text style={styles.sectionTitle}>{title}</Text>
+        </View>
         <AntDesign 
           name={isExpanded ? "caretdown" : "caretright"} 
           size={18} 
@@ -200,7 +361,7 @@ const ReportsScreen = () => {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#f0f9ff" />
       <View style={styles.container}>
-        {/* Header with back button */}
+        {/* Improved header with centered logo and title */}
         <View style={styles.header}>
           <TouchableOpacity 
             style={styles.backButton} 
@@ -209,19 +370,51 @@ const ReportsScreen = () => {
             accessible={true}
           >
             <AntDesign name="arrowleft" size={24} color="#1976d2" />
-            <Text style={styles.backText}>Back to Dashboard</Text>
           </TouchableOpacity>
           
+          <View style={styles.logoContainer}>
+            <Image 
+              source={require('../assets/logo.png')} 
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
+          
+          {/* Empty view to balance the header */}
+          <View style={styles.headerSpacer} />
         </View>
 
-        <Text style={styles.screenTitle}>Reports</Text>
+        <Text style={styles.screenTitle}>Reports & Analytics</Text>
+
+        {/* Time range selector moved to top for better UX */}
+        <View style={styles.reportTypeContainer}>
+          {["Weekly", "Monthly", "Annually"].map((range) => (
+            <TouchableOpacity
+              key={range}
+              onPress={() => setReportRange(range)}
+              style={[
+                styles.reportTypeButton,
+                reportRange === range && styles.reportTypeButtonActive
+              ]}
+              accessibilityLabel={`${range} report type`}
+              accessibilityState={{ selected: reportRange === range }}
+            >
+              <Text style={[
+                styles.reportTypeText,
+                reportRange === range && styles.reportTypeTextActive
+              ]}>
+                {range}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
           {/* Feeding Section */}
           {renderSectionHeader("Feeding")}
           {renderChart("Feeding", 
-            { count: current.feeding.count, duration: current.feeding.duration }, 
-            "", 
+            { count: current.feeding.count, ounces: current.feeding.ounces }, // Changed from duration to ounces
+            "oz", // Added unit for ounces
             ['#1976d2', '#f57c00']
           )}
 
@@ -236,45 +429,23 @@ const ReportsScreen = () => {
           {/* Diaper Changes Section */}
           {renderSectionHeader("Diaper Changes/Potty")}
           {renderChart("Diaper Changes/Potty", 
-            { wet: current.diaper.wet, soiled: current.diaper.soiled }, 
+            { wet: current.diaper.wet, bm: current.diaper.bm }, // Changed from soiled to bm
             "",
             ['#00897b', '#43a047']
           )}
 
           {/* Generate Reports Section */}
           <View style={styles.generateSection}>
-            <Text style={styles.generateTitle}>Generate Reports</Text>
-            <Text style={styles.generateSubtitle}>Select report type</Text>
-            
-            <View style={styles.reportTypeContainer}>
-              {["Weekly", "Monthly", "Annually"].map((range) => (
-                <TouchableOpacity
-                  key={range}
-                  onPress={() => setReportRange(range)}
-                  style={[
-                    styles.reportTypeButton,
-                    reportRange === range && styles.reportTypeButtonActive
-                  ]}
-                  accessibilityLabel={`${range} report type`}
-                  accessibilityState={{ selected: reportRange === range }}
-                >
-                  <Text style={[
-                    styles.reportTypeText,
-                    reportRange === range && styles.reportTypeTextActive
-                  ]}>
-                    {range}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <Text style={styles.generateTitle}>Export Data</Text>
+            <Text style={styles.generateSubtitle}>Download your data in CSV format</Text>
             
             <TouchableOpacity
               onPress={handleDownloadExcel}
               style={styles.downloadButton}
-              accessibilityLabel="Download Excel Report"
+              accessibilityLabel="Download CSV Report"
             >
               <Feather name="download" size={18} color="#2e7d32" style={styles.downloadIcon} />
-              <Text style={styles.downloadText}>Download Excel Report</Text>
+              <Text style={styles.downloadText}>Download CSV Report</Text>
             </TouchableOpacity>
           </View>
           
@@ -300,15 +471,15 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingTop: 10,
     paddingHorizontal: 16,
     paddingBottom: 10,
     backgroundColor: '#f0f9ff',
   },
   backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
     padding: 8, // Larger touch target
+    zIndex: 1,
   },
   backText: {
     marginLeft: 4,
@@ -316,22 +487,58 @@ const styles = StyleSheet.create({
     color: '#1976d2',
   },
   logoContainer: {
-    flex: 1,
+    position: 'absolute',
+    left: 0,
+    right: 0,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   logo: {
-    marginRight: 40,
+    height: 70,
+    width: 70,
   },
-  logoText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1976d2',
+  headerSpacer: {
+    width: 40, // Match the width of the back button for balance
   },
   screenTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     marginVertical: 16,
     textAlign: 'center',
+    color: '#1976d2',
+  },
+  // New time range selector at top
+  reportTypeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginHorizontal: 20,
+    marginBottom: 16,
+  },
+  reportTypeButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    marginHorizontal: 4,
+    borderRadius: 8,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+  },
+  reportTypeButtonActive: {
+    backgroundColor: '#e3f2fd',
+    borderBottomWidth: 2,
+    borderBottomColor: '#1976d2',
+  },
+  reportTypeText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  reportTypeTextActive: {
+    color: '#1976d2',
+    fontWeight: 'bold',
   },
   scrollView: {
     flex: 1,
@@ -348,17 +555,74 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     backgroundColor: '#e3f2fd',
     borderRadius: 10,
-    marginBottom: 12,
+    marginBottom: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
+  sectionHeaderActive: {
+    marginBottom: 0,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#bbdefb',
+  },
+  sectionHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sectionIconContainer: {
+    marginRight: 10,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#1976d2',
+  },
+  // Summary cards for quick metrics
+  summaryCardsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  summaryCard: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 10,
+    minWidth: 100, // Reduced to fit more cards
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 1,
+    marginBottom: 8,
+    marginHorizontal: 4, // Added horizontal margin for spacing
+  },
+  summaryTitle: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  summaryValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  trendIndicator: {
+    marginLeft: 6,
+  },
+  summarySubtitle: {
+    fontSize: 10,
+    color: '#999',
+    marginTop: 4,
   },
   chartContainer: {
     backgroundColor: '#fff',
@@ -377,7 +641,7 @@ const styles = StyleSheet.create({
   chart: {
     borderRadius: 10,
     paddingRight: 20, // Added padding to prevent label cutoff
-    marginLeft: -10, // Adjust chart position
+    marginLeft: 10, // Added margin to shift the chart right
   },
   legendContainer: {
     flexDirection: 'row',
@@ -401,6 +665,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#555',
   },
+  dataLabelToggle: {
+    marginLeft: 16,
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  dataLabelText: {
+    fontSize: 10,
+    color: '#665',
+  },
   generateSection: {
     backgroundColor: '#fff',
     borderRadius: 10,
@@ -421,31 +696,7 @@ const styles = StyleSheet.create({
   generateSubtitle: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 12,
-  },
-  reportTypeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     marginBottom: 16,
-  },
-  reportTypeButton: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    marginHorizontal: 4,
-    borderRadius: 8,
-  },
-  reportTypeButtonActive: {
-    backgroundColor: '#e3f2fd',
-  },
-  reportTypeText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  reportTypeTextActive: {
-    color: '#1976d2',
-    fontWeight: 'bold',
   },
   downloadButton: {
     flexDirection: 'row',

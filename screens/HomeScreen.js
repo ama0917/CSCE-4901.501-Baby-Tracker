@@ -7,6 +7,7 @@ const HomeScreen = () => {
   const route = useRoute();
   const isFocused = useIsFocused();
 
+  //Example Profile
   const [profiles, setProfiles] = useState([
     {
       name: 'Baby Luna',

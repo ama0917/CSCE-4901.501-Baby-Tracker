@@ -17,6 +17,7 @@ import { useRoute } from '@react-navigation/native';
 import { db } from '../firebaseConfig';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { LinearGradient} from 'expo-linear-gradient';
 
 const FeedingForm = ({ navigation }) => {
   const route = useRoute();
@@ -95,12 +96,13 @@ const FeedingForm = ({ navigation }) => {
   };
 
   return (
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
         <View style={styles.formContainer}>
           <View style={styles.header}>
             <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-              <Text style={styles.backText}>← Back to Dashboard</Text>
+              <Text style={styles.backText}>← Dashboard</Text>
             </TouchableOpacity>
             <View style={styles.logoContainer}>
               <Image source={require('../assets/logo.png')} style={styles.logo} />
@@ -248,25 +250,31 @@ const FeedingForm = ({ navigation }) => {
         </View>
       </ScrollView>
     </SafeAreaView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#d4f1fc',
+    backgroundColor: 'transparent', 
   },
   scrollView: {
     flex: 1,
+    backgroundColor: 'transparent', 
   },
   scrollViewContent: {
     flexGrow: 1,
     paddingBottom: 30,
+    backgroundColor: 'transparent', 
   },
   formContainer: {
     flex: 1,
-    backgroundColor: '#d4f1fc',
     padding: 20,
+    backgroundColor: 'transparent', 
   },
   header: {
     flexDirection: 'row',

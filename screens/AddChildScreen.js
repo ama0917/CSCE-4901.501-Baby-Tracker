@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient} from 'expo-linear-gradient';
 import { getFirestore, collection, addDoc } from 'firebase/firestore';
 import { app } from '../firebaseConfig';
 import { getAuth } from 'firebase/auth';
@@ -61,7 +62,7 @@ const AddChildScreen = () => {
       console.log('Document written with ID: ', docRef.id);
   
       // Navigate back to HomeScreen with the new profile
-      navigation.navigate('Home');
+      navigation.navigate('Home', { newProfile: { id: docRef.id, ...newProfile } });
   
     } catch (e) {
       console.error('Error adding child profile: ', e);
@@ -70,9 +71,10 @@ const AddChildScreen = () => {
   };
 
   return (
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
     <ScrollView contentContainerStyle={styles.container}>
       <TouchableOpacity onPress={() => navigation.goBack()}>
-        <Text style={styles.backButton}>« Home</Text>
+        <Text style={styles.backButton}>← Home</Text>
       </TouchableOpacity>
 
       <TouchableOpacity onPress={pickImage} style={styles.imageWrapper}>
@@ -157,14 +159,17 @@ const AddChildScreen = () => {
         <Text style={styles.buttonText}>Add Child</Text>
       </TouchableOpacity>
     </ScrollView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
   container: {
     paddingTop: 50,
     paddingHorizontal: 20,
-    backgroundColor: '#E3F2FD',
     flexGrow: 1,
   },
   backButton: {

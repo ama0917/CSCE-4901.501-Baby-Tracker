@@ -727,6 +727,7 @@ const ReportsScreen = () => {
             accessible={true}
           >
             <AntDesign name="arrowleft" size={24} color="#1976d2" />
+            <Text style={styles.backText}> Dashboard</Text>
           </TouchableOpacity>
           
           <View style={styles.logoContainer}>

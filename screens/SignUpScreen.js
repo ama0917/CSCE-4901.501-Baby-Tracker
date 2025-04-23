@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
-import { Text, TextInput, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { auth, db } from '../firebaseConfig';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 
 export default function SignUpScreen() {
   const navigation = useNavigation();
@@ -9,6 +12,31 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  const handleSignUp = async () => {
+    if (password !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match!');
+      return;
+    }
+
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Store user info in Firestore
+      await setDoc(doc(db, 'Users', user.uid), {
+        Email: email,
+        Password: '', // Not storing plaintext password
+        MFAEnabled: false,
+        UserType: 'parent', // Default user type
+        Name: '', // You can add a name input if needed
+      });
+
+      navigation.navigate('Login');
+    } catch (error) {
+      Alert.alert('Sign Up Error', error.message);
+    }
+  };
 
   return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.container}>
@@ -22,6 +50,7 @@ export default function SignUpScreen() {
         value={email}
         onChangeText={setEmail}
       />
+
       <TouchableOpacity style={styles.passwordContainer}>
         <TextInput
           style={styles.passwordInput}
@@ -45,7 +74,7 @@ export default function SignUpScreen() {
         secureTextEntry
       />
 
-      <TouchableOpacity style={styles.signupButton}>
+      <TouchableOpacity style={styles.signupButton} onPress={handleSignUp}>
         <Text style={styles.signupText}>Sign-up</Text>
       </TouchableOpacity>
 

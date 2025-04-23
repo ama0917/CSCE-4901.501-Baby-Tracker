@@ -11,6 +11,7 @@ import ReportsScreen from './screens/ReportsScreen';
 import FeedingForm from './screens/FeedingForm';
 import DiaperChangeForm from './screens/DiaperChangeForm';
 import SleepingForm from './screens/SleepingForm';
+import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 
 const Stack = createStackNavigator();
 
@@ -28,6 +29,7 @@ export default function App() {
         <Stack.Screen name="FeedingForm" component={FeedingForm} />
         <Stack.Screen name="DiaperChangeForm" component={DiaperChangeForm} />
         <Stack.Screen name="SleepingForm" component={SleepingForm} />
+        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
 
       </Stack.Navigator>
     </NavigationContainer>

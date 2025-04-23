@@ -1,22 +1,27 @@
 import React, { useState } from 'react';
-import {View,  Text,  TextInput,  TouchableOpacity,  StyleSheet,  Image,  Alert,  ScrollView,} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
+import { getFirestore, collection, addDoc } from 'firebase/firestore';
+import { app } from '../firebaseConfig';
+import { getAuth } from 'firebase/auth';
 
-{/* Child profiles are currently not persistent throughtout the app*/}
 const AddChildScreen = () => {
   const navigation = useNavigation();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [gender, setGender] = useState('');
-  const [birthDate, setBirthDate] = useState({month:'',day: '', year: ''});
+  const [birthDate, setBirthDate] = useState({ month: '', day: '', year: '' });
   const [notes, setNotes] = useState('');
   const [image, setImage] = useState(null);
 
+  const db = getFirestore(app); // Firestore reference
+
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,allowsEditing: true,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
     });
@@ -26,24 +31,43 @@ const AddChildScreen = () => {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!firstName || !birthDate.month || !birthDate.day || !birthDate.year) {
       Alert.alert('Missing Info', 'Please fill out required fields.');
       return;
     }
   
-    const newProfile = {
-      name: `${firstName} ${lastName}`,
-      gender,
-      birthDate,
-      notes,
-      image,
-    };
+    try {
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      
+      if (!currentUser) {
+        Alert.alert('Authentication Error', 'You must be logged in to add a child.');
+        return;
+      }
   
-    // updates homescreen with new child added
-    navigation.navigate('Home', { newProfile });
+      const newProfile = {
+        name: `${firstName} ${lastName}`.trim(),
+        gender,
+        birthDate,
+        notes,
+        image,
+        userId: currentUser.uid, // Link child to the current user
+        createdAt: new Date()
+      };
+  
+      // Save the new child profile to Firestore
+      const docRef = await addDoc(collection(db, 'children'), newProfile);
+      console.log('Document written with ID: ', docRef.id);
+  
+      // Navigate back to HomeScreen with the new profile
+      navigation.navigate('Home');
+  
+    } catch (e) {
+      console.error('Error adding child profile: ', e);
+      Alert.alert('Error', 'Something went wrong while saving the profile.');
+    }
   };
-  
 
   return (
     <ScrollView contentContainerStyle={styles.container}>

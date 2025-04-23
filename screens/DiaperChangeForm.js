@@ -1,50 +1,84 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Image, Platform, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Image, Platform, ScrollView, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
+import { getAuth } from 'firebase/auth';
+import { db } from '../firebaseConfig';
+import { addDoc, collection, Timestamp } from 'firebase/firestore';
 
-const DiaperChangeScreen = ({ navigation }) => {
+const DiaperChangeForm = ({ navigation, route }) => {
+  const { childId } = route.params || {};
+  
+  // Add console logging to verify childId is received correctly
+  console.log('Received childId in DiaperChangeForm:', childId);
+
   const [selectedTime, setSelectedTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [bathroomType, setBathroomType] = useState('Diaper Change'); // Default
+  const [bathroomType, setBathroomType] = useState('Diaper Change');
   const [stoolType, setStoolType] = useState('');
   const [showStoolPicker, setShowStoolPicker] = useState(false);
-  
+
   const handleTimeChange = (event, selected) => {
     if (Platform.OS === 'android') {
       if (selected) setSelectedTime(selected);
-      if (event.type === 'set') { 
-        setShowTimePicker(false);
-      }
+      if (event.type === 'set') setShowTimePicker(false);
     } else {
       if (selected) setSelectedTime(selected);
     }
   };
-  
+
   const confirmTimePicker = () => {
     setShowTimePicker(false);
   };
 
-  // Format time to hours:minutes AM/PM
   const formatTime = (date) => {
     let hours = date.getHours();
     const minutes = date.getMinutes().toString().padStart(2, '0');
     const ampm = hours >= 12 ? 'p.m.' : 'a.m.';
-    hours = hours % 12;
-    hours = hours ? hours : 12; // the hour '0' should be '12'
+    hours = hours % 12 || 12;
     return `${hours}:${minutes} ${ampm}`;
   };
 
-  const handleCompleteLog = () => {
-    // Save the data
-    const logData = {
-      time: selectedTime,
-      bathroomType: bathroomType,
-      stoolType: stoolType,
-    };
-    console.log('Log saved:', logData);
-    alert('Log saved successfully!');
-    navigation.goBack();
+  const handleCompleteLog = async () => {
+    try {
+      const auth = getAuth();
+      const user = auth.currentUser;
+
+      if (!user) {
+        Alert.alert('Authentication Error', 'You must be logged in to save logs.');
+        return;
+      }
+
+      if (!stoolType) {
+        Alert.alert('Missing Info', 'Please select a stool type.');
+        return;
+      }
+      
+      if (!childId) {
+        Alert.alert('Error', 'Child ID is missing. Please go back and try again.');
+        return;
+      }
+
+      const logData = {
+        childId: childId,
+        stoolType: stoolType,
+        bathroomType: bathroomType,
+        time: Timestamp.fromDate(selectedTime),
+        timestamp: Timestamp.now(),
+        createdBy: user.uid,
+      };
+      
+
+      console.log('Saving diaper log with data:', logData);
+
+      await addDoc(collection(db, 'diaperLogs'), logData);
+
+      Alert.alert('Success', 'Log saved successfully!');
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error saving diaper log:', error);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    }
   };
 
   return (
@@ -52,20 +86,12 @@ const DiaperChangeScreen = ({ navigation }) => {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
         <View style={styles.formContainer}>
           <View style={styles.header}>
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
               <Text style={styles.backText}>← Back to Dashboard</Text>
             </TouchableOpacity>
-            
             <View style={styles.logoContainer}>
-              <Image 
-                source={require('../assets/logo.png')} 
-                style={styles.logo}
-              />
+              <Image source={require('../assets/logo.png')} style={styles.logo} />
             </View>
-            
             <View style={styles.headerRightSpace} />
           </View>
 
@@ -74,29 +100,22 @@ const DiaperChangeScreen = ({ navigation }) => {
           {/* Time Picker */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Time</Text>
-            <TouchableOpacity 
-              onPress={() => setShowTimePicker(true)} 
-              style={styles.timeButton}
-            >
+            <TouchableOpacity onPress={() => setShowTimePicker(true)} style={styles.timeButton}>
               <Text style={styles.timeButtonText}>{formatTime(selectedTime)}</Text>
             </TouchableOpacity>
-            
+
             {showTimePicker && (
               <View style={styles.timePickerContainer}>
-                <DateTimePicker 
-                  value={selectedTime} 
-                  mode="time" 
+                <DateTimePicker
+                  value={selectedTime}
+                  mode="time"
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   onChange={handleTimeChange}
-                  style={[styles.timePicker, {width: '100%'}]}
+                  style={[styles.timePicker, { width: '100%' }]}
                 />
-                
-                {/* Only show confirm button on iOS since Android has built-in OK/Cancel */}
+
                 {Platform.OS === 'ios' && (
-                  <TouchableOpacity 
-                    style={styles.confirmTimeButton}
-                    onPress={confirmTimePicker}
-                  >
+                  <TouchableOpacity style={styles.confirmTimeButton} onPress={confirmTimePicker}>
                     <Text style={styles.confirmTimeText}>Confirm Time</Text>
                   </TouchableOpacity>
                 )}
@@ -112,7 +131,9 @@ const DiaperChangeScreen = ({ navigation }) => {
                 style={[styles.toggleButton, bathroomType === 'Diaper Change' && styles.selectedButton]}
                 onPress={() => setBathroomType('Diaper Change')}
               >
-                <Text style={[styles.toggleText, bathroomType === 'Diaper Change' && styles.selectedText]}>Diaper Change</Text>
+                <Text style={[styles.toggleText, bathroomType === 'Diaper Change' && styles.selectedText]}>
+                  Diaper Change
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.toggleButton, bathroomType === 'Potty' && styles.selectedButton]}
@@ -126,36 +147,21 @@ const DiaperChangeScreen = ({ navigation }) => {
           {/* Stool Type Picker */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Stool Type</Text>
-            <TouchableOpacity 
-              style={styles.dropdownButton}
-              onPress={() => setShowStoolPicker(!showStoolPicker)}
-            >
-              <Text style={styles.dropdownButtonText}>
-                {stoolType || 'Select Stool Type'}
-              </Text>
+            <TouchableOpacity style={styles.dropdownButton} onPress={() => setShowStoolPicker(!showStoolPicker)}>
+              <Text style={styles.dropdownButtonText}>{stoolType || 'Select Stool Type'}</Text>
               <Text style={styles.dropdownIcon}>▼</Text>
             </TouchableOpacity>
 
             {showStoolPicker && (
               <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={stoolType}
-                  onValueChange={(itemValue) => {
-                    setStoolType(itemValue);
-                  }}
-                >
+                <Picker selectedValue={stoolType} onValueChange={(itemValue) => setStoolType(itemValue)}>
                   <Picker.Item label="Select Stool Type" value="" />
-                  <Picker.Item label="Wet" value="wet" />
-                  <Picker.Item label="BM" value="bm" />
-                  <Picker.Item label="Dry" value="dry" />
-                  <Picker.Item label="Wet + BM" value="wet+bm" />
+                  <Picker.Item label="Wet" value="Wet" />
+                  <Picker.Item label="BM" value="BM" />
+                  <Picker.Item label="Dry" value="Dry" />
+                  <Picker.Item label="Wet + BM" value="Wet+BM" />
                 </Picker>
-                
-                {/* Add a confirm button to close the picker */}
-                <TouchableOpacity 
-                  style={styles.confirmPickerButton}
-                  onPress={() => setShowStoolPicker(false)}
-                >
+                <TouchableOpacity style={styles.confirmPickerButton} onPress={() => setShowStoolPicker(false)}>
                   <Text style={styles.confirmPickerText}>Confirm Selection</Text>
                 </TouchableOpacity>
               </View>
@@ -163,10 +169,7 @@ const DiaperChangeScreen = ({ navigation }) => {
           </View>
 
           {/* Submit Button */}
-          <TouchableOpacity 
-            style={styles.completeButton}
-            onPress={handleCompleteLog}
-          >
+          <TouchableOpacity style={styles.completeButton} onPress={handleCompleteLog}>
             <Text style={styles.completeButtonText}>Complete Log</Text>
           </TouchableOpacity>
         </View>
@@ -175,7 +178,7 @@ const DiaperChangeScreen = ({ navigation }) => {
   );
 };
 
-// Styles
+// Styles (same as your original, unchanged)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -209,14 +212,14 @@ const styles = StyleSheet.create({
   logoContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: -70, 
+    marginLeft: -70,
   },
   logo: {
     width: 60,
     height: 60,
   },
   headerRightSpace: {
-    width: 70, 
+    width: 70,
   },
   title: {
     fontSize: 24,
@@ -293,7 +296,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   selectedButton: {
-    backgroundColor: '#4CAF50', // Green when selected
+    backgroundColor: '#4CAF50',
   },
   toggleText: {
     fontSize: 16,
@@ -301,7 +304,7 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   selectedText: {
-    color: '#fff', // White text when selected
+    color: '#fff',
     fontWeight: 'bold',
   },
   dropdownButton: {
@@ -350,7 +353,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   completeButton: {
-    backgroundColor: '#fcfcd4', // Light yellow like in the feeding form
+    backgroundColor: '#fcfcd4',
     padding: 15,
     borderRadius: 5,
     alignItems: 'center',
@@ -368,4 +371,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default DiaperChangeScreen;
+export default DiaperChangeForm;

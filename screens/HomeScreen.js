@@ -7,6 +7,7 @@ import { app } from '../firebaseConfig';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
+  
   const [profiles, setProfiles] = useState([]);
   const db = getFirestore(app);
   const auth = getAuth();

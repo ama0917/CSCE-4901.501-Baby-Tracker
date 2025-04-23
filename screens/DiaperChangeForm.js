@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Image, Platform, ScrollView, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
+import { LinearGradient} from 'expo-linear-gradient';
 import { getAuth } from 'firebase/auth';
 import { db } from '../firebaseConfig';
 import { addDoc, collection, Timestamp } from 'firebase/firestore';
@@ -82,12 +83,13 @@ const DiaperChangeForm = ({ navigation, route }) => {
   };
 
   return (
+     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
         <View style={styles.formContainer}>
           <View style={styles.header}>
             <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-              <Text style={styles.backText}>← Back to Dashboard</Text>
+              <Text style={styles.backText}>← Dashboard</Text>
             </TouchableOpacity>
             <View style={styles.logoContainer}>
               <Image source={require('../assets/logo.png')} style={styles.logo} />
@@ -175,14 +177,17 @@ const DiaperChangeForm = ({ navigation, route }) => {
         </View>
       </ScrollView>
     </SafeAreaView>
+    </LinearGradient>
   );
 };
 
 // Styles (same as your original, unchanged)
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#d4f1fc',
   },
   scrollView: {
     flex: 1,
@@ -193,7 +198,6 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     flex: 1,
-    backgroundColor: '#d4f1fc',
     padding: 20,
   },
   header: {

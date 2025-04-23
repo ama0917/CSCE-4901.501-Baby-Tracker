@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { LinearGradient} from 'expo-linear-gradient';
 import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { app } from '../firebaseConfig';
 
@@ -9,7 +10,8 @@ const db = getFirestore(app);
 export default function ChildDashboard() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { name, childId } = route.params || { name: "Baby", childId: "defaultChildId" };
+  const { name, childId, image } = route.params || {};
+
 
   const [activities, setActivities] = useState([]);
   const [history, setHistory] = useState([]);
@@ -113,10 +115,11 @@ export default function ChildDashboard() {
   };
 
   return (
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backButton}>« Home</Text>
+          <Text style={styles.backButton}>← Home</Text>
         </TouchableOpacity>
         <Image source={require('../assets/logo.png')} style={styles.logo} />
         <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
@@ -125,8 +128,11 @@ export default function ChildDashboard() {
       </View>
 
       <Text style={styles.title}>{name}'s Dashboard</Text>
+      {image ? (
+        <Image source={{ uri: image}} style={styles.profileImage} />
+      ) : (
       <Image source={require('../assets/happy-baby.png')} style={styles.profileImage} />
-
+      )}
       <Text style={styles.sectionTitle}>Log Activities</Text>
       <View style={styles.activitiesContainer}>
         <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('FeedingForm', { childId, name })}>
@@ -179,13 +185,16 @@ export default function ChildDashboard() {
         )}
       </ScrollView>
     </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#E3F2FD',
     alignItems: 'center',
     paddingTop: 40,
     paddingBottom: 40,
@@ -215,9 +224,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   profileImage: {
-    width: 90,
-    height: 85,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     marginVertical: 10,
+    resizeMode: 'cover',
+    borderWidth: 2,
+    borderColor: '#fff'
   },
   sectionTitle: {
     fontSize: 18,

@@ -6,11 +6,15 @@
     "orientation": "portrait",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#E3F2FD"
+    },
+    "jsEngine": "hermes",
+    "experiments": {
+      "bridgeless": false
     },
     "ios": {
       "supportsTablet": true
@@ -23,6 +27,22 @@
     },
     "web": {
       "favicon": "./assets/logo.png"
-    }
+    },
+"plugins": [
+      [
+        "expo-sqlite",
+        {
+          "enableFTS": true,
+          "useSQLCipher": true,
+          "android": {
+            "enableFTS": false,
+            "useSQLCipher": false
+          },
+          "ios": {
+            "customBuildFlags": ["-DSQLITE_ENABLE_DBSTAT_VTAB=1 -DSQLITE_ENABLE_SNAPSHOT=1"]
+          }
+        }
+      ]
+    ]
   }
 }

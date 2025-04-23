@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Text, TextInput, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import '../firebaseConfig'; // Ensure this file properly initializes Firebase
 
 export default function LoginScreen() {
   const navigation = useNavigation();
@@ -9,10 +11,20 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  const handleLogin = async () => {
+    const auth = getAuth();
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      navigation.navigate('Home'); // Navigate only after successful login
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Login Failed', error.message);
+    }
+  };
+
   return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.container}>
       <Image source={require('../assets/logo.png')} style={styles.logoImage} />
-
       <Text style={styles.title}>LOGIN</Text>
 
       <TextInput
@@ -36,11 +48,11 @@ export default function LoginScreen() {
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity>
+      <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
         <Text style={styles.forgotText}>Forgot Password?</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.loginButton} onPress={() => navigation.navigate('Home')}>
+      <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
         <Text style={styles.loginText}>Login</Text>
       </TouchableOpacity>
 

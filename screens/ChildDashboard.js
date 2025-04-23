@@ -1,17 +1,121 @@
-import React from 'react';
-import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { app } from '../firebaseConfig';
+
+const db = getFirestore(app);
 
 export default function ChildDashboard() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { name } = route.params || { name: "Baby"}; // Just incase there isnt a name issued
+  const { name, childId } = route.params || { name: "Baby", childId: "defaultChildId" };
+
+  const [activities, setActivities] = useState([]);
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    if (!childId) {
+      Alert.alert('Error', 'Child ID is missing. Please return to Home and try again.');
+      navigation.goBack();
+    } else {
+      fetchChildData();
+    }
+  }, [childId]);
+
+  const formatTime = (timestamp) => {
+    const options = { hour: '2-digit', minute: '2-digit', hour12: true };
+    return new Date(timestamp).toLocaleTimeString([], options);
+  };
+
+  const formatDuration = (minutes) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours > 0 ? `${hours} hr` : ''} ${mins} min`;
+  };
+
+  const fetchChildData = async () => {
+    try {
+      console.log("Fetching data for child ID:", childId);
+
+      const fetchedActivities = [
+        { type: 'Feeding', time: '3:00 PM' },
+        { type: 'Diaper Change', time: '2:30 PM' },
+        { type: 'Nap', time: '12:00 PM' }
+      ];
+      setActivities(fetchedActivities);
+
+      if (!childId) {
+        console.error("Child ID is missing");
+        setHistory([]);
+        return;
+      }
+
+      // Diaper logs
+      const diaperLogsQuery = query(
+        collection(db, 'diaperLogs'),
+        where('childId', '==', childId),
+        orderBy('timestamp', 'desc'),
+        limit(5)
+      );
+      const diaperSnapshot = await getDocs(diaperLogsQuery);
+      const diaperLogs = diaperSnapshot.docs.map(doc => ({
+        id: doc.id,
+        type: 'Diaper Change',
+        subtype: doc.data().stoolType,
+        time: formatTime(doc.data().timestamp?.toDate()) || 'Unknown',
+        timestamp: doc.data().timestamp?.toDate() || new Date(0)
+      }));
+
+      // Feeding logs
+      const feedingLogsQuery = query(
+        collection(db, 'feedLogs'),
+        where('childId', '==', childId),
+        orderBy('timestamp', 'desc'),
+        limit(5)
+      );
+      const feedingSnapshot = await getDocs(feedingLogsQuery);
+      const feedLogs = feedingSnapshot.docs.map(doc => ({
+        id: doc.id,
+        type: 'Feeding',
+        subtype: doc.data().feedType,
+        time: formatTime(doc.data().timestamp?.toDate()) || 'Unknown',
+        timestamp: doc.data().timestamp?.toDate() || new Date(0)
+      }));
+
+      // Sleep logs
+      const sleepLogsQuery = query(
+        collection(db, 'sleepLogs'),
+        where('childId', '==', childId),
+        orderBy('timestamp', 'desc'),
+        limit(5)
+      );
+      const sleepSnapshot = await getDocs(sleepLogsQuery);
+      const sleepLogs = sleepSnapshot.docs.map(doc => ({
+        id: doc.id,
+        type: 'Sleep',
+        subtype: formatDuration(doc.data().duration),
+        time: formatTime(doc.data().timestamp?.toDate()) || 'Unknown',
+        timestamp: doc.data().timestamp?.toDate() || new Date(0)
+      }));
+
+      // Combine and sort all logs by timestamp
+      const combinedLogs = [...diaperLogs, ...feedLogs, ...sleepLogs].sort(
+        (a, b) => b.timestamp - a.timestamp
+      );
+
+      // Set the latest 5 logs to history
+      setHistory(combinedLogs.slice(0, 5));
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      Alert.alert('Error', 'Unable to fetch data.');
+    }
+  };
 
   return (
     <View style={styles.container}>
-      {/* Header Section */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.navigate('Home')}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backButton}>« Home</Text>
         </TouchableOpacity>
         <Image source={require('../assets/logo.png')} style={styles.logo} />
@@ -19,49 +123,60 @@ export default function ChildDashboard() {
           <Text style={styles.settings}>⚙</Text>
         </TouchableOpacity>
       </View>
-      
-      {/* Baby Name and Profile */}
+
       <Text style={styles.title}>{name}'s Dashboard</Text>
       <Image source={require('../assets/happy-baby.png')} style={styles.profileImage} />
-      
-      {/* Log Activities */}
+
       <Text style={styles.sectionTitle}>Log Activities</Text>
       <View style={styles.activitiesContainer}>
-        <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('FeedingForm')}>
+        <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('FeedingForm', { childId, name })}>
           <Image source={require('../assets/bottle.png')} style={styles.activityIcon} />
           <Text style={styles.activityText}>Feeding</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('DiaperChangeForm')}>
+        <TouchableOpacity 
+          style={styles.activityButton} 
+          onPress={() => {
+            console.log('Navigating to DiaperChangeForm with childId:', childId);
+            navigation.navigate('DiaperChangeForm', { childId, name });
+          }}>
           <Image source={require('../assets/diaper.png')} style={styles.activityIcon} />
           <Text style={styles.activityText}>Diaper</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('SleepingForm')}>
-          <Image source={require('../assets/sleep.png')} style={styles.activityIcon}/>
+        <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('SleepingForm', { childId, name })}>
+          <Image source={require('../assets/sleep.png')} style={styles.activityIcon} />
           <Text style={styles.activityText}>Sleep</Text>
         </TouchableOpacity>
       </View>
-      
-      {/* View Reports Button */}
-      <TouchableOpacity style={styles.reportsButton} onPress={() => navigation.navigate('ReportsScreen')}>
+
+      <TouchableOpacity 
+        style={styles.reportsButton} onPress={() => navigation.navigate('ReportsScreen', { childId, name })}>
         <Text style={styles.reportsText}>View Reports</Text>
       </TouchableOpacity>
 
 
-      {/* History Section with Scroll, Information is for testing the look  */}
       <Text style={styles.sectionTitle}>History</Text>
       <ScrollView style={styles.historyContainer}>
-        <View style={styles.historyItem}>
-          <Image source={require('../assets/bottle.png')} style={styles.historyIcon} />
-          <Text style={styles.historyText}>Feeding - 3:00 PM</Text> 
-        </View>
-        <View style={styles.historyItem}>
-          <Image source={require('../assets/diaper.png')} style={styles.historyIcon} />
-          <Text style={styles.historyText}>Diaper Change - 2:30 PM</Text>
-        </View>
-        <View style={styles.historyItem}>
-          <Image source={require('../assets/sleep.png')} style={styles.historyIcon} />
-          <Text style={styles.historyText}>Nap - 12:00 PM</Text>
-        </View>
+        {history.length > 0 ? (
+          history.map((item, index) => (
+            <View key={index} style={styles.historyItem}>
+              <Image 
+                source={ 
+                  item.type === 'Feeding' ? require('../assets/bottle.png') : 
+                  item.type === 'Diaper Change' ? require('../assets/diaper.png') : 
+                  require('../assets/sleep.png')
+                } 
+                style={styles.historyIcon} 
+              />
+              <View>
+                <Text style={styles.historyText}>{`${item.type} - ${item.time}`}</Text>
+                {item.subtype && <Text style={styles.subText}>{item.subtype}</Text>}
+                {item.mealType && item.type === 'Feeding' && <Text style={styles.subText}>{`Meal: ${item.mealType}`}</Text>}
+              </View>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.historyText}>No activities logged yet.</Text>
+        )}
       </ScrollView>
     </View>
   );
@@ -73,7 +188,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E3F2FD',
     alignItems: 'center',
     paddingTop: 40,
-    paddingBottom: 40.
+    paddingBottom: 40,
   },
   header: {
     flexDirection: 'row',
@@ -89,9 +204,10 @@ const styles = StyleSheet.create({
   settings: {
     fontSize: 30,
   },
-  babyIcon: {
-    width: 40,
-    height: 40,
+  logo: {
+    width: 65,
+    height: 65,
+    resizeMode: 'contain',
   },
   title: {
     fontSize: 22,
@@ -132,6 +248,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '600',
   },
+  reportsButton: {
+    backgroundColor: '#90CAF9',
+    padding: 10,
+    borderRadius: 20,
+    marginBottom: 10,
+  },
+  reportsText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
   historyContainer: {
     width: '90%',
     maxHeight: 220,
@@ -161,12 +287,10 @@ const styles = StyleSheet.create({
   },
   historyText: {
     fontSize: 14,
+    fontWeight: '500',
   },
-  logo: {
-    width:65,
-    height: 65,
-    resizeMode: 'contain',
-    alignItems: 'center',
-    marginTop: 10,
-   },
+  subText: {
+    fontSize: 12,
+    color: '#555',
+  },
 });

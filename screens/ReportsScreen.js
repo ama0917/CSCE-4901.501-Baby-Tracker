@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
-import { View, Text, Dimensions, TouchableOpacity, ScrollView, Alert, StyleSheet, SafeAreaView, Platform, StatusBar, Image } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, Dimensions, TouchableOpacity, ScrollView, Alert, StyleSheet, SafeAreaView, Platform, StatusBar, Image, ActivityIndicator } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { AntDesign, Feather, FontAwesome } from '@expo/vector-icons';
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { db, auth } from '../firebaseConfig'; 
+import { format, subDays, startOfWeek, endOfWeek, subMonths, subYears, isWithinInterval, parseISO, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
 const screenWidth = Dimensions.get('window').width;
 
-// Enhanced chart configuration with better margins and styling
 const chartConfig = {
   backgroundGradientFrom: "#f0f9ff",
   backgroundGradientTo: "#f0f9ff",
@@ -41,64 +43,347 @@ const chartConfig = {
 
 const ReportsScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute();
+  const { childId: initialChildId } = route.params || {};
   const [reportRange, setReportRange] = useState("Weekly");
-  const [expandedSection, setExpandedSection] = useState("Feeding"); // Default expanded section
+  const [expandedSection, setExpandedSection] = useState("Feeding");
   const [showDataLabels, setShowDataLabels] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [reportData, setReportData] = useState(null);
+  const [selectedChild, setSelectedChild] = useState(initialChildId || null);
+  const [children, setChildren] = useState([]);
 
-  const mockData = {
-    Weekly: {
-      labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-      feeding: {
-        count: [4, 5, 3, 4, 5, 6, 5],
-        ounces: [20, 22, 18, 21, 24, 26, 23], // Changed from duration to ounces
-      },
-      diaper: {
-        wet: [4, 5, 3, 5, 4, 5, 3],
-        bm: [2, 3, 2, 4, 3, 2, 2], // Changed from soiled to bm
-      },
-      sleeping: {
-        nighttime: [8, 7.5, 9, 8, 8.5, 7, 8.2],
-        naps: [3.5, 4, 3, 3.5, 4.2, 3.8, 4.5]
+
+  useEffect(() => {
+    if (!reportData && !isLoading) {
+      setReportData({
+        labels: [],
+        feeding: { count: [], ounces: [] },
+        diaper: { wet: [], bm: [] },
+        sleeping: { nighttime: [], naps: [] },
+        rawData: { feeding: [], diaper: [], sleep: [] }
+      });
+    }
+  }, [reportData, isLoading]);
+
+  // Use useEffect to fetch data when component mounts or filters change
+  useEffect(() => {
+    const fetchChildren = async () => {
+      try {
+        // Get current user to fetch only their children
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          console.error("No authenticated user");
+          return;
+        }
+
+        // Query children collection to get children associated with current user
+        const childrenRef = collection(db, "Children");
+        const q = query(childrenRef, where("UserID", "==", currentUser.uid));
+        const childrenSnapshot = await getDocs(q);
+        
+        const childrenData = childrenSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        
+        setChildren(childrenData);
+        
+        // Set default selected child if available
+        if (childrenData.length > 0 && !selectedChild) {
+          setSelectedChild(childrenData[0].id);
+        }
+      } catch (error) {
+        console.error("Error fetching children: ", error);
+        Alert.alert("Error", "Failed to load children data.");
       }
-    },
-    Monthly: {
-      labels: ["Wk1", "Wk2", "Wk3", "Wk4"],
-      feeding: {
-        count: [30, 28, 32, 31],
-        ounces: [150, 140, 160, 155], // Changed from duration to ounces
-      },
-      diaper: {
-        wet: [28, 26, 30, 27],
-        bm: [20, 18, 22, 19], // Changed from soiled to bm
-      },
-      sleeping: {
-        nighttime: [58, 60, 56, 62],
-        naps: [26, 28, 24, 27]
+    };
+
+    fetchChildren();
+  }, []);
+
+  // Fetch report data whenever selectedChild or reportRange changes
+  useEffect(() => {
+    if (selectedChild) {
+      fetchReportData(selectedChild, reportRange);
+    }
+  }, [selectedChild, reportRange]);
+
+  const fetchReportData = async (childId, range) => {
+    useEffect(() => {
+      // Reset loading state after 10 seconds to prevent infinite loading
+      let timeoutId;
+      if (isLoading) {
+        timeoutId = setTimeout(() => {
+          console.log("Loading timeout triggered");
+          setIsLoading(false);
+          if (!reportData) {
+            setReportData({
+              labels: [],
+              feeding: { count: [], ounces: [] },
+              diaper: { wet: [], bm: [] },
+              sleeping: { nighttime: [], naps: [] },
+              rawData: { feeding: [], diaper: [], sleep: [] }
+            });
+            Alert.alert("Notice", "Loading took longer than expected. Displaying empty report.");
+          }
+        }, 10000); // 10 seconds timeout
       }
-    },
-    Annually: {
-      // Using short month names to prevent label cutoff
-      labels: ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"],
-      feeding: {
-        count: [120, 115, 125, 118, 122, 130, 126, 120, 115, 118, 124, 128],
-        ounces: [600, 580, 620, 590, 610, 650, 630, 600, 570, 590, 620, 640], // Changed from duration to ounces
-      },
-      diaper: {
-        wet: [112, 105, 115, 108, 114, 120, 118, 112, 106, 110, 116, 120],
-        bm: [80, 75, 85, 79, 82, 88, 86, 80, 76, 82, 86, 90], // Changed from soiled to bm
-      },
-      sleeping: {
-        nighttime: [240, 230, 250, 235, 245, 260, 255, 240, 235, 240, 250, 255],
-        naps: [108, 104, 112, 106, 110, 116, 114, 108, 102, 106, 112, 115]
+      
+      return () => {
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+    }, [isLoading]);
+
+    setIsLoading(true);
+    
+    try {
+      // Calculate date ranges based on selected report range
+      const today = new Date();
+      let startDate, endDate, labels;
+      
+      if (range === "Weekly") {
+        startDate = startOfWeek(today, { weekStartsOn: 1 }); // Start from Monday
+        endDate = endOfWeek(today, { weekStartsOn: 1 });
+        
+        // Create array of dates for the week
+        labels = Array.from({ length: 7 }, (_, i) => {
+          const date = new Date(startDate);
+          date.setDate(startDate.getDate() + i);
+          return format(date, 'EEE'); // Short day name (Mon, Tue, etc.)
+        });
+      } else if (range === "Monthly") {
+        startDate = startOfMonth(today);
+        endDate = endOfMonth(today);
+        
+        // Create weekly labels for the month
+        const weeks = Math.ceil((endDate.getDate() - startDate.getDate() + 1) / 7);
+        labels = Array.from({ length: weeks }, (_, i) => `Wk${i+1}`);
+      } else { // Annually
+        startDate = startOfYear(today);
+        endDate = endOfYear(today);
+        
+        // Create monthly labels for the year
+        labels = Array.from({ length: 12 }, (_, i) => {
+          const date = new Date(today.getFullYear(), i, 1);
+          return format(date, 'MMM').charAt(0); // First letter of month
+        });
+        
+        
       }
+
+      // Initialize data structure
+      const data = {
+        labels,
+        feeding: {
+          count: Array(labels.length).fill(0),
+          ounces: Array(labels.length).fill(0)
+        },
+        diaper: {
+          wet: Array(labels.length).fill(0),
+          bm: Array(labels.length).fill(0)
+        },
+        sleeping: {
+          nighttime: Array(labels.length).fill(0),
+          naps: Array(labels.length).fill(0)
+        },
+        rawData: {
+          feeding: [],
+          diaper: [],
+          sleep: []
+        }
+      };
+
+      // Fetch feeding logs
+      const feedLogsRef = collection(db, "FeedLogs");
+      const feedQuery = query(
+        feedLogsRef,
+        where("ChildID", "==", childId),
+        where("FeedTime", ">=", startDate),
+        where("FeedTime", "<=", endDate),
+        orderBy("FeedTime", "asc")
+      );
+      
+      const feedSnapshot = await getDocs(feedQuery);
+      
+      feedSnapshot.forEach(doc => {
+        const feedLog = { id: doc.id, ...doc.data() };
+        // Convert Firestore timestamp to JS Date
+        const feedTime = feedLog.FeedTime.toDate ? feedLog.FeedTime.toDate() : new Date(feedLog.FeedTime);
+        
+        data.rawData.feeding.push({
+          ...feedLog,
+          FeedTime: feedTime
+        });
+        
+        // Calculate index based on time period
+        let index;
+        if (range === "Weekly") {
+          // Days since start date (0-6)
+          index = Math.floor((feedTime - startDate) / (1000 * 60 * 60 * 24));
+        } else if (range === "Monthly") {
+          // Week of month (0-based)
+          index = Math.floor((feedTime.getDate() - 1) / 7);
+        } else {
+          // Month of year (0-11)
+          index = feedTime.getMonth();
+        }
+        
+        // Ensure index is within bounds
+        if (index >= 0 && index < labels.length) {
+          data.feeding.count[index]++;
+          
+          // Add amount if available
+          if (feedLog.Amount) {
+            data.feeding.ounces[index] += parseFloat(feedLog.Amount);
+          }
+        }
+      });
+
+      // Fetch diaper logs
+      const diaperLogsRef = collection(db, "DiaperLogs");
+      const diaperQuery = query(
+        diaperLogsRef,
+        where("ChildID", "==", childId),
+        where("EndTime", ">=", startDate),
+        where("EndTime", "<=", endDate),
+        orderBy("EndTime", "asc")
+      );
+      
+      const diaperSnapshot = await getDocs(diaperQuery);
+      
+      diaperSnapshot.forEach(doc => {
+        const diaperLog = { id: doc.id, ...doc.data() };
+        const endTime = diaperLog.EndTime.toDate ? diaperLog.EndTime.toDate() : new Date(diaperLog.EndTime);
+        
+        data.rawData.diaper.push({
+          ...diaperLog,
+          EndTime: endTime
+        });
+        
+        // Calculate index based on time period
+        let index;
+        if (range === "Weekly") {
+          index = Math.floor((endTime - startDate) / (1000 * 60 * 60 * 24));
+        } else if (range === "Monthly") {
+          index = Math.floor((endTime.getDate() - 1) / 7);
+        } else {
+          index = endTime.getMonth();
+        }
+        
+        // Ensure index is within bounds
+        if (index >= 0 && index < labels.length) {
+          // Check diaper type
+          const diaperType = diaperLog.StoolType ? diaperLog.StoolType.toLowerCase() : '';
+          
+          if (diaperType.includes('wet')) {
+            data.diaper.wet[index]++;
+          }
+          
+          if (diaperType.includes('bm') || diaperType.includes('soiled')) {
+            data.diaper.bm[index]++;
+          }
+        }
+      });
+
+      // Fetch sleep logs
+      const sleepLogsRef = collection(db, "SleepLogs");
+      const sleepQuery = query(
+        sleepLogsRef,
+        where("ChildID", "==", childId),
+        where("EndTime", ">=", startDate),
+        where("EndTime", "<=", endDate),
+        orderBy("EndTime", "asc")
+      );
+      
+      const sleepSnapshot = await getDocs(sleepQuery);
+      
+      sleepSnapshot.forEach(doc => {
+        const sleepLog = { id: doc.id, ...doc.data() };
+        const startTime = sleepLog.StartTime.toDate ? sleepLog.StartTime.toDate() : new Date(sleepLog.StartTime);
+        const endTime = sleepLog.EndTime.toDate ? sleepLog.EndTime.toDate() : new Date(sleepLog.EndTime);
+        
+        // Calculate sleep duration in hours
+        const durationHours = (endTime - startTime) / (1000 * 60 * 60);
+        
+        data.rawData.sleep.push({
+          ...sleepLog,
+          StartTime: startTime,
+          EndTime: endTime,
+          DurationHours: durationHours
+        });
+        
+        // Calculate index based on time period
+        let index;
+        if (range === "Weekly") {
+          index = Math.floor((endTime - startDate) / (1000 * 60 * 60 * 24));
+        } else if (range === "Monthly") {
+          index = Math.floor((endTime.getDate() - 1) / 7);
+        } else {
+          index = endTime.getMonth();
+        }
+        
+        // Ensure index is within bounds
+        if (index >= 0 && index < labels.length) {
+          // Determine if nap or nighttime sleep based on time of day
+          const hour = startTime.getHours();
+          
+          if (hour >= 20 || hour < 6) {
+            // Night sleep (8 PM - 6 AM)
+            data.sleeping.nighttime[index] += durationHours;
+          } else {
+            // Nap (daytime)
+            data.sleeping.naps[index] += durationHours;
+          }
+        }
+      });
+
+      // Update state with fetched data
+      setReportData(data);
+    } catch (error) {
+      console.error("Error fetching report data: ", error);
+      Alert.alert("Error", "Failed to load report data. Please try again.");
+      // Set default empty data structure to avoid null reference errors
+      setReportData({
+        labels: [],
+        feeding: { count: [], ounces: [] },
+        diaper: { wet: [], bm: [] },
+        sleeping: { nighttime: [], naps: [] },
+        rawData: { feeding: [], diaper: [], sleep: [] }
+      });
+    } finally {
+      // This ensures loading state is reset even if errors occur
+      setIsLoading(false);
     }
   };
 
-  const current = mockData[reportRange];
-  
+  const toggleSection = (section) => {
+    setExpandedSection(expandedSection === section ? null : section);
+  };
+
+  // Select the appropriate chart type based on data and time range
+  const chooseChartType = (title) => {
+    // Use bar charts for comparative data (feeding, diaper) and line charts for trend data (sleep)
+    if (title === "Sleeping") {
+      return "line";
+    } else if (reportRange === "Weekly") {
+      return "line"; // Line charts work well for small data sets
+    } else {
+      return "bar"; // Bar charts are better for comparing across larger time periods
+    }
+  };
+
+  // Calculate combined wet+BM total for each date point
+  const getCombinedDiaperCounts = () => {
+    if (!reportData) return [];
+    return reportData.diaper.wet.map((wetCount, index) => 
+      wetCount + reportData.diaper.bm[index]
+    );
+  };
+
   // Get trend indicators for summary cards
   const getTrend = (dataSet) => {
-    if (dataSet.length < 2) return "neutral";
+    if (!dataSet || dataSet.length < 2) return "neutral";
     
     const lastValue = dataSet[dataSet.length - 1];
     const previousValue = dataSet[dataSet.length - 2];
@@ -123,31 +408,8 @@ const ReportsScreen = () => {
     return "#9e9e9e"; // neutral color
   };
 
-  const toggleSection = (section) => {
-    setExpandedSection(expandedSection === section ? null : section);
-  };
-
-  // Select the appropriate chart type based on data and time range
-  const chooseChartType = (title) => {
-    // Use bar charts for comparative data (feeding, diaper) and line charts for trend data (sleep)
-    if (title === "Sleeping") {
-      return "line";
-    } else if (reportRange === "Weekly") {
-      return "line"; // Line charts work well for small data sets
-    } else {
-      return "bar"; // Bar charts are better for comparing across larger time periods
-    }
-  };
-
-  // Calculate combined wet+BM total for each date point
-  const getCombinedDiaperCounts = () => {
-    return current.diaper.wet.map((wetCount, index) => 
-      wetCount + current.diaper.bm[index]
-    );
-  };
-
   const renderChart = (title, datasets, yLabel, colors = ['#1976d2', '#4caf50']) => {
-    if (expandedSection !== title) return null;
+    if (expandedSection !== title || !reportData) return null;
     
     const adjustedWidth = screenWidth - 40;
     const chartType = chooseChartType(title);
@@ -166,7 +428,7 @@ const ReportsScreen = () => {
     }
     
     const chartData = {
-      labels: current.labels,
+      labels: reportData.labels,
       datasets: Object.entries(displayDatasets).map(([key, data], index) => ({
         data,
         color: () => displayColors[index % displayColors.length],
@@ -177,9 +439,9 @@ const ReportsScreen = () => {
     // Create the legend for the chart
     const legendLabels = {
       "count": "Feedings",
-      "ounces": "Ounces", // Changed from duration
+      "ounces": "Ounces",
       "wet": "Wet",
-      "bm": "BM", // Changed from soiled
+      "bm": "BM",
       "wet+bm": "Wet+BM",
       "nighttime": "Nighttime",
       "naps": "Naps"
@@ -289,41 +551,104 @@ const ReportsScreen = () => {
   };
 
   const handleDownloadExcel = async () => {
-    // Convert mock data into CSV format
-    let csv = `Baby Tracker Report (${reportRange})\n\n`;
-    
-    // Add Feeding Data
-    csv += "Date,Feeding Count,Feeding Ounces\n"; // Changed from duration to ounces
-    current.labels.forEach((label, index) => {
-      csv += `${label},${current.feeding.count[index]},${current.feeding.ounces[index]}\n`; // Changed from duration to ounces
-    });
-    
-    csv += "\nDate,Wet Diapers,BM Diapers,Total Diapers\n"; // Added Total column and changed soiled to BM
-    current.labels.forEach((label, index) => {
-      const wetCount = current.diaper.wet[index];
-      const bmCount = current.diaper.bm[index]; // Changed from soiled to bm
-      const totalCount = wetCount + bmCount;
-      csv += `${label},${wetCount},${bmCount},${totalCount}\n`;
-    });
-    
-    csv += "\nDate,Nighttime Sleep (hrs),Naps (hrs)\n";
-    current.labels.forEach((label, index) => {
-      csv += `${label},${current.sleeping.nighttime[index]},${current.sleeping.naps[index]}\n`;
-    });
-
-    // Save to local file
-    const fileUri = FileSystem.documentDirectory + `Baby_Tracker_Report_${reportRange}.csv`;
-    await FileSystem.writeAsStringAsync(fileUri, csv, {
-      encoding: FileSystem.EncodingType.UTF8,
-    });
-
-    // Share the file
-    if (!(await Sharing.isAvailableAsync())) {
-      Alert.alert("Sharing not available on this device");
+    if (!reportData || !selectedChild) {
+      Alert.alert("Error", "No report data available to export");
       return;
     }
+    
+    try {
+      // Find selected child name
+      const childInfo = children.find(child => child.id === selectedChild);
+      const childName = childInfo ? childInfo.Name : "Unknown";
+      
+      // Format date for filename
+      const dateStr = format(new Date(), 'yyyy-MM-dd');
+      
+      // Convert report data into CSV format
+      let csv = `Baby Tracker Report for ${childName}\n`;
+      csv += `Report Range: ${reportRange}\n`;
+      csv += `Generated on: ${format(new Date(), 'MMMM d, yyyy')}\n\n`;
+      
+      // FEEDING DATA
+      csv += "=== FEEDING DATA ===\n";
+      csv += "Date,Feeding Count,Feeding Ounces\n";
+      reportData.labels.forEach((label, index) => {
+        csv += `${label},${reportData.feeding.count[index]},${reportData.feeding.ounces[index].toFixed(1)}\n`;
+      });
+      
+      // Add feeding logs details
+      csv += "\nFeeding Logs Details:\n";
+      csv += "Date,Time,Type,Amount (oz),Notes\n";
+      
+      reportData.rawData.feeding.forEach(log => {
+        const dateStr = format(log.FeedTime, 'yyyy-MM-dd');
+        const timeStr = format(log.FeedTime, 'HH:mm');
+        
+        csv += `${dateStr},${timeStr},"${log.FoodType || ''}",${log.Amount || 0},"${log.Notes || ''}"\n`;
+      });
+      
+      // DIAPER DATA
+      csv += "\n=== DIAPER/POTTY DATA ===\n";
+      csv += "Date,Wet Diapers,BM Diapers,Total Diapers\n";
+      reportData.labels.forEach((label, index) => {
+        const wetCount = reportData.diaper.wet[index];
+        const bmCount = reportData.diaper.bm[index];
+        const totalCount = wetCount + bmCount;
+        csv += `${label},${wetCount},${bmCount},${totalCount}\n`;
+      });
+      
+      // Add diaper logs details
+      csv += "\nDiaper/Potty Logs Details:\n";
+      csv += "Date,Time,Type,Notes\n";
+      
+      reportData.rawData.diaper.forEach(log => {
+        const dateStr = format(log.EndTime, 'yyyy-MM-dd');
+        const timeStr = format(log.EndTime, 'HH:mm');
+        
+        csv += `${dateStr},${timeStr},"${log.StoolType || ''}","${log.Notes || ''}"\n`;
+      });
+      
+      // SLEEP DATA
+      csv += "\n=== SLEEP DATA ===\n";
+      csv += "Date,Nighttime Sleep (hrs),Naps (hrs),Total Sleep (hrs)\n";
+      reportData.labels.forEach((label, index) => {
+        const nightSleep = reportData.sleeping.nighttime[index];
+        const napSleep = reportData.sleeping.naps[index];
+        const totalSleep = nightSleep + napSleep;
+        
+        csv += `${label},${nightSleep.toFixed(1)},${napSleep.toFixed(1)},${totalSleep.toFixed(1)}\n`;
+      });
+      
+      // Add sleep logs details
+      csv += "\nSleep Logs Details:\n";
+      csv += "Date,Start Time,End Time,Duration (hrs),Type,Notes\n";
+      
+      reportData.rawData.sleep.forEach(log => {
+        const dateStr = format(log.StartTime, 'yyyy-MM-dd');
+        const startTimeStr = format(log.StartTime, 'HH:mm');
+        const endTimeStr = format(log.EndTime, 'HH:mm');
+        const sleepType = log.StartTime.getHours() >= 20 || log.StartTime.getHours() < 6 ? "Nighttime" : "Nap";
+        
+        csv += `${dateStr},${startTimeStr},${endTimeStr},${log.DurationHours.toFixed(1)},"${sleepType}","${log.Notes || ''}"\n`;
+      });
 
-    await Sharing.shareAsync(fileUri);
+      // Save to local file
+      const fileUri = FileSystem.documentDirectory + `BabyTracker_${childName}_${reportRange}_${dateStr}.csv`;
+      await FileSystem.writeAsStringAsync(fileUri, csv, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      // Share the file
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert("Sharing not available on this device");
+        return;
+      }
+
+      await Sharing.shareAsync(fileUri);
+    } catch (error) {
+      console.error("Error exporting data:", error);
+      Alert.alert("Export Error", "Failed to generate export file.");
+    }
   };
 
   const renderSectionHeader = (title) => {
@@ -357,6 +682,38 @@ const ReportsScreen = () => {
     );
   };
 
+  // Child selector component
+  const renderChildSelector = () => {
+    if (children.length === 0) return null;
+    
+    return (
+      <View style={styles.childSelectorContainer}>
+        <Text style={styles.childSelectorLabel}>Select Child:</Text>
+        <View style={styles.childButtonsContainer}>
+          {children.map(child => (
+            <TouchableOpacity
+              key={child.id}
+              style={[
+                styles.childButton,
+                selectedChild === child.id && styles.childButtonActive
+              ]}
+              onPress={() => setSelectedChild(child.id)}
+            >
+              <Text 
+                style={[
+                  styles.childButtonText,
+                  selectedChild === child.id && styles.childButtonTextActive
+                ]}
+              >
+                {child.Name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#f0f9ff" />
@@ -386,7 +743,10 @@ const ReportsScreen = () => {
 
         <Text style={styles.screenTitle}>Reports & Analytics</Text>
 
-        {/* Time range selector moved to top for better UX */}
+        {/* Child selector */}
+        {renderChildSelector()}
+
+        {/* Time range selector */}
         <View style={styles.reportTypeContainer}>
           {["Weekly", "Monthly", "Annually"].map((range) => (
             <TouchableOpacity
@@ -409,49 +769,56 @@ const ReportsScreen = () => {
           ))}
         </View>
 
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
-          {/* Feeding Section */}
-          {renderSectionHeader("Feeding")}
-          {renderChart("Feeding", 
-            { count: current.feeding.count, ounces: current.feeding.ounces }, // Changed from duration to ounces
-            "oz", // Added unit for ounces
-            ['#1976d2', '#f57c00']
-          )}
-
-          {/* Sleeping Section */}
-          {renderSectionHeader("Sleeping")}
-          {renderChart("Sleeping", 
-            { nighttime: current.sleeping.nighttime, naps: current.sleeping.naps }, 
-            "hrs",
-            ['#5e35b1', '#8e24aa']
-          )}
-
-          {/* Diaper Changes Section */}
-          {renderSectionHeader("Diaper Changes/Potty")}
-          {renderChart("Diaper Changes/Potty", 
-            { wet: current.diaper.wet, bm: current.diaper.bm }, // Changed from soiled to bm
-            "",
-            ['#00897b', '#43a047']
-          )}
-
-          {/* Generate Reports Section */}
-          <View style={styles.generateSection}>
-            <Text style={styles.generateTitle}>Export Data</Text>
-            <Text style={styles.generateSubtitle}>Download your data in CSV format</Text>
-            
-            <TouchableOpacity
-              onPress={handleDownloadExcel}
-              style={styles.downloadButton}
-              accessibilityLabel="Download CSV Report"
-            >
-              <Feather name="download" size={18} color="#2e7d32" style={styles.downloadIcon} />
-              <Text style={styles.downloadText}>Download CSV Report</Text>
-            </TouchableOpacity>
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#1976d2" />
+            <Text style={styles.loadingText}>Loading report data...</Text>
           </View>
-          
-          {/* Add extra space at bottom to ensure content doesn't get cut off */}
-          <View style={styles.bottomSpacer} />
-        </ScrollView>
+        ) : (
+          <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+            {/* Feeding Section */}
+            {renderSectionHeader("Feeding")}
+            {reportData && renderChart("Feeding", 
+              { count: reportData.feeding.count, ounces: reportData.feeding.ounces },
+              "oz",
+              ['#1976d2', '#f57c00']
+            )}
+
+            {/* Sleeping Section */}
+            {renderSectionHeader("Sleeping")}
+            {reportData && renderChart("Sleeping", 
+              { nighttime: reportData.sleeping.nighttime, naps: reportData.sleeping.naps }, 
+              "hrs",
+              ['#5e35b1', '#8e24aa']
+            )}
+
+            {/* Diaper Changes Section */}
+            {renderSectionHeader("Diaper Changes/Potty")}
+            {reportData && renderChart("Diaper Changes/Potty", 
+              { wet: reportData.diaper.wet, bm: reportData.diaper.bm },
+              "",
+              ['#00897b', '#43a047']
+            )}
+
+            {/* Generate Reports Section */}
+            <View style={styles.generateSection}>
+              <Text style={styles.generateTitle}>Export Data</Text>
+              <Text style={styles.generateSubtitle}>Download your data in CSV format</Text>
+              
+              <TouchableOpacity
+                onPress={handleDownloadExcel}
+                style={styles.downloadButton}
+                accessibilityLabel="Download CSV Report"
+              >
+                <Feather name="download" size={18} color="#2e7d32" style={styles.downloadIcon} />
+                <Text style={styles.downloadText}>Download CSV Report</Text>
+              </TouchableOpacity>
+            </View>
+            
+            {/* Add extra space at bottom to ensure content doesn't get cut off */}
+            <View style={styles.bottomSpacer} />
+          </ScrollView>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -507,7 +874,50 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#1976d2',
   },
-  // New time range selector at top
+  // Child selector styles
+  childSelectorContainer: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+  },
+  childSelectorLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  childButtonsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  childButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    marginRight: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+  },
+  childButtonActive: {
+    backgroundColor: '#e3f2fd',
+    borderColor: '#1976d2',
+  },
+  childButtonText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  childButtonTextActive: {
+    color: '#1976d2',
+    fontWeight: 'bold',
+  },
+  // Time range selector styles
   reportTypeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -539,6 +949,17 @@ const styles = StyleSheet.create({
   reportTypeTextActive: {
     color: '#1976d2',
     fontWeight: 'bold',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#666',
   },
   scrollView: {
     flex: 1,

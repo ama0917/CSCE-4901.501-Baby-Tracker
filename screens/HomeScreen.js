@@ -1,30 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
-import { useNavigation, useRoute, useIsFocused } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import { getFirestore, collection, getDocs, query, where } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { app } from '../firebaseConfig';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
-  const route = useRoute();
-  const isFocused = useIsFocused();
-
-  const [profiles, setProfiles] = useState([
-    {
-      name: 'Baby Luna',
-      image: null, 
-    }
-  ]);
+  const [profiles, setProfiles] = useState([]);
+  const db = getFirestore(app);
+  const auth = getAuth();
 
   useEffect(() => {
-    if (isFocused && route.params?.newProfile) {
-      setProfiles(prev => [...prev, route.params.newProfile]);
-      navigation.setParams({ newProfile: null });
-    }
-  }, [isFocused, route.params]);
+    const fetchProfiles = async () => {
+      try {
+        const auth = getAuth();
+        const currentUser = auth.currentUser;
+        
+        if (!currentUser) {
+          console.log('No user is signed in');
+          // Redirect to login if necessary
+          return;
+        }
+        
+        const q = query(
+          collection(db, 'children'),
+          where('userId', '==', currentUser.uid)
+        );
+        
+        const querySnapshot = await getDocs(q);
+        const loadedProfiles = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setProfiles(loadedProfiles);
+      } catch (error) {
+        console.error('Error loading profiles:', error);
+      }
+    };
+
+    fetchProfiles();
+  }, []);
 
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.container}>
-        {/* Top bar */}
         <View style={styles.topBar}>
           <Image source={require('../assets/logo.png')} style={styles.logo} />
           <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
@@ -36,11 +56,11 @@ const HomeScreen = () => {
         <Text style={styles.subtitle}>Select a profile</Text>
 
         <View style={styles.profileList}>
-          {profiles.map((profile, index) => (
+          {profiles.map((profile) => (
             <TouchableOpacity
-              key={index}
+              key={profile.id}
               style={styles.profileBubble}
-              onPress={() => navigation.navigate('ChildDashboard', { name: profile.name })}
+              onPress={() => navigation.navigate('ChildDashboard', { name: profile.name, childId: profile.id })}
             >
               {profile.image ? (
                 <Image source={{ uri: profile.image }} style={styles.avatarImage} />
@@ -52,7 +72,6 @@ const HomeScreen = () => {
           ))}
         </View>
 
-        {/* Buttons */}
         <TouchableOpacity style={styles.editButton}>
           <Text style={styles.buttonText}>✏️ Edit Profiles</Text>
         </TouchableOpacity>

@@ -2,8 +2,14 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Image, Platform, ScrollView } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
+import { db } from '../firebaseConfig';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { useRoute } from '@react-navigation/native';
 
-const SleepingLogScreen = ({ navigation }) => {
+const SleepingForm = ({ navigation }) => {
+  const route = useRoute();
+  const { childId, name } = route.params || {};
+
   const [startTime, setStartTime] = useState(new Date());
   const [endTime, setEndTime] = useState(new Date());
   const [showStartPicker, setShowStartPicker] = useState(false);
@@ -26,12 +32,10 @@ const SleepingLogScreen = ({ navigation }) => {
     }
   };
 
-  // Function to close the time picker (for iOS and manual close)
   const confirmTimePicker = (isStart) => {
     isStart ? setShowStartPicker(false) : setShowEndPicker(false);
   };
 
-  // Format time to hours:minutes AM/PM
   const formatTime = (date) => {
     let hours = date.getHours();
     const minutes = date.getMinutes().toString().padStart(2, '0');
@@ -41,17 +45,18 @@ const SleepingLogScreen = ({ navigation }) => {
     return `${hours}:${minutes} ${ampm}`;
   };
 
-  // Calculate duration between start and end times
   const calculateDuration = () => {
     const diffMs = endTime - startTime;
-    
-    // If end time is earlier than start time, assume it's the next day
     const adjustedDiffMs = diffMs < 0 ? diffMs + (24 * 60 * 60 * 1000) : diffMs;
-    
-    const hours = Math.floor(adjustedDiffMs / (1000 * 60 * 60));
-    const minutes = Math.floor((adjustedDiffMs % (1000 * 60 * 60)) / (1000 * 60));
-    
-    return `${hours} hr ${minutes} min`;
+    const minutes = Math.floor(adjustedDiffMs / (1000 * 60));
+    return minutes;
+  };
+
+  const formatDuration = () => {
+    const minutes = calculateDuration();
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return `${hours} hr ${remainingMinutes} min`;
   };
 
   const handleSleepTypeChange = (itemValue) => {
@@ -62,24 +67,41 @@ const SleepingLogScreen = ({ navigation }) => {
     setShowSleepTypePicker(false);
   };
 
-  const handleCompleteLog = () => {
-    // Save the data
-    const logData = {
-      startTime: startTime,
-      endTime: endTime,
-      duration: calculateDuration(),
-      sleepType: sleepType,
-    };
-    console.log('Log saved:', logData);
-    alert('Log saved successfully!');
-    navigation.goBack();
+  const handleCompleteLog = async () => {
+    if (!childId) {
+      alert('No child selected');
+      return;
+    }
+
+    if (!sleepType) {
+      alert('Please select a sleep type');
+      return;
+    }
+
+    try {
+      const logData = {
+        timestamp: startTime,
+        duration: calculateDuration(), // Store as minutes for easier calculations
+        childId, // Match the field name in ChildDashboard.js
+        sleepType,
+        endTime,
+        createdAt: serverTimestamp()
+      };
+      
+      await addDoc(collection(db, 'sleepLogs'), logData);
+      console.log('Sleep log saved:', logData);
+      alert('Log saved successfully!');
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error adding document: ', error);
+      alert('Failed to save log. Please try again.');
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.formContainer}>
-          {/* Header with back button and logo */}
           <View style={styles.header}>
             <TouchableOpacity 
               style={styles.backButton}
@@ -93,13 +115,11 @@ const SleepingLogScreen = ({ navigation }) => {
                 style={styles.logo}
               />
             </View>
-            {/* Empty view to balance the layout */}
             <View style={styles.headerSpacer} />
           </View>
 
           <Text style={styles.title}>Sleeping Log</Text>
 
-          {/* Start Time */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Start Time</Text>
             <TouchableOpacity 
@@ -135,7 +155,6 @@ const SleepingLogScreen = ({ navigation }) => {
             )}
           </View>
 
-          {/* End Time */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>End Time</Text>
             <TouchableOpacity 
@@ -171,15 +190,13 @@ const SleepingLogScreen = ({ navigation }) => {
             )}
           </View>
 
-          {/* Duration (calculated) */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Duration</Text>
             <View style={styles.durationDisplay}>
-              <Text style={styles.durationText}>{calculateDuration()}</Text>
+              <Text style={styles.durationText}>{formatDuration()}</Text>
             </View>
           </View>
 
-          {/* Sleep Type Picker */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Type</Text>
             <TouchableOpacity 
@@ -203,11 +220,10 @@ const SleepingLogScreen = ({ navigation }) => {
                   onValueChange={handleSleepTypeChange}
                 >
                   <Picker.Item label="Select Type" value="" />
-                  <Picker.Item label="Nap" value="nap" />
-                  <Picker.Item label="Sleep" value="sleep" />
+                  <Picker.Item label="Nap" value="Nap" />
+                  <Picker.Item label="Sleep" value="Sleep" />
                 </Picker>
                 
-                {/* Added a done button to manually close the picker */}
                 <TouchableOpacity 
                   style={styles.doneButton}
                   onPress={closeSleepTypePicker}
@@ -218,7 +234,6 @@ const SleepingLogScreen = ({ navigation }) => {
             )}
           </View>
 
-          {/* Submit Button */}
           <TouchableOpacity 
             style={styles.completeButton}
             onPress={handleCompleteLog}
@@ -231,7 +246,6 @@ const SleepingLogScreen = ({ navigation }) => {
   );
 };
 
-// Styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -371,4 +385,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SleepingLogScreen;
+export default SleepingForm;

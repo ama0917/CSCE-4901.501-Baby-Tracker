@@ -1,5 +1,18 @@
 import React, { useState } from 'react';
-import { Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
+import { 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  Image, 
+  Alert,
+  View,
+  Keyboard,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db } from '../firebaseConfig';
@@ -39,57 +52,87 @@ export default function SignUpScreen() {
   };
 
   return (
-    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.container}>
-      <Image source={require('../assets/logo.png')} style={styles.logoImage} />
-      <Text style={styles.title}>SIGN UP</Text>
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={{ flex: 1 }}>
+    <KeyboardAvoidingView
+    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    keyboardVerticalOffset={Platform.OS === 'ios' ? 30 : 0}
+    style={{ flex: 1 }}
+    >
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={styles.scrollViewContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.innerContainer}>
+              <Image source={require('../assets/logo.png')} style={styles.logoImage} />
+              <Text style={styles.title}>SIGN UP</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Enter Email"
-        placeholderTextColor="#aaa"
-        value={email}
-        onChangeText={setEmail}
-      />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter Email"
+                placeholderTextColor="#aaa"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
 
-      <TouchableOpacity style={styles.passwordContainer}>
-        <TextInput
-          style={styles.passwordInput}
-          placeholder="Enter Password"
-          placeholderTextColor="#aaa"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry={!showPassword}
-        />
-        <Text style={styles.showText} onPress={() => setShowPassword(!showPassword)}>
-          {showPassword ? 'Hide' : 'Show'}
-        </Text>
-      </TouchableOpacity>
+              <TouchableOpacity style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Enter Password"
+                  placeholderTextColor="#aaa"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                />
+                <Text style={styles.showText} onPress={() => setShowPassword(!showPassword)}>
+                  {showPassword ? 'Hide' : 'Show'}
+                </Text>
+              </TouchableOpacity>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Confirm Password"
-        placeholderTextColor="#aaa"
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-        secureTextEntry
-      />
+              <TextInput
+                style={styles.input}
+                placeholder="Confirm Password"
+                placeholderTextColor="#aaa"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+              />
 
-      <TouchableOpacity style={styles.signupButton} onPress={handleSignUp}>
-        <Text style={styles.signupText}>Sign-up</Text>
-      </TouchableOpacity>
+              <TouchableOpacity style={styles.signupButton} onPress={handleSignUp}>
+                <Text style={styles.signupText}>Sign-up</Text>
+              </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-        <Text style={styles.loginText}>Already have an account? Login.</Text>
-      </TouchableOpacity>
-    </LinearGradient>
+              <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+                <Text style={styles.loginText}>Already have an account? Login.</Text>
+              </TouchableOpacity>
+              </View>
+        </ScrollView>
+      </View>
+    </TouchableWithoutFeedback>
+  </KeyboardAvoidingView>
+  </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  keyboardAvoid: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
     justifyContent: 'center',
+  },
+  innerContainer: {
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
   },
   logoImage: {
     width: 90,

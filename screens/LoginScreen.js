@@ -1,5 +1,18 @@
 import React, { useState } from 'react';
-import { Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
+import { 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  Image, 
+  Alert,
+  View,
+  Keyboard,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
@@ -24,41 +37,57 @@ export default function LoginScreen() {
 
   return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.container}>
-      <Image source={require('../assets/logo.png')} style={styles.logoImage} />
-      <Text style={styles.title}>LOGIN</Text>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoid}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <ScrollView 
+            contentContainerStyle={styles.scrollViewContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.innerContainer}>
+              <Image source={require('../assets/logo.png')} style={styles.logoImage} />
+              <Text style={styles.title}>LOGIN</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#aaa"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TouchableOpacity style={styles.passwordContainer}>
-        <TextInput
-          style={styles.passwordInput}
-          placeholder="Password"
-          placeholderTextColor="#aaa"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry={!showPassword}
-        />
-        <Text style={styles.showText} onPress={() => setShowPassword(!showPassword)}>
-          {showPassword ? 'Hide' : 'Show'}
-        </Text>
-      </TouchableOpacity>
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                placeholderTextColor="#aaa"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <TouchableOpacity style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Password"
+                  placeholderTextColor="#aaa"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                />
+                <Text style={styles.showText} onPress={() => setShowPassword(!showPassword)}>
+                  {showPassword ? 'Hide' : 'Show'}
+                </Text>
+              </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
-        <Text style={styles.forgotText}>Forgot Password?</Text>
-      </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
+                <Text style={styles.forgotText}>Forgot Password?</Text>
+              </TouchableOpacity>
 
-      <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-        <Text style={styles.loginText}>Login</Text>
-      </TouchableOpacity>
+              <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+                <Text style={styles.loginText}>Login</Text>
+              </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-        <Text style={styles.signupText}>Not a member? Sign up.</Text>
-      </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
+                <Text style={styles.signupText}>Not a member? Sign up.</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }
@@ -66,8 +95,18 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  keyboardAvoid: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
     justifyContent: 'center',
+  },
+  innerContainer: {
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
   },
   logoImage: {
     width: 90,

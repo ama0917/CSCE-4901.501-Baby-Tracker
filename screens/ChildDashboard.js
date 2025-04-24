@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient} from 'expo-linear-gradient';
 import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { app } from '../firebaseConfig';
@@ -16,14 +16,16 @@ export default function ChildDashboard() {
   const [activities, setActivities] = useState([]);
   const [history, setHistory] = useState([]);
 
-  useEffect(() => {
-    if (!childId) {
-      Alert.alert('Error', 'Child ID is missing. Please return to Home and try again.');
-      navigation.goBack();
-    } else {
-      fetchChildData();
-    }
-  }, [childId]);
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!childId) {
+        Alert.alert('Error', 'Child ID is missing. Please return to Home and try again.');
+        navigation.goBack();
+      } else {
+        fetchChildData();
+      }
+    }, [childId])
+  );
 
   const formatTime = (timestamp) => {
     const options = { hour: '2-digit', minute: '2-digit', hour12: true };

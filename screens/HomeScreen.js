@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient} from 'expo-linear-gradient';
-import { getFirestore, collection, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, query, onSnapshot, where, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { app } from '../firebaseConfig';
 
@@ -14,28 +14,25 @@ const HomeScreen = () => {
   const auth = getAuth();
 
   useEffect(() => {
-    const fetchProfiles = async () => {
-      try {
-        const currentUser = auth.currentUser;
-        if (!currentUser) return;
-        
-        const q= query(
-          collection(db, 'children'),
-          where ('userId', '==', currentUser.uid)
-        );
-        
-        const querySnapshot = await getDocs(q);
-        const loadedProfiles = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setProfiles(loadedProfiles);
-      } catch (error) {
-        console.error('Error loading profiles:', error);
-      }
-    };
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+  
+    const q = query(
+      collection(db, 'children'),
+      where('userId', '==', currentUser.uid)
+    );
 
-    fetchProfiles();
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const updatedProfiles = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setProfiles(updatedProfiles);
+    }, (error) => {
+      console.error('Realtime profile listener error:', error);
+    });
+  
+    return () => unsubscribe(); 
   }, []);
 
   const toggleEditButtons =() => setShowEditButtons(prev => !prev);

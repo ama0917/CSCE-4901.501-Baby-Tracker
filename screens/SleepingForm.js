@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Image, Platform, ScrollView } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
+import { LinearGradient} from 'expo-linear-gradient';
 import { db } from '../firebaseConfig';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { useRoute } from '@react-navigation/native';
@@ -99,6 +100,7 @@ const SleepingForm = ({ navigation }) => {
   };
 
   return (
+     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.formContainer}>
@@ -107,7 +109,7 @@ const SleepingForm = ({ navigation }) => {
               style={styles.backButton}
               onPress={() => navigation.goBack()}
             >
-              <Text style={styles.backText}>← Back to Dashboard</Text>
+              <Text style={styles.backText}>← Dashboard</Text>
             </TouchableOpacity>
             <View style={styles.logoContainer}>
               <Image 
@@ -243,20 +245,22 @@ const SleepingForm = ({ navigation }) => {
         </View>
       </ScrollView>
     </SafeAreaView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#d4f1fc',
   },
   scrollContainer: {
     flexGrow: 1,
   },
   formContainer: {
     flex: 1,
-    backgroundColor: '#d4f1fc',
     padding: 20,
   },
   header: {

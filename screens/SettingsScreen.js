@@ -1,6 +1,7 @@
 import React, { useState} from 'react';
 import { View, Text, TouchableOpacity, Switch, TextInput, StyleSheet, ScrollView, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient} from 'expo-linear-gradient';
 
 
 export default function SettingsScreen() {
@@ -10,11 +11,12 @@ export default function SettingsScreen() {
   const [notifications, setNotifications] = useState(true);
 
   return (
+     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
     <ScrollView contentContainerStyle={styles.container}>
         {/* Header Section */}
     <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-         <Text style={styles.backButton}>« Home</Text>
+         <Text style={styles.backButton}>← Home</Text>
         </TouchableOpacity>
   
         <Image source={require('../assets/logo.png')} style={styles.logo} />
@@ -55,13 +57,16 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
     </ScrollView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
   container: {
     flexGrow: 1,
-    backgroundColor: '#E3F2FD',
     padding: 30,
     alignItems: 'center',
   },

@@ -7,7 +7,7 @@ import * as Sharing from 'expo-sharing';
 import { AntDesign, Feather, FontAwesome } from '@expo/vector-icons';
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db, auth } from '../firebaseConfig'; 
-import { format, subDays, startOfWeek, endOfWeek, subMonths, subYears, isWithinInterval, parseISO, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
+import { format, subDays, startOfWeek, endOfWeek, subMonths, subYears, isWithinInterval, parseISO, startOfMonth, endOfMonth, startOfYear, endOfYear, addDays } from 'date-fns';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -110,252 +110,103 @@ const ReportsScreen = () => {
   }, [selectedChild, reportRange]);
 
   const fetchReportData = async (childId, range) => {
-    useEffect(() => {
-      // Reset loading state after 10 seconds to prevent infinite loading
-      let timeoutId;
-      if (isLoading) {
-        timeoutId = setTimeout(() => {
-          console.log("Loading timeout triggered");
-          setIsLoading(false);
-          if (!reportData) {
-            setReportData({
-              labels: [],
-              feeding: { count: [], ounces: [] },
-              diaper: { wet: [], bm: [] },
-              sleeping: { nighttime: [], naps: [] },
-              rawData: { feeding: [], diaper: [], sleep: [] }
-            });
-            Alert.alert("Notice", "Loading took longer than expected. Displaying empty report.");
-          }
-        }, 10000); // 10 seconds timeout
-      }
-      
-      return () => {
-        if (timeoutId) clearTimeout(timeoutId);
-      };
-    }, [isLoading]);
-
     setIsLoading(true);
-    
+  
     try {
-      // Calculate date ranges based on selected report range
       const today = new Date();
       let startDate, endDate, labels;
-      
+  
       if (range === "Weekly") {
-        startDate = startOfWeek(today, { weekStartsOn: 1 }); // Start from Monday
+        startDate = startOfWeek(today, { weekStartsOn: 1 });
         endDate = endOfWeek(today, { weekStartsOn: 1 });
-        
-        // Create array of dates for the week
-        labels = Array.from({ length: 7 }, (_, i) => {
-          const date = new Date(startDate);
-          date.setDate(startDate.getDate() + i);
-          return format(date, 'EEE'); // Short day name (Mon, Tue, etc.)
-        });
+        labels = Array.from({ length: 7 }, (_, i) =>
+          format(new Date(startDate.getTime() + i * 86400000), 'EEE')
+        );
       } else if (range === "Monthly") {
         startDate = startOfMonth(today);
         endDate = endOfMonth(today);
-        
-        // Create weekly labels for the month
         const weeks = Math.ceil((endDate.getDate() - startDate.getDate() + 1) / 7);
-        labels = Array.from({ length: weeks }, (_, i) => `Wk${i+1}`);
-      } else { // Annually
+        labels = Array.from({ length: weeks }, (_, i) => `Wk${i + 1}`);
+      } else {
         startDate = startOfYear(today);
         endDate = endOfYear(today);
-        
-        // Create monthly labels for the year
-        labels = Array.from({ length: 12 }, (_, i) => {
-          const date = new Date(today.getFullYear(), i, 1);
-          return format(date, 'MMM').charAt(0); // First letter of month
-        });
-        
-        
+        labels = Array.from({ length: 12 }, (_, i) =>
+          format(new Date(today.getFullYear(), i, 1), 'MMM').charAt(0)
+        );
       }
-
-      // Initialize data structure
+  
       const data = {
         labels,
         feeding: {
           count: Array(labels.length).fill(0),
-          ounces: Array(labels.length).fill(0)
-        },
-        diaper: {
-          wet: Array(labels.length).fill(0),
-          bm: Array(labels.length).fill(0)
-        },
-        sleeping: {
-          nighttime: Array(labels.length).fill(0),
-          naps: Array(labels.length).fill(0)
         },
         rawData: {
           feeding: [],
-          diaper: [],
-          sleep: []
+        },
+        summary: {
+          feeding: {
+            byMealType: {},
+            byFoodType: {}
+          }
         }
       };
-
-      // Fetch feeding logs
-      const feedLogsRef = collection(db, "FeedLogs");
+  
       const feedQuery = query(
-        feedLogsRef,
-        where("ChildID", "==", childId),
-        where("FeedTime", ">=", startDate),
-        where("FeedTime", "<=", endDate),
-        orderBy("FeedTime", "asc")
+        collection(db, 'feedLogs'),
+        where('childId', '==', childId),
+        where('timestamp', '>=', startDate),
+        where('timestamp', '<=', endDate),
+        orderBy('timestamp', 'asc')
       );
-      
+  
       const feedSnapshot = await getDocs(feedQuery);
-      
+  
       feedSnapshot.forEach(doc => {
-        const feedLog = { id: doc.id, ...doc.data() };
-        // Convert Firestore timestamp to JS Date
-        const feedTime = feedLog.FeedTime.toDate ? feedLog.FeedTime.toDate() : new Date(feedLog.FeedTime);
-        
-        data.rawData.feeding.push({
-          ...feedLog,
-          FeedTime: feedTime
-        });
-        
-        // Calculate index based on time period
-        let index;
+        const log = doc.data();
+        const feedTime = log.timestamp?.toDate ? log.timestamp.toDate() : new Date(log.timestamp);
+        data.rawData.feeding.push({ ...log, FeedTime: feedTime });
+  
+        // Determine index for current log
+        let index = 0;
         if (range === "Weekly") {
-          // Days since start date (0-6)
-          index = Math.floor((feedTime - startDate) / (1000 * 60 * 60 * 24));
+          index = Math.floor((feedTime - startDate) / 86400000);
         } else if (range === "Monthly") {
-          // Week of month (0-based)
           index = Math.floor((feedTime.getDate() - 1) / 7);
         } else {
-          // Month of year (0-11)
           index = feedTime.getMonth();
         }
-        
-        // Ensure index is within bounds
+  
         if (index >= 0 && index < labels.length) {
           data.feeding.count[index]++;
-          
-          // Add amount if available
-          if (feedLog.Amount) {
-            data.feeding.ounces[index] += parseFloat(feedLog.Amount);
-          }
         }
-      });
-
-      // Fetch diaper logs
-      const diaperLogsRef = collection(db, "DiaperLogs");
-      const diaperQuery = query(
-        diaperLogsRef,
-        where("ChildID", "==", childId),
-        where("EndTime", ">=", startDate),
-        where("EndTime", "<=", endDate),
-        orderBy("EndTime", "asc")
-      );
-      
-      const diaperSnapshot = await getDocs(diaperQuery);
-      
-      diaperSnapshot.forEach(doc => {
-        const diaperLog = { id: doc.id, ...doc.data() };
-        const endTime = diaperLog.EndTime.toDate ? diaperLog.EndTime.toDate() : new Date(diaperLog.EndTime);
-        
-        data.rawData.diaper.push({
-          ...diaperLog,
-          EndTime: endTime
-        });
-        
-        // Calculate index based on time period
-        let index;
-        if (range === "Weekly") {
-          index = Math.floor((endTime - startDate) / (1000 * 60 * 60 * 24));
-        } else if (range === "Monthly") {
-          index = Math.floor((endTime.getDate() - 1) / 7);
+  
+        // Count mealType
+        const mealType = log.mealType || 'Other';
+        if (data.summary.feeding.byMealType[mealType]) {
+          data.summary.feeding.byMealType[mealType]++;
         } else {
-          index = endTime.getMonth();
+          data.summary.feeding.byMealType[mealType] = 1;
         }
-        
-        // Ensure index is within bounds
-        if (index >= 0 && index < labels.length) {
-          // Check diaper type
-          const diaperType = diaperLog.StoolType ? diaperLog.StoolType.toLowerCase() : '';
-          
-          if (diaperType.includes('wet')) {
-            data.diaper.wet[index]++;
-          }
-          
-          if (diaperType.includes('bm') || diaperType.includes('soiled')) {
-            data.diaper.bm[index]++;
-          }
-        }
-      });
-
-      // Fetch sleep logs
-      const sleepLogsRef = collection(db, "SleepLogs");
-      const sleepQuery = query(
-        sleepLogsRef,
-        where("ChildID", "==", childId),
-        where("EndTime", ">=", startDate),
-        where("EndTime", "<=", endDate),
-        orderBy("EndTime", "asc")
-      );
-      
-      const sleepSnapshot = await getDocs(sleepQuery);
-      
-      sleepSnapshot.forEach(doc => {
-        const sleepLog = { id: doc.id, ...doc.data() };
-        const startTime = sleepLog.StartTime.toDate ? sleepLog.StartTime.toDate() : new Date(sleepLog.StartTime);
-        const endTime = sleepLog.EndTime.toDate ? sleepLog.EndTime.toDate() : new Date(sleepLog.EndTime);
-        
-        // Calculate sleep duration in hours
-        const durationHours = (endTime - startTime) / (1000 * 60 * 60);
-        
-        data.rawData.sleep.push({
-          ...sleepLog,
-          StartTime: startTime,
-          EndTime: endTime,
-          DurationHours: durationHours
-        });
-        
-        // Calculate index based on time period
-        let index;
-        if (range === "Weekly") {
-          index = Math.floor((endTime - startDate) / (1000 * 60 * 60 * 24));
-        } else if (range === "Monthly") {
-          index = Math.floor((endTime.getDate() - 1) / 7);
+  
+        // Count foodType
+        const foodType = log.feedType || 'Other';
+        if (data.summary.feeding.byFoodType[foodType]) {
+          data.summary.feeding.byFoodType[foodType]++;
         } else {
-          index = endTime.getMonth();
-        }
-        
-        // Ensure index is within bounds
-        if (index >= 0 && index < labels.length) {
-          // Determine if nap or nighttime sleep based on time of day
-          const hour = startTime.getHours();
-          
-          if (hour >= 20 || hour < 6) {
-            // Night sleep (8 PM - 6 AM)
-            data.sleeping.nighttime[index] += durationHours;
-          } else {
-            // Nap (daytime)
-            data.sleeping.naps[index] += durationHours;
-          }
+          data.summary.feeding.byFoodType[foodType] = 1;
         }
       });
-
-      // Update state with fetched data
+  
       setReportData(data);
     } catch (error) {
       console.error("Error fetching report data: ", error);
-      Alert.alert("Error", "Failed to load report data. Please try again.");
-      // Set default empty data structure to avoid null reference errors
-      setReportData({
-        labels: [],
-        feeding: { count: [], ounces: [] },
-        diaper: { wet: [], bm: [] },
-        sleeping: { nighttime: [], naps: [] },
-        rawData: { feeding: [], diaper: [], sleep: [] }
-      });
+      Alert.alert("Error", "Failed to load report data.");
+      setReportData(null);
     } finally {
-      // This ensures loading state is reset even if errors occur
       setIsLoading(false);
     }
   };
+  
 
   const toggleSection = (section) => {
     setExpandedSection(expandedSection === section ? null : section);

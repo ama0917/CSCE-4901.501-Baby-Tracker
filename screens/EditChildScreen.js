@@ -68,7 +68,15 @@ const EditChildScreen = () => {
   const handleUpdate = async () => {
     try {
       const docRef = doc(db, 'children', childId);
-      await updateDoc(docRef, childData);
+      const updatedData ={
+        ...childData,
+        name: `${childData.firstName} ${childData.lastName}`.trim(),
+      }; 
+
+      delete updatedData.firstName;
+      delete updatedData.lastName;
+
+      await updateDoc(docRef, updatedData);
       Alert.alert('Success', 'Profile updated!');
       navigation.goBack();
     } catch (error) {
@@ -120,8 +128,8 @@ const EditChildScreen = () => {
         <TextInput
           style={styles.input}
           placeholder="First Name"
-          value={childData.lastname}
-          onChangeText={(text) => setChildData({ ...childData, lastName: text })}
+          value={childData.firstName}
+          onChangeText={(text) => setChildData({ ...childData, firstName: text })}
         />
         <Text style={styles.label}>Last Name</Text>
         <TextInput

@@ -15,23 +15,20 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
-import '../firebaseConfig'; // Ensure this file properly initializes Firebase
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../firebaseConfig'; // adjust path if needed
 
-export default function LoginScreen() {
-  const navigation = useNavigation();
+export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const navigation = useNavigation();
 
-  const handleLogin = async () => {
-    const auth = getAuth();
+  const handleResetPassword = async () => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      navigation.navigate('Home'); // Navigate only after successful login
+      await sendPasswordResetEmail(auth, email);
+      Alert.alert('Password Reset Sent', 'Check your email for a reset link.');
+      navigation.goBack();
     } catch (error) {
-      console.error(error);
-      Alert.alert('Login Failed', error.message);
+      Alert.alert('Error', error.message);
     }
   };
 
@@ -48,41 +45,24 @@ export default function LoginScreen() {
           >
             <View style={styles.innerContainer}>
               <Image source={require('../assets/logo.png')} style={styles.logoImage} />
-              <Text style={styles.title}>LOGIN</Text>
+              <Text style={styles.title}>RESET PASSWORD</Text>
 
               <TextInput
                 style={styles.input}
-                placeholder="Email"
+                placeholder="Enter your email"
                 placeholderTextColor="#aaa"
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
-              <TouchableOpacity style={styles.passwordContainer}>
-                <TextInput
-                  style={styles.passwordInput}
-                  placeholder="Password"
-                  placeholderTextColor="#aaa"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                />
-                <Text style={styles.showText} onPress={() => setShowPassword(!showPassword)}>
-                  {showPassword ? 'Hide' : 'Show'}
-                </Text>
+
+              <TouchableOpacity style={styles.resetButton} onPress={handleResetPassword}>
+                <Text style={styles.resetText}>Send Reset Link</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
-                <Text style={styles.forgotText}>Forgot Password?</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-                <Text style={styles.loginText}>Login</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-                <Text style={styles.signupText}>Not a member? Sign up.</Text>
+              <TouchableOpacity onPress={() => navigation.goBack()}>
+                <Text style={styles.backText}>Go back to Login</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -127,37 +107,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 5,
   },
-  passwordContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '80%',
-    backgroundColor: 'white',
-    borderRadius: 5,
-    marginBottom: 15,
-    paddingHorizontal: 10,
-  },
-  passwordInput: {
-    flex: 1,
-    height: 40,
-  },
-  showText: {
-    color: '#007AFF',
-    fontWeight: '600',
-  },
-  forgotText: {
-    color: '#007AFF',
-    marginBottom: 20,
-  },
-  loginButton: {
+  resetButton: {
     backgroundColor: '#FFD700',
     paddingVertical: 10,
     paddingHorizontal: 30,
     borderRadius: 5,
+    marginTop: 20,
   },
-  loginText: {
+  resetText: {
     fontSize: 18,
   },
-  signupText: {
+  backText: {
     marginTop: 20,
     color: '#007AFF',
   },

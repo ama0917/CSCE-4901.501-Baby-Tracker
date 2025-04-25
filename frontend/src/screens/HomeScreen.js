@@ -1,30 +1,45 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
-import { useNavigation, useRoute, useIsFocused } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import { LinearGradient} from 'expo-linear-gradient';
+import { getFirestore, collection, getDocs, query, onSnapshot, where, serverTimestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { app } from '../firebaseConfig';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
-  const route = useRoute();
-  const isFocused = useIsFocused();
-
-  const [profiles, setProfiles] = useState([
-    {
-      name: 'Baby Luna',
-      image: null, 
-    }
-  ]);
+  const [profiles, setProfiles] = useState([]);
+  const [showEditButtons, setShowEditButtons] =useState(false);
+  const db = getFirestore(app);
+  const auth = getAuth();
 
   useEffect(() => {
-    if (isFocused && route.params?.newProfile) {
-      setProfiles(prev => [...prev, route.params.newProfile]);
-      navigation.setParams({ newProfile: null });
-    }
-  }, [isFocused, route.params]);
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+  
+    const q = query(
+      collection(db, 'children'),
+      where('userId', '==', currentUser.uid)
+    );
 
-  return (
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const updatedProfiles = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setProfiles(updatedProfiles);
+    }, (error) => {
+      console.error('Realtime profile listener error:', error);
+    });
+  
+    return () => unsubscribe(); 
+  }, []);
+
+  const toggleEditButtons =() => setShowEditButtons(prev => !prev);
+    return (
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.container}>
-        {/* Top bar */}
         <View style={styles.topBar}>
           <Image source={require('../assets/logo.png')} style={styles.logo} />
           <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
@@ -36,24 +51,32 @@ const HomeScreen = () => {
         <Text style={styles.subtitle}>Select a profile</Text>
 
         <View style={styles.profileList}>
-          {profiles.map((profile, index) => (
+          {profiles.map((profile) => {
+            console.log("Profile Image URL:", profile.image);
+            return(
+            <View key={profile.id} style={styles.profileWrapper}>
             <TouchableOpacity
-              key={index}
-              style={styles.profileBubble}
-              onPress={() => navigation.navigate('ChildDashboard', { name: profile.name })}
+              onPress={() => navigation.navigate('ChildDashboard', { name: profile.name?.split(' ')[0], childId: profile.id, image: profile.image})}
             >
               {profile.image ? (
                 <Image source={{ uri: profile.image }} style={styles.avatarImage} />
               ) : (
-                <Text style={styles.avatar}>👶</Text>
+                <Image source ={require('../assets/baby-icon.png')} 
+                style ={styles.avatarImage}/> // default image incase they do not choose one
               )}
               <Text style={styles.profileText}>{profile.name}</Text>
             </TouchableOpacity>
-          ))}
+            {showEditButtons && (
+              <TouchableOpacity style ={styles.individualEditButton} onPress={() => navigation.navigate('EditChild', { childId: profile.id})}>
+              <Text style={{ fontSize: 14}}>Edit</Text>
+              </TouchableOpacity>
+            )}
+            </View>
+            );
+          })}
         </View>
 
-        {/* Buttons */}
-        <TouchableOpacity style={styles.editButton}>
+        <TouchableOpacity style={styles.editButton} onPress={toggleEditButtons}>
           <Text style={styles.buttonText}>✏️ Edit Profiles</Text>
         </TouchableOpacity>
 
@@ -62,14 +85,17 @@ const HomeScreen = () => {
         </TouchableOpacity>
       </View>
     </ScrollView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
+  gradient:{
+    flex: 1,
+  },
   scrollContainer: {
     flexGrow: 1,
     paddingBottom: 30,
-    backgroundColor: '#E3F2FD',
   },
   container: {
     paddingTop: 60,
@@ -107,39 +133,46 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 10,
   },
-  profileBubble: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#fffbe6',
-    justifyContent: 'center',
+  profileWrapper: {
     alignItems: 'center',
-    marginVertical: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  avatar: {
-    fontSize: 28,
+    marginVertical: 15,
   },
   avatarImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    resizeMode: 'cover',
+    borderBottom: 8,
+  },
+  defaultAvatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#B2EBF2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   profileText: {
-    fontSize: 14,
+    marginTop: 8,
+    fontSize: 16,
     fontWeight: '600',
-    marginTop: 5,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  individualEditButton: {
+    marginTop: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    backgroundColor: '#fff3e0',
+    borderRadius: 6
   },
   editButton: {
     backgroundColor: '#ffeaa7',
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 10
   },
   addButton: {
     backgroundColor: '#eaffd0',

@@ -1,70 +1,88 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createChild } from '../services/childService';
-import { useAuthContext } from '../contexts/useAuthContext';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, ScrollView } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { useNavigation } from '@react-navigation/native';
+import { LinearGradient} from 'expo-linear-gradient';
+import { getFirestore, collection, addDoc } from 'firebase/firestore';
+import { app } from '../firebaseConfig';
+import { getAuth } from 'firebase/auth';
 
-const AddChildScreen = ({ navigation }) => {
+const AddChildScreen = () => {
+  const navigation = useNavigation();
+
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [gender, setGender] = useState('');
   const [birthDate, setBirthDate] = useState({ month: '', day: '', year: '' });
   const [notes, setNotes] = useState('');
-  const { setChildId } = useAuthContext();
+  const [image, setImage] = useState(null);
+
+  const db = getFirestore(app); // Firestore reference
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+    });
+
+    if (!result.canceled) {
+      setImage(result.assets[0].uri);
+    }
+  };
 
   const handleSave = async () => {
     if (!firstName || !birthDate.month || !birthDate.day || !birthDate.year) {
       Alert.alert('Missing Info', 'Please fill out required fields.');
       return;
     }
-    // Validate birth date
-    const childData = {
-      name: `${firstName} ${lastName}`,
-      gender,
-      dob: `${birthDate.year}-${birthDate.month}-${birthDate.day}`,
-      notes,
-    };
-    // Validate date format
+  
     try {
-      const response = await createChild(childData);
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
       
-      if (response?.child_id) {
-        // Build a child profile to store
-        const newChild = {
-          id: response.child_id,
-          name: `${firstName} ${lastName}`,
-          dob: childData.dob,
-        };
-  
-        // Fetch any existing children
-        const stored = await AsyncStorage.getItem('children');
-        const children = stored ? JSON.parse(stored) : [];
-  
-        // Append and store back
-        children.push(newChild);
-        await AsyncStorage.setItem('children', JSON.stringify(children));
-  
-        // Also save last used child_id if needed
-        await AsyncStorage.setItem('child_id', response.child_id);
-        setChildId(response.child_id);
-  
-        Alert.alert('Success', 'Child added successfully!');
-        navigation.navigate('ChildDashboard');
-      } else {
-        Alert.alert('Error', 'Failed to add child. Please try again.');
+      if (!currentUser) {
+        Alert.alert('Authentication Error', 'You must be logged in to add a child.');
+        return;
       }
-    } catch (error) {
-      console.error('Error adding child:', error);
-      Alert.alert('Error', 'An error occurred while adding the child.');
+  
+      const newProfile = {
+        name: `${firstName} ${lastName}`.trim(),
+        gender,
+        birthDate,
+        notes,
+        image,
+        userId: currentUser.uid, // Link child to the current user
+        createdAt: new Date()
+      };
+  
+      // Save the new child profile to Firestore
+      const docRef = await addDoc(collection(db, 'children'), newProfile);
+      console.log('Document written with ID: ', docRef.id);
+  
+      // Navigate back to HomeScreen with the new profile
+      navigation.navigate('Home', { newProfile: { id: docRef.id, ...newProfile } });
+  
+    } catch (e) {
+      console.error('Error adding child profile: ', e);
+      Alert.alert('Error', 'Something went wrong while saving the profile.');
     }
   };
-  
-
 
   return (
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
     <ScrollView contentContainerStyle={styles.container}>
       <TouchableOpacity onPress={() => navigation.goBack()}>
-        <Text style={styles.backButton}>« Home</Text>
+        <Text style={styles.backButton}>← Home</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={pickImage} style={styles.imageWrapper}>
+        {image ? (
+          <Image source={{ uri: image }} style={styles.profilePic} />
+        ) : (
+          <Text style={styles.imagePlaceholder}>Add Photo</Text>
+        )}
       </TouchableOpacity>
 
       <Text style={styles.header}>Add Child</Text>
@@ -141,14 +159,17 @@ const AddChildScreen = ({ navigation }) => {
         <Text style={styles.buttonText}>Add Child</Text>
       </TouchableOpacity>
     </ScrollView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
   container: {
     paddingTop: 50,
     paddingHorizontal: 20,
-    backgroundColor: '#E3F2FD',
     flexGrow: 1,
   },
   backButton: {
@@ -156,6 +177,29 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontSize: 14,
     marginBottom: 20,
+  },
+  imageWrapper: {
+    alignSelf: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 60,
+    width: 100,
+    height: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  imagePlaceholder: {
+    fontSize: 15,
+  },
+  profilePic: {
+    width: 100,
+    height: 100,
+    borderRadius: 60,
   },
   header: {
     fontSize: 22,
@@ -198,10 +242,10 @@ const styles = StyleSheet.create({
   birthInput: {
     backgroundColor: '#fff',
     borderRadius: 10,
-    padding: 12,
-    textAlign: 'center',
     flex: 1,
     marginRight: 10,
+    padding: 12,
+    textAlign: 'center',
   },
   notesInput: {
     backgroundColor: '#fff',

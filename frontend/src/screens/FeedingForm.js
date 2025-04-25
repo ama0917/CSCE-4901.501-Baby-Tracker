@@ -1,235 +1,328 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
   SafeAreaView,
   Image,
   Platform,
-  Alert
+  ScrollView,
+  Keyboard,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useAuthContext } from '../contexts/useAuthContext';
-import { getFreshToken } from '../services/auth';
+import { useRoute } from '@react-navigation/native';
+
+import { db } from '../firebaseConfig';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { LinearGradient} from 'expo-linear-gradient';
 
 const FeedingForm = ({ navigation }) => {
+  const route = useRoute();
+  const { childId, name } = route.params || {};
+
   const [selectedTime, setSelectedTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [foodType, setFoodType] = useState('');
+  const [customFoodType, setCustomFoodType] = useState('');
   const [amount, setAmount] = useState('');
+  const [amountUnit, setAmountUnit] = useState('');
   const [mealType, setMealType] = useState('');
-  const [showMealPicker, setShowMealPicker] = useState(false);
-  const { childId } = useAuthContext();
+  const [notes, setNotes] = useState('');
 
-  // Handle Time Selection with improved UX
+  const [showMealPicker, setShowMealPicker] = useState(false);
+  const [showUnitPicker, setShowUnitPicker] = useState(false);
+  const [showFoodPicker, setShowFoodPicker] = useState(false);
+
   const handleTimeChange = (event, selected) => {
-  // Only for Android we immediately update the time as user scrolls
     if (Platform.OS === 'android') {
       if (selected) setSelectedTime(selected);
-      if (event.type === 'set') {
-        setShowTimePicker(false);
-      }
+      if (event.type === 'set') setShowTimePicker(false);
     } else {
-      // iOS behavior
       if (selected) setSelectedTime(selected);
-      // Don't close picker automatically on iOS
     }
   };
 
-  const confirmTimePicker = () => {
-    setShowTimePicker(false);
-  };
+  const confirmTimePicker = () => setShowTimePicker(false);
+  const [amountFocused, setAmountFocused] = useState(false);
 
-  // Format time to hours:minutes AM/PM
   const formatTime = (date) => {
     let hours = date.getHours();
     const minutes = date.getMinutes().toString().padStart(2, '0');
     const ampm = hours >= 12 ? 'p.m.' : 'a.m.';
-    hours = hours % 12;
-    hours = hours ? hours : 12;
+    hours = hours % 12 || 12;
     return `${hours}:${minutes} ${ampm}`;
   };
 
   const handleCompleteLog = async () => {
-    try {
-      const token = await getFreshToken();
-      const res = await fetch(`http://<backend_url>/log?child_id=${childId}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          activity: 'Feeding',
-          timestamp: new Date().toISOString(),
-          type: `${foodType} ${amount} ${mealType}`.trim(),
-        }),
-      });
+    const auth = getAuth();
+    const user = auth.currentUser;
 
-      if (res.ok) {
-        Alert.alert("Success", "Feeding log submitted!");
-        navigation.goBack(); // Navigate back to the previous screen
-      } else {
-        Alert.alert("Error", "Failed to submit feeding log.");
-      }
+    if (!user) {
+      alert('User not logged in');
+      return;
+    }
+
+    if (!mealType || (!foodType && !customFoodType) || !amount || !amountUnit) {
+      alert('Please fill in all required fields before saving the log');
+      return;
+    }
+
+    if (!childId) {
+      alert('No child selected');
+      return;
+    }
+
+    try {
+      const logData = {
+        timestamp: selectedTime,
+        feedType: foodType === 'Other' ? customFoodType : foodType,
+        amount,
+        amountUnit,
+        mealType,
+        notes,
+        childId,
+        createdAt: serverTimestamp(),
+      };
+
+      await addDoc(collection(db, 'feedLogs'), logData);
+      alert('Feeding log saved successfully!');
+      navigation.goBack();
     } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "An error occurred while submitting the feeding log.");
+      console.error('Error saving feeding log:', error);
+      alert('Failed to save feeding log. Please try again.');
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.formContainer}>
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
+      <SafeAreaView style={styles.container}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'position'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 30 : 0}
+            style={{ flex: 1 }}
           >
-            <Text style={styles.backText}>← Back to Dashboard</Text>
-          </TouchableOpacity>
-        </View>
-        
-        <View style={styles.logoContainer}>
-          <Image 
-            source={require('../assets/logo.png')} 
-            style={styles.logo}
-          />
-        </View>
+            <ScrollView
+              style={styles.scrollView}
+              contentContainerStyle={styles.scrollViewContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.formContainer}>
+                <View style={styles.header}>
+                  <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+                    <Text style={styles.backText}>← Dashboard</Text>
+                  </TouchableOpacity>
+                  <View style={styles.logoContainer}>
+                    <Image source={require('../assets/logo.png')} style={styles.logo} />
+                  </View>
+                  <View style={styles.headerRightSpace} />
+                </View>
 
-        <Text style={styles.title}>Feeding Log</Text>
+                <Text style={styles.title}>Feeding Log</Text>
 
-        {/* Time Picker */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Time</Text>
-          <TouchableOpacity 
-            onPress={() => setShowTimePicker(true)} 
-            style={styles.timeButton}
-          >
-            <Text style={styles.timeButtonText}>{formatTime(selectedTime)}</Text>
-          </TouchableOpacity>
-          
-          {showTimePicker && (
-            <>
-              <DateTimePicker 
-                value={selectedTime} 
-                mode="time" 
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleTimeChange}
-                style={styles.timePicker}
-              />
-              
-              {/* Only show confirm button on iOS since Android has built-in OK/Cancel */}
-              {Platform.OS === 'ios' && (
-                <TouchableOpacity 
-                  style={styles.confirmTimeButton}
-                  onPress={confirmTimePicker}
-                >
-                  <Text style={styles.confirmTimeText}>Confirm Time</Text>
+                {/* Time Picker */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Time</Text>
+                  <TouchableOpacity onPress={() => setShowTimePicker(true)} style={styles.timeButton}>
+                    <Text style={styles.timeButtonText}>{formatTime(selectedTime)}</Text>
+                  </TouchableOpacity>
+
+                  {showTimePicker && (
+                    <View style={styles.timePickerContainer}>
+                      <DateTimePicker
+                        value={selectedTime}
+                        mode="time"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={handleTimeChange}
+                        style={styles.timePicker}
+                      />
+                      {Platform.OS === 'ios' && (
+                        <TouchableOpacity style={styles.confirmTimeButton} onPress={confirmTimePicker}>
+                          <Text style={styles.confirmTimeText}>Confirm Time</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                {/* Food Type */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Food Type</Text>
+                  <TouchableOpacity style={styles.dropdownButton} onPress={() => setShowFoodPicker(!showFoodPicker)}>
+                    <Text style={styles.dropdownButtonText}>{foodType || 'Select Food Type'}</Text>
+                    <Text style={styles.dropdownIcon}>▼</Text>
+                  </TouchableOpacity>
+
+                  {showFoodPicker && (
+                    <View style={styles.pickerContainer}>
+                      <Picker selectedValue={foodType} onValueChange={(val) => setFoodType(val)}>
+                        <Picker.Item label="Select Food Type" value="" />
+                        <Picker.Item label="Formula" value="Formula" />
+                        <Picker.Item label="Breastmilk" value="Breastmilk" />
+                        <Picker.Item label="Solids/Other" value="Solids/Other" />
+                        <Picker.Item label="Fruits" value="Fruits" />
+                        <Picker.Item label="Vegetables" value="Vegetables" />
+                        <Picker.Item label="Grains" value="Grains" />
+                        <Picker.Item label="Protein" value="Protein" />
+                        <Picker.Item label="Dairy" value="Dairy" />
+                        <Picker.Item label="Snacks / Treats" value="Snacks" />
+                      </Picker>
+                      <TouchableOpacity style={styles.confirmPickerButton} onPress={() => setShowFoodPicker(false)}>
+                        <Text style={styles.confirmPickerText}>Confirm</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {foodType === 'Other' && (
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="Enter custom food name"
+                      placeholderTextColor="#999"
+                      value={customFoodType}
+                      onChangeText={setCustomFoodType}
+                    />
+                  )}
+                </View>
+
+                {/* Amount and Unit */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Amount</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Enter amount"
+                    placeholderTextColor="#999"
+                    value={amount}
+                    onChangeText={setAmount}
+                    keyboardType="numeric"
+                    returnKeyType="done"
+                    onSubmitEditing={Keyboard.dismiss}
+                    onFocus={() => setAmountFocused(true)}
+                    onBlur={() => setAmountFocused(false)}
+                  />
+                  <TouchableOpacity style={styles.dropdownButton} onPress={() => setShowUnitPicker(!showUnitPicker)}>
+                    <Text style={styles.dropdownButtonText}>{amountUnit || 'Select Unit'}</Text>
+                    <Text style={styles.dropdownIcon}>▼</Text>
+                  </TouchableOpacity>
+                  {showUnitPicker && (
+                    <View style={styles.pickerContainer}>
+                      <Picker selectedValue={amountUnit} onValueChange={(val) => setAmountUnit(val)}>
+                        <Picker.Item label="Select Unit" value="" />
+                        <Picker.Item label="mL" value="mL" />
+                        <Picker.Item label="oz" value="oz" />
+                        <Picker.Item label="Cups" value="Cups" />
+                        <Picker.Item label="Pieces" value="Pieces" />
+                        <Picker.Item label="None/Refused" value="None" />
+                      </Picker>
+                      <TouchableOpacity style={styles.confirmPickerButton} onPress={() => setShowUnitPicker(false)}>
+                        <Text style={styles.confirmPickerText}>Confirm</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
+                {/* Meal Type */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Meal Type</Text>
+                  <TouchableOpacity style={styles.dropdownButton} onPress={() => setShowMealPicker(!showMealPicker)}>
+                    <Text style={styles.dropdownButtonText}>{mealType || 'Select Meal Type'}</Text>
+                    <Text style={styles.dropdownIcon}>▼</Text>
+                  </TouchableOpacity>
+                  {showMealPicker && (
+                    <View style={styles.pickerContainer}>
+                      <Picker selectedValue={mealType} onValueChange={(val) => setMealType(val)}>
+                        <Picker.Item label="Select Meal Type" value="" />
+                        <Picker.Item label="Breakfast" value="Breakfast" />
+                        <Picker.Item label="Lunch" value="Lunch" />
+                        <Picker.Item label="Dinner" value="Dinner" />
+                        <Picker.Item label="Snack" value="Snack" />
+                      </Picker>
+                      <TouchableOpacity style={styles.confirmPickerButton} onPress={() => setShowMealPicker(false)}>
+                        <Text style={styles.confirmPickerText}>Confirm</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
+                {/* Notes */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Notes (optional)</Text>
+                  <TextInput
+                    style={[styles.textInput, { height: 80 }]}
+                    placeholder="Any additional notes..."
+                    placeholderTextColor="#999"
+                    value={notes}
+                    onChangeText={setNotes}
+                    multiline
+                    numberOfLines={4}
+                  />
+                </View>
+                <TouchableOpacity style={styles.completeButton} onPress={handleCompleteLog}>
+                <Text style={styles.completeButtonText}>Complete Log</Text>
                 </TouchableOpacity>
-              )}
-            </>
-          )}
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Type</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Enter type of food..."
-            value={foodType}
-            onChangeText={setFoodType}
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Enter amount of food (if applicable)..."
-            value={amount}
-            onChangeText={setAmount}
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <TouchableOpacity 
-            style={styles.dropdownButton}
-            onPress={() => setShowMealPicker(!showMealPicker)}
-          >
-            <Text style={styles.dropdownButtonText}>
-              {mealType || 'Select Meal Type'}
-            </Text>
-            <Text style={styles.dropdownIcon}>▼</Text>
-          </TouchableOpacity>
-
-          {showMealPicker && (
-            <View style={styles.pickerContainer}>
-              <Picker
-                selectedValue={mealType}
-                onValueChange={(itemValue) => {
-                  setMealType(itemValue);
-                  setShowMealPicker(false);
-                }}
-              >
-                <Picker.Item label="Select Meal Type" value="" />
-                <Picker.Item label="Breakfast" value="Breakfast" />
-                <Picker.Item label="Lunch" value="Lunch" />
-                <Picker.Item label="Dinner" value="Dinner" />
-                <Picker.Item label="Snack" value="Snack" />
-              </Picker>
-            </View>
-          )}
-        </View>
-
-        <TouchableOpacity 
-          style={styles.completeButton}
-          onPress={handleCompleteLog}
-        >
-          <Text style={styles.completeButtonText}>Complete Log</Text>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+                <View style={{ height: 60 }} />
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+      </SafeAreaView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#d4f1fc',
+    backgroundColor: 'transparent', 
+  },
+  keyboardAvoidContainer: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+    backgroundColor: 'transparent', 
+  },
+  scrollViewContent: {
+    flexGrow: 1,
+    paddingBottom: 50,
+    backgroundColor: 'transparent', 
   },
   formContainer: {
     flex: 1,
-    backgroundColor: '#d4f1fc',
     padding: 20,
+    backgroundColor: 'transparent', 
   },
   header: {
     flexDirection: 'row',
-    marginBottom: 10,
+    marginBottom: 30,
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   backButton: {
-    padding: 5,
+    padding: 8,
   },
   backText: {
     color: '#007bff',
-    fontSize: 16,
+    fontSize: 12,
   },
   logoContainer: {
     alignItems: 'center',
-    flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: 15,
+    marginLeft: -20,
   },
   logo: {
-    width: 30,
-    height: 30,
-    marginRight: 5,
+    width: 60,
+    height: 60,
   },
-  logoText: {
-    fontSize: 18,
-    color: '#000000',
+  headerRightSpace: {
+    width: 70,
   },
   title: {
     fontSize: 24,
@@ -243,21 +336,38 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     marginBottom: 10,
+    fontWeight: '500',
   },
   timeButton: {
     backgroundColor: '#fff',
     padding: 15,
     borderRadius: 5,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   timeButtonText: {
     fontSize: 16,
-    color: '#000',
+    color: '#333',
+  },
+  timePickerContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 5,
+    marginTop: 5,
+    padding: 10,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   timePicker: {
     backgroundColor: Platform.OS === 'ios' ? '#fff' : 'transparent',
     borderRadius: 5,
-    marginTop: 5,
   },
   confirmTimeButton: {
     backgroundColor: '#007bff',
@@ -276,6 +386,12 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 5,
     fontSize: 16,
+    color: '#333',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   dropdownButton: {
     backgroundColor: '#fff',
@@ -284,19 +400,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   dropdownButtonText: {
     fontSize: 16,
-    color: '#555',
+    color: '#333',
   },
   dropdownIcon: {
     fontSize: 16,
+    color: '#333',
   },
   pickerContainer: {
     backgroundColor: '#fff',
     borderRadius: 5,
     marginTop: 5,
     marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  confirmPickerButton: {
+    backgroundColor: '#007bff',
+    padding: 10,
+    borderRadius: 5,
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  confirmPickerText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   completeButton: {
     backgroundColor: '#fcfcd4',
@@ -304,11 +444,20 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignItems: 'center',
     marginTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
   },
   completeButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
+    color: '#333',
   },
+  bottomPadding: {
+    height: 100,
+  }
 });
 
 export default FeedingForm;

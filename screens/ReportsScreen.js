@@ -17,6 +17,8 @@ import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { AntDesign, Ionicons } from '@expo/vector-icons';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 const { width } = Dimensions.get('window');
 const adjustedWidth = width - 40; // Account for padding
@@ -133,6 +135,45 @@ const ReportPage = () => {
     }
     return months;
   };
+
+  const generatePDF = async () => {
+    try {
+      const htmlContent = `
+        <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; }
+              h1 { text-align: center; color: #333; }
+              .chart-container { text-align: center; margin: 20px 0; }
+            </style>
+          </head>
+          <body>
+            <h1>Report</h1>
+            <div class="chart-container">
+              <img src="data:image/png;base64,${await captureChartAsBase64()}" />
+            </div>
+          </body>
+        </html>
+      `;
+
+      const pdf = await RNHTMLtoPDF.convert({
+        html: htmlContent,
+        fileName: 'report',
+        base64: true,
+      });
+
+      if (pdf.filePath) {
+        Alert.alert('Success', 'PDF generated successfully!');
+        await Sharing.shareAsync(pdf.filePath);
+      }
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      Alert.alert('Error', 'Failed to generate PDF. Please try again.');
+    }
+  };
+
+
+
 
   // Fetch all data
   useEffect(() => {
@@ -538,20 +579,65 @@ const ReportPage = () => {
     return '#888';
   };
 
+
+  const exportReportAsPDF = async () => {
+    try {
+      const date = new Date().toLocaleDateString();
+      const html = `
+        <html>
+          <head>
+            <style>
+              body { font-family: Arial; padding: 20px; }
+              h1 { color: #1976d2; text-align: center; }
+              .section { margin-top: 20px; }
+              .title { font-size: 18px; font-weight: bold; color: #333; }
+              .entry { margin: 5px 0; font-size: 14px; color: #444; }
+            </style>
+          </head>
+          <body>
+            <h1>${name || "Child"}'s Report (${reportRange})</h1>
+  
+            <div class="section">
+              <div class="title">Feeding Logs</div>
+              ${feedingData.map(log => `
+                <div class="entry">• ${new Date(log.timestamp.toDate()).toLocaleString()} - ${log.amount || '?'}ml (${log.feedType || 'N/A'})</div>
+              `).join('')}
+            </div>
+  
+            <div class="section">
+              <div class="title">Sleep Logs</div>
+              ${sleepData.map(log => `
+                <div class="entry">• ${new Date(log.timestamp.toDate()).toLocaleString()} - ${log.duration || '?'} mins</div>
+              `).join('')}
+            </div>
+  
+            <div class="section">
+              <div class="title">Diaper Logs</div>
+              ${diaperData.map(log => `
+                <div class="entry">• ${new Date(log.time.toDate()).toLocaleString()} - ${log.stoolType || 'Unknown'}</div>
+              `).join('')}
+            </div>
+          </body>
+        </html>
+      `;
+  
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri);
+    } catch (err) {
+      console.error("PDF Export Error:", err);
+      Alert.alert("Error", "Could not generate PDF.");
+    }
+  };
+  
   // Generate legend items
-  const getLegend = (data) => {
-    if (!data || !data.datasets) return null;
-    
+  const getLegend = (chartData) => {
+    if (!chartData?.datasets) return null;
+  
     return (
       <View style={styles.legendRow}>
-        {data.datasets.map((dataset, index) => (
+        {chartData.datasets.map((dataset, index) => (
           <View key={index} style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendColor,
-                { backgroundColor: dataset.color ? dataset.color(1) : '#1976d2' }
-              ]}
-            />
+            <View style={[styles.legendColor, { backgroundColor: dataset.color?.(1) || '#1976d2' }]} />
             <Text style={styles.legendText}>
               {dataset.legend || `Dataset ${index + 1}`}
             </Text>
@@ -560,6 +646,7 @@ const ReportPage = () => {
       </View>
     );
   };
+  
 
   // Handle data point selection
   const handleDataPointClick = (dataPoint) => {
@@ -622,7 +709,7 @@ const ReportPage = () => {
                 </View>
               </View>
               <Text style={styles.summarySubtitle}>
-                Avg. per {reportRange === "Weekly" ? "day" : reportRange === "Monthly" ? "week" : "month"}
+                {`Avg. per ${reportRange === "Weekly" ? "day" : reportRange === "Monthly" ? "week" : "month"}`}
               </Text>
             </View>
           ))}
@@ -741,7 +828,7 @@ const ReportPage = () => {
           <View style={styles.headerRightSpace} />
         </View>
 
-        <Text style={styles.title}>{name ? `${name}'s Reports` : 'Reports'}</Text>
+        <Text style={styles.title}>{`${name || 'Child'}'s Reports`}</Text>
 
         {/* Time period toggle */}
         <View style={styles.toggleContainer}>
@@ -771,7 +858,7 @@ const ReportPage = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Tab selection */}
+        
         <View style={styles.tabContainer}>
           <TouchableOpacity
             style={[styles.tabButton, activeTab === 'Sleep' && styles.activeTab]}
@@ -816,51 +903,64 @@ const ReportPage = () => {
 
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
           {renderCharts()}
-        </ScrollView>
+        </ScrollView> 
+
+        <ExportReportSection exportReportAsPDF={exportReportAsPDF} />
       </SafeAreaView>
     </LinearGradient>
   );
 };
 
 // Add export report functionality
-const ExportReportSection = () => {
+const ExportReportSection = ({ exportReportAsPDF }) => {
   const handleExport = (type) => {
     Alert.alert(
       'Export Report',
       `Report will be exported as ${type}`,
       [{ text: 'OK' }]
     );
-    // Implementation for actual export functionality would go here
   };
 
   return (
     <View style={styles.exportContainer}>
       <Text style={styles.exportTitle}>Export Report</Text>
       <View style={styles.exportOptionsRow}>
-        <TouchableOpacity 
-          style={styles.exportOption}
-          onPress={() => handleExport('PDF')}
-        >
-          <AntDesign name="pdffile1" size={18} color="#E53935" style={styles.exportOptionIcon} />
-          <Text style={styles.exportOptionText}>PDF</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.exportOption}
-          onPress={() => handleExport('Excel')}
-        >
-          <AntDesign name="fileexcel" size={18} color="#2E7D32" style={styles.exportOptionIcon} />
-          <Text style={styles.exportOptionText}>Excel</Text>
+      <TouchableOpacity 
+        style={styles.exportOption}
+        onPress={exportReportAsPDF}
+      >
+        <AntDesign
+          name="pdffile1"
+          size={18}
+          color="#E53935"
+          style={styles.exportOptionIcon}
+        />
+      <Text style={styles.exportOptionText}>PDF</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={styles.exportOption}
+        onPress={() => handleExport('Excel')}
+      >
+      <AntDesign
+        name="filetext1"
+        size={18}
+        color="#2E7D32"
+        style={styles.exportOptionIcon}
+      />
+        <Text style={styles.exportOptionText}>Excel</Text>
         </TouchableOpacity>
       </View>
       <TouchableOpacity 
         style={styles.exportButton}
-        onPress={() => handleExport('Share')}
+        onPress={exportReportAsPDF}
       >
         <Text style={styles.exportButtonText}>Share Report</Text>
       </TouchableOpacity>
     </View>
   );
 };
+
 
 // Add insights component
 const InsightsSection = ({ activeTab, data }) => {
@@ -924,10 +1024,10 @@ const InsightsSection = ({ activeTab, data }) => {
       {insights.map((insight, index) => (
         <View key={index} style={[styles.insightItem, index === insights.length - 1 && { borderBottomWidth: 0 }]}>
           <View style={styles.insightIcon}>
-            <Ionicons name={insight.icon} size={16} color="#1976d2" />
+            <Ionicons name={String(insight.icon)} size={16} color="#1976d2" />
           </View>
           <View style={styles.insightContent}>
-            <Text style={styles.insightText}>{insight.text}</Text>
+            <Text style={styles.insightText}>{String(insight.text)}</Text>
           </View>
         </View>
       ))}

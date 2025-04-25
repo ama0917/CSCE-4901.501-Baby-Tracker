@@ -17,6 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import '../firebaseConfig'; // Ensure this file properly initializes Firebase
+import { useTheme } from 'react-native-paper';
 
 export default function LoginScreen() {
   const navigation = useNavigation();

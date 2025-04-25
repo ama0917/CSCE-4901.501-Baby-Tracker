@@ -5,6 +5,7 @@ import { getFirestore, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firest
 import * as ImagePicker from 'expo-image-picker';
 import { app } from '../firebaseConfig';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from 'react-native-paper';
 
 const EditChildScreen = () => {
   const navigation = useNavigation();

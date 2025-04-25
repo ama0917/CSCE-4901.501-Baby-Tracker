@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db } from '../firebaseConfig';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
+import { useTheme } from 'react-native-paper';
 
 export default function SignUpScreen() {
   const navigation = useNavigation();

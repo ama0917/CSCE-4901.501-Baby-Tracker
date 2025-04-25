@@ -1,8 +1,8 @@
-import React, { useState} from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Switch, TextInput, StyleSheet, ScrollView, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { LinearGradient} from 'expo-linear-gradient';
-
+import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from 'react-native-paper';
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
@@ -11,52 +11,52 @@ export default function SettingsScreen() {
   const [notifications, setNotifications] = useState(true);
 
   return (
-     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
-    <ScrollView contentContainerStyle={styles.container}>
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
+      <ScrollView contentContainerStyle={styles.container}>
         {/* Header Section */}
-    <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-         <Text style={styles.backButton}>← Home</Text>
-        </TouchableOpacity>
-  
-        <Image source={require('../assets/logo.png')} style={styles.logo} />
-        <TouchableOpacity style ={styles.signOutButton} onPress={() => navigation.navigate('Login')}>
-         <Text style={styles.signOutText}>Sign out</Text>
-        </TouchableOpacity>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.backButton}>← Home</Text>
+          </TouchableOpacity>
+
+          <Image source={require('../assets/logo.png')} style={styles.logo} />
+          <TouchableOpacity style={styles.signOutButton} onPress={() => navigation.navigate('Login')}>
+            <Text style={styles.signOutText}>Sign out</Text>
+          </TouchableOpacity>
         </View>
 
-      <Text style={styles.title}>Settings</Text>
-      <View style={styles.settingItem}>
-        <Text style={styles.settingText}>Dark Mode 🌙</Text>
-        <Switch value={darkMode} onValueChange={setDarkMode} />
-      </View>
+        <Text style={styles.title}>Settings</Text>
+        <View style={styles.settingItem}>
+          <Text style={styles.settingText}>Dark Mode 🌙</Text>
+          <Switch value={darkMode} onValueChange={setDarkMode} />
+        </View>
 
-      <View style={styles.settingItem}>
-        <Text style={styles.settingText}>Multi-Factor Authentication 🔐</Text>
-        <Switch value={mfa} onValueChange={setMfa} />
-      </View>
+        <View style={styles.settingItem}>
+          <Text style={styles.settingText}>Multi-Factor Authentication 🔐</Text>
+          <Switch value={mfa} onValueChange={setMfa} />
+        </View>
 
-      <View style={styles.settingItem}>
-        <Text style={styles.settingText}>Notifications & Reminders 🔔</Text>
-        <Switch value={notifications} onValueChange={setNotifications} />
-      </View>
+        <View style={styles.settingItem}>
+          <Text style={styles.settingText}>Notifications & Reminders 🔔</Text>
+          <Switch value={notifications} onValueChange={setNotifications} />
+        </View>
 
-      <TouchableOpacity style={styles.remindersButton}>
-        <Text style={styles.remindersText}>Set Reminders</Text>
-      </TouchableOpacity>
-
-      <View style={styles.passwordSection}>
-        <Text style={styles.sectionTitle}>Change Password 🔑</Text>
-
-        <TextInput placeholder="Current Password" style={styles.input} secureTextEntry />
-        <TextInput placeholder="New Password" style={styles.input} secureTextEntry />
-        <TextInput placeholder="Confirm New Password" style={styles.input} secureTextEntry />
-
-        <TouchableOpacity style={styles.resetButton}>
-          <Text style={styles.resetText}>Reset Password</Text>
+        <TouchableOpacity style={styles.remindersButton}>
+          <Text style={styles.remindersText}>Set Reminders</Text>
         </TouchableOpacity>
-      </View>
-    </ScrollView>
+
+        <View style={styles.passwordSection}>
+          <Text style={styles.sectionTitle}>Change Password 🔑</Text>
+
+          <TextInput placeholder="Current Password" style={styles.input} secureTextEntry />
+          <TextInput placeholder="New Password" style={styles.input} secureTextEntry />
+          <TextInput placeholder="Confirm New Password" style={styles.input} secureTextEntry />
+
+          <TouchableOpacity style={styles.resetButton}>
+            <Text style={styles.resetText}>Reset Password</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </LinearGradient>
   );
 }
@@ -150,12 +150,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   logo: {
-    width:65,
+    width: 65,
     height: 65,
     resizeMode: 'contain',
     marginTop: 10,
-   },
-   signOutButton:{
+  },
+  signOutButton: {
     backgroundColor: '#FFCDD2',
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -164,8 +164,8 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOpacity: 0.1,
     shadowRadius: 5,
-   },
-   signOutText: {
+  },
+  signOutText: {
     color: '#FF3B30',
     fontSize: 14,
     fontWeight: 'bold',

@@ -5,6 +5,7 @@ import { LinearGradient} from 'expo-linear-gradient';
 import { getFirestore, collection, getDocs, query, onSnapshot, where, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { app } from '../firebaseConfig';
+import { useTheme } from 'react-native-paper';
 
 const HomeScreen = () => {
   const navigation = useNavigation();

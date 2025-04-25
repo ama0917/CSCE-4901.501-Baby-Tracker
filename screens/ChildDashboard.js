@@ -4,6 +4,7 @@ import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/nativ
 import { LinearGradient} from 'expo-linear-gradient';
 import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { app } from '../firebaseConfig';
+import { useTheme } from 'react-native-paper';
 
 const db = getFirestore(app);
 

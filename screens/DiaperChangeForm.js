@@ -6,6 +6,7 @@ import { LinearGradient} from 'expo-linear-gradient';
 import { getAuth } from 'firebase/auth';
 import { db } from '../firebaseConfig';
 import { addDoc, collection, Timestamp } from 'firebase/firestore';
+import { useTheme } from 'react-native-paper';
 
 const DiaperChangeForm = ({ navigation, route }) => {
   const { childId } = route.params || {};

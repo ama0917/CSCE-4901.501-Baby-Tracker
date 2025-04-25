@@ -9,7 +9,7 @@ import {
   Dimensions,
   ActivityIndicator,
   Image,
-  Alert,
+  Alert
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +17,7 @@ import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { AntDesign, Ionicons } from '@expo/vector-icons';
+import { useTheme } from 'react-native-paper';
 
 const { width } = Dimensions.get('window');
 const adjustedWidth = width - 40; // Account for padding
@@ -26,12 +27,14 @@ const ReportPage = () => {
   const navigation = useNavigation();
   const { childId, name } = route.params || {};
 
+  const { colors } = useTheme(); // Access the current theme's colors
+
   // State variables
   const [reportRange, setReportRange] = useState('Weekly');
   const [activeTab, setActiveTab] = useState('Sleep');
   const [isLoading, setIsLoading] = useState(true);
   const [showDataLabels, setShowDataLabels] = useState(false);
-  
+
   // Data states
   const [sleepData, setSleepData] = useState([]);
   const [diaperData, setDiaperData] = useState([]);
@@ -53,11 +56,11 @@ const ReportPage = () => {
   };
 
   const chartConfig = {
-    backgroundGradientFrom: "#f0f9ff",
-    backgroundGradientTo: "#f0f9ff",
+    backgroundGradientFrom: colors.background,
+    backgroundGradientTo: colors.background,
     decimalPlaces: 1,
-    color: (opacity = 1) => `rgba(25, 118, 210, ${opacity})`,
-    labelColor: () => '#555',
+    color: (opacity = 1) => colors.primary + opacity,
+    labelColor: () => colors.text,
     propsForLabels: {
       fontSize: 10,
       fontWeight: '500',
@@ -65,7 +68,7 @@ const ReportPage = () => {
     propsForDots: {
       r: "4",
       strokeWidth: "1",
-      stroke: "#1976d2"
+      stroke: colors.primary,
     },
     strokeWidth: 2,
     propsForVerticalLabels: {
@@ -723,98 +726,143 @@ const ReportPage = () => {
   };
 
   return (
-    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
-      <SafeAreaView style={styles.container}>
+    <LinearGradient colors={[colors.background, colors.surface]} style={styles.gradient}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backButton} 
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.backText}>← Dashboard</Text>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Text style={[styles.backText, { color: colors.primary }]}>← Dashboard</Text>
           </TouchableOpacity>
           <View style={styles.logoContainer}>
-            <Image 
-              source={require('../assets/logo.png')} 
-              style={styles.logo}
-            />
+            <Image source={require('../assets/logo.png')} style={styles.logo} />
           </View>
           <View style={styles.headerRightSpace} />
         </View>
 
-        <Text style={styles.title}>{name ? `${name}'s Reports` : 'Reports'}</Text>
+        <Text style={[styles.title, { color: colors.text }]}>{name ? `${name}'s Reports` : 'Reports'}</Text>
 
         {/* Time period toggle */}
-        <View style={styles.toggleContainer}>
+        <View style={[styles.toggleContainer, { backgroundColor: colors.surface }]}>
           <TouchableOpacity
-            style={[styles.toggleButton, reportRange === 'Weekly' && styles.activeToggle]}
+            style={[
+              styles.toggleButton,
+              reportRange === 'Weekly' && [styles.activeToggle, { backgroundColor: colors.primary }],
+            ]}
             onPress={() => setReportRange('Weekly')}
           >
-            <Text style={[styles.toggleText, reportRange === 'Weekly' && styles.activeToggleText]}>
+            <Text
+              style={[
+                styles.toggleText,
+                reportRange === 'Weekly' && [styles.activeToggleText, { color: colors.onPrimary }],
+              ]}
+            >
               Week
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.toggleButton, reportRange === 'Monthly' && styles.activeToggle]}
+            style={[
+              styles.toggleButton,
+              reportRange === 'Monthly' && [styles.activeToggle, { backgroundColor: colors.primary }],
+            ]}
             onPress={() => setReportRange('Monthly')}
           >
-            <Text style={[styles.toggleText, reportRange === 'Monthly' && styles.activeToggleText]}>
+            <Text
+              style={[
+                styles.toggleText,
+                reportRange === 'Monthly' && [styles.activeToggleText, { color: colors.onPrimary }],
+              ]}
+            >
               Month
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.toggleButton, reportRange === 'Annual' && styles.activeToggle]}
+            style={[
+              styles.toggleButton,
+              reportRange === 'Annual' && [styles.activeToggle, { backgroundColor: colors.primary }],
+            ]}
             onPress={() => setReportRange('Annual')}
           >
-            <Text style={[styles.toggleText, reportRange === 'Annual' && styles.activeToggleText]}>
+            <Text
+              style={[
+                styles.toggleText,
+                reportRange === 'Annual' && [styles.activeToggleText, { color: colors.onPrimary }],
+              ]}
+            >
               Year
             </Text>
           </TouchableOpacity>
         </View>
 
         {/* Tab selection */}
-        <View style={styles.tabContainer}>
+        <View style={[styles.tabContainer, { backgroundColor: colors.surface }]}>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'Sleep' && styles.activeTab]}
+            style={[
+              styles.tabButton,
+              activeTab === 'Sleep' && [styles.activeTab, { backgroundColor: colors.primary }],
+            ]}
             onPress={() => setActiveTab('Sleep')}
           >
-            <Ionicons 
-              name="bed-outline" 
-              size={20} 
-              color={activeTab === 'Sleep' ? '#1976d2' : '#666'} 
+            <Ionicons
+              name="bed-outline"
+              size={20}
+              color={activeTab === 'Sleep' ? colors.onPrimary : colors.text}
             />
-            <Text style={[styles.tabText, activeTab === 'Sleep' && styles.activeTabText]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'Sleep' && [styles.activeTabText, { color: colors.onPrimary }],
+              ]}
+            >
               Sleep
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'Feeding' && styles.activeTab]}
+            style={[
+              styles.tabButton,
+              activeTab === 'Feeding' && [styles.activeTab, { backgroundColor: colors.primary }],
+            ]}
             onPress={() => setActiveTab('Feeding')}
           >
-            <Ionicons 
-              name="restaurant-outline" 
-              size={20} 
-              color={activeTab === 'Feeding' ? '#1976d2' : '#666'} 
+            <Ionicons
+              name="restaurant-outline"
+              size={20}
+              color={activeTab === 'Feeding' ? colors.onPrimary : colors.text}
             />
-            <Text style={[styles.tabText, activeTab === 'Feeding' && styles.activeTabText]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'Feeding' && [styles.activeTabText, { color: colors.onPrimary }],
+              ]}
+            >
               Feeding
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'Diaper' && styles.activeTab]}
+            style={[
+              styles.tabButton,
+              activeTab === 'Diaper' && [styles.activeTab, { backgroundColor: colors.primary }],
+            ]}
             onPress={() => setActiveTab('Diaper')}
           >
-            <Ionicons 
-              name="water-outline" 
-              size={20} 
-              color={activeTab === 'Diaper' ? '#1976d2' : '#666'} 
+            <Ionicons
+              name="water-outline"
+              size={20}
+              color={activeTab === 'Diaper' ? colors.onPrimary : colors.text}
             />
-            <Text style={[styles.tabText, activeTab === 'Diaper' && styles.activeTabText]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'Diaper' && [styles.activeTabText, { color: colors.onPrimary }],
+              ]}
+            >
               Diaper
             </Text>
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+        <ScrollView
+          style={[styles.scrollView, { backgroundColor: colors.background }]}
+          contentContainerStyle={styles.scrollViewContent}
+        >
           {renderCharts()}
         </ScrollView>
       </SafeAreaView>

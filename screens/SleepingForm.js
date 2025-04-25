@@ -6,6 +6,7 @@ import { LinearGradient} from 'expo-linear-gradient';
 import { db } from '../firebaseConfig';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { useRoute } from '@react-navigation/native';
+import { useTheme } from 'react-native-paper';
 
 const SleepingForm = ({ navigation }) => {
   const route = useRoute();

@@ -17,6 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebaseConfig'; // adjust path if needed
+import { useTheme } from 'react-native-paper';
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');

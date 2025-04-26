@@ -632,42 +632,65 @@ const ReportPage = () => {
     }
   };
 
-  const exportReportAsExcel = async () => {// Export report as Excel
-    try {
-      const feedingSheet = XLSX.utils.json_to_sheet(feedingData.map(log => ({
-        Timestamp: new Date(log.timestamp.toDate()).toLocaleString(),
-        Amount: log.amount || '?',
-        Type: log.feedType || 'N/A',
-      })));
-  
-      const sleepSheet = XLSX.utils.json_to_sheet(sleepData.map(log => ({
-        Timestamp: new Date(log.timestamp.toDate()).toLocaleString(),
-        DurationMins: log.duration || '?',
-      })));
-  
-      const diaperSheet = XLSX.utils.json_to_sheet(diaperData.map(log => ({
-        Timestamp: new Date(log.time.toDate()).toLocaleString(),
-        Type: log.stoolType || 'Unknown',
-      })));
-  
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, feedingSheet, "Feeding");
-      XLSX.utils.book_append_sheet(wb, sleepSheet, "Sleep");
-      XLSX.utils.book_append_sheet(wb, diaperSheet, "Diaper");
-  
-      const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
-      const uri = FileSystem.cacheDirectory + `${name || 'Child'}_Report.xlsx`;
-  
-      await FileSystem.writeAsStringAsync(uri, wbout, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-  
-      await Sharing.shareAsync(uri);
-    } catch (err) {
-      console.error('Excel Export Error:', err);
-      Alert.alert('Error', 'Failed to export Excel file.');
-    }
-  };
+// Export report as Excel
+const exportReportAsExcel = async () => {
+  try {
+    // 1. Feeding Sheet (with unit included)
+    const feedingSheetData = [
+      ["Timestamp", "Amount", "Unit", "Type"], // Header
+      ...feedingData.map(log => [
+        new Date(log.timestamp.toDate()).toLocaleString(),
+        log.amount || '?',
+        log.unit || 'ml', // Show 'ml', 'oz', 'cups', etc.
+        log.feedType || 'N/A',
+      ])
+    ];
+    const feedingSheet = XLSX.utils.aoa_to_sheet(feedingSheetData);
+    feedingSheet['!cols'] = [{ wch: 22 }, { wch: 10 }, { wch: 8 }, { wch: 18 }];
+
+    // 2. Sleep Sheet
+    const sleepSheetData = [
+      ["Timestamp", "Duration (mins)"],
+      ...sleepData.map(log => [
+        new Date(log.timestamp.toDate()).toLocaleString(),
+        log.duration || '?'
+      ])
+    ];
+    const sleepSheet = XLSX.utils.aoa_to_sheet(sleepSheetData);
+    sleepSheet['!cols'] = [{ wch: 22 }, { wch: 16 }];
+
+    // 3. Diaper Sheet
+    const diaperSheetData = [
+      ["Timestamp", "Stool Type"],
+      ...diaperData.map(log => [
+        new Date(log.time.toDate()).toLocaleString(),
+        log.stoolType || 'Unknown'
+      ])
+    ];
+    const diaperSheet = XLSX.utils.aoa_to_sheet(diaperSheetData);
+    diaperSheet['!cols'] = [{ wch: 22 }, { wch: 20 }];
+
+    // 4. Create Workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, feedingSheet, "Feeding");
+    XLSX.utils.book_append_sheet(wb, sleepSheet, "Sleep");
+    XLSX.utils.book_append_sheet(wb, diaperSheet, "Diaper");
+
+    // 5. Convert to base64 and save
+    const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+    const uri = FileSystem.cacheDirectory + `${name || 'Child'}_Report.xlsx`;
+
+    await FileSystem.writeAsStringAsync(uri, wbout, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    await Sharing.shareAsync(uri);
+  } catch (err) {
+    console.error('Excel Export Error:', err);
+    Alert.alert('Error', 'Failed to export Excel file.');
+  }
+};
+
   
   // Generate legend items
   const getLegend = (chartData) => {

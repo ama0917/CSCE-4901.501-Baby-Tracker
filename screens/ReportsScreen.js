@@ -11,6 +11,8 @@ import {
   Image,
   Alert,
 } from 'react-native';
+import * as XLSX from 'xlsx';
+import * as FileSystem from 'expo-file-system';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
@@ -19,6 +21,7 @@ import { db } from '../firebaseConfig';
 import { AntDesign, Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { FontAwesome5 } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 const adjustedWidth = width - 40; // Account for padding
@@ -628,6 +631,43 @@ const ReportPage = () => {
       Alert.alert("Error", "Could not generate PDF.");
     }
   };
+
+  const exportReportAsExcel = async () => {// Export report as Excel
+    try {
+      const feedingSheet = XLSX.utils.json_to_sheet(feedingData.map(log => ({
+        Timestamp: new Date(log.timestamp.toDate()).toLocaleString(),
+        Amount: log.amount || '?',
+        Type: log.feedType || 'N/A',
+      })));
+  
+      const sleepSheet = XLSX.utils.json_to_sheet(sleepData.map(log => ({
+        Timestamp: new Date(log.timestamp.toDate()).toLocaleString(),
+        DurationMins: log.duration || '?',
+      })));
+  
+      const diaperSheet = XLSX.utils.json_to_sheet(diaperData.map(log => ({
+        Timestamp: new Date(log.time.toDate()).toLocaleString(),
+        Type: log.stoolType || 'Unknown',
+      })));
+  
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, feedingSheet, "Feeding");
+      XLSX.utils.book_append_sheet(wb, sleepSheet, "Sleep");
+      XLSX.utils.book_append_sheet(wb, diaperSheet, "Diaper");
+  
+      const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+      const uri = FileSystem.cacheDirectory + `${name || 'Child'}_Report.xlsx`;
+  
+      await FileSystem.writeAsStringAsync(uri, wbout, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+  
+      await Sharing.shareAsync(uri);
+    } catch (err) {
+      console.error('Excel Export Error:', err);
+      Alert.alert('Error', 'Failed to export Excel file.');
+    }
+  };
   
   // Generate legend items
   const getLegend = (chartData) => {
@@ -905,14 +945,17 @@ const ReportPage = () => {
           {renderCharts()}
         </ScrollView> 
 
-        <ExportReportSection exportReportAsPDF={exportReportAsPDF} />
+        <ExportReportSection 
+          exportReportAsPDF={exportReportAsPDF} 
+          exportReportAsExcel={exportReportAsExcel} 
+        />
       </SafeAreaView>
     </LinearGradient>
   );
 };
 
 // Add export report functionality
-const ExportReportSection = ({ exportReportAsPDF }) => {
+const ExportReportSection = ({ exportReportAsPDF, exportReportAsExcel }) => {
   const handleExport = (type) => {
     Alert.alert(
       'Export Report',
@@ -940,16 +983,17 @@ const ExportReportSection = ({ exportReportAsPDF }) => {
 
       <TouchableOpacity 
         style={styles.exportOption}
-        onPress={() => handleExport('Excel')}
+        onPress={exportReportAsExcel}
       >
-      <AntDesign
-        name="filetext1"
-        size={18}
-        color="#2E7D32"
-        style={styles.exportOptionIcon}
-      />
+        <FontAwesome5
+          name="file-excel"
+          size={18}
+          color="#2E7D32"
+          style={styles.exportOptionIcon}
+          />
         <Text style={styles.exportOptionText}>Excel</Text>
-        </TouchableOpacity>
+      </TouchableOpacity>
+
       </View>
       <TouchableOpacity 
         style={styles.exportButton}

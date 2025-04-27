@@ -8,8 +8,15 @@ from backend.backup_service import backup_user_data, trigger_backup  # 'trigger_
 
 app = Flask(__name__)
 
+# Initialize Firebase using the service account key from the environment variable
+cred_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+if cred_path:
+    cred = credentials.Certificate(cred_path)
+    firebase_admin.initialize_app(cred)
+else:
+    raise EnvironmentError("GOOGLE_APPLICATION_CREDENTIALS environment variable not set")
 
-@app.route('/trigger_backup', methods=['GET']) # path for manual backup 
+@app.route('/trigger_backup', methods=['GET'])  # path for manual backup 
 def trigger_backup_route():
     try:
         trigger_backup()  # Call the backup function here
@@ -17,10 +24,8 @@ def trigger_backup_route():
     except Exception as e:
         return str(e), 500
 
-
-@app.route('/backup', methods=['POST']) # Route for backup via user request
+@app.route('/backup', methods=['POST'])  # Route for backup via user request
 def backup_route():
-   
     id_token = request.headers.get('Authorization')  # Firebase ID token from Authorization header
 
     if not id_token:
@@ -33,11 +38,8 @@ def backup_route():
         print(e)
         return {'error': 'Invalid token'}, 401
 
-    
-    file_data = request.data # Receive backup file data
-
+    file_data = request.data  # Receive backup file data
     backup_user_data(file_data, user_id)
-
     return {'status': 'Backup completed successfully!'}
 
 if __name__ == "__main__":

@@ -133,7 +133,7 @@ export default function ChildDashboard() {
       {image ? (
         <Image source={{ uri: image}} style={styles.profileImage} />
       ) : (
-      <Image source={require('../assets/happy-baby.png')} style={styles.profileImage} />
+      <Image source={require('../assets/default-profile.png')} style={styles.profileImage} />
       )}
       <Text style={styles.sectionTitle}>Log Activities</Text>
       <View style={styles.activitiesContainer}>
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
-    paddingTop: 40,
+    paddingTop: 50,
     paddingBottom: 40,
   },
   header: {

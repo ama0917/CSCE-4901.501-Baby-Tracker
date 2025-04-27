@@ -103,11 +103,11 @@ const FeedingForm = ({ navigation }) => {
     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
       <SafeAreaView style={styles.container}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'position'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 30 : 0}
-            style={{ flex: 1 }}
-          >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 30 : 0}
+          style={{ flex: 1 }}
+        >
             <ScrollView
               style={styles.scrollView}
               contentContainerStyle={styles.scrollViewContent}

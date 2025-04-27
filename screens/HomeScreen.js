@@ -61,7 +61,7 @@ const HomeScreen = () => {
               {profile.image ? (
                 <Image source={{ uri: profile.image }} style={styles.avatarImage} />
               ) : (
-                <Image source ={require('../assets/baby-icon.png')} 
+                <Image source ={require('../assets/default-profile.png')} 
                 style ={styles.avatarImage}/> // default image incase they do not choose one
               )}
               <Text style={styles.profileText}>{profile.name}</Text>

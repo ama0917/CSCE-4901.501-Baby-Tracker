@@ -22,9 +22,10 @@ import { AntDesign, Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { FontAwesome5 } from '@expo/vector-icons';
+import StackedBarChart from './StackedBarChart';
 
 const { width } = Dimensions.get('window');
-const adjustedWidth = width - 40; // Account for padding
+const adjustedWidth = width - 40;
 
 const ReportPage = () => {
   const route = useRoute();
@@ -90,7 +91,8 @@ const ReportPage = () => {
   // Time period calculation
   const getTimeRange = () => {
     const now = new Date();
-    const startDate = new Date();
+    now.setHours(0, 0, 0, 0); // Normalize to start of day
+    const startDate = new Date(now);
     
     switch (reportRange) {
       case 'Weekly':
@@ -111,8 +113,10 @@ const ReportPage = () => {
   // Helper functions for time labels
   const getLast7Days = () => {
     const days = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     for (let i = 6; i >= 0; i--) {
-      const date = new Date();
+      const date = new Date(today);
       date.setDate(date.getDate() - i);
       days.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
     }
@@ -131,14 +135,15 @@ const ReportPage = () => {
 
   const getLast12Months = () => {
     const months = [];
-    for (let i = 11; i >= 0; i--) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(now.getFullYear(), i, 1);
       months.push(date.toLocaleDateString('en-US', { month: 'short' }));
     }
     return months;
   };
-
+  
   const generatePDF = async () => {
     try {
       const htmlContent = `
@@ -191,9 +196,8 @@ const ReportPage = () => {
       try {
         const { start, end } = getTimeRange();
         
-        // Convert Date objects to Firestore Timestamps
-        const startTimestamp = Timestamp.fromDate(start);
-        const endTimestamp = Timestamp.fromDate(end);
+        const startTimestamp = Timestamp.fromDate(new Date(start.setHours(0, 0, 0, 0)));
+        const endTimestamp = Timestamp.fromDate(new Date(end.setHours(23, 59, 59, 999)));
         
         await Promise.all([
           fetchSleepData(startTimestamp, endTimestamp),
@@ -287,54 +291,58 @@ const ReportPage = () => {
   const processSleepData = () => {
     const { periodLabels } = getTimeRange();
     
-    // Initialize datasets with zero values
     const durationData = Array(periodLabels.length).fill(0);
     const countData = Array(periodLabels.length).fill(0);
     
     sleepData.forEach(log => {
+      // Consistent date conversion
       const logDate = log.timestamp.toDate();
+      
       let index;
       
       if (reportRange === 'Weekly') {
-        // For weekly, index is based on day of week
-        const dayOfWeek = logDate.getDay();
-        const today = new Date().getDay();
-        index = (dayOfWeek - today + 7) % 7;
+        // Calculate days ago (0-6)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffTime = Math.abs(today - logDate);
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        index = 6 - Math.min(diffDays, 6);
       } else if (reportRange === 'Monthly') {
-        // For monthly, divide into 4 weeks
-        const daysAgo = Math.floor((new Date() - logDate) / (1000 * 60 * 60 * 24));
-        index = Math.min(3, Math.floor(daysAgo / 7));
+        // Calculate week index (0-3)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffTime = Math.abs(today - logDate);
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        index = 3 - Math.min(Math.floor(diffDays / 7), 3);
       } else {
-        // For annual, index is based on month
-        const monthDiff = (new Date().getMonth() - logDate.getMonth() + 12) % 12;
-        index = monthDiff;
+        // Annual view - month index (0-11)
+        index = logDate.getMonth();
       }
       
-      // Add duration (in hours)
-      if (log.duration) {
-        durationData[index] += log.duration / 60; // Convert minutes to hours
-        countData[index]++;
+      // Make sure the index is valid
+      if (index >= 0 && index < durationData.length) {
+        if (log.duration) {
+          durationData[index] += log.duration / 60;
+          countData[index]++;
+        }
       }
     });
     
-    // Calculate average duration per day when there are entries
+    // Rest of the function remains the same
     const avgDurationData = durationData.map((total, i) => 
       countData[i] ? parseFloat((total / countData[i]).toFixed(1)) : 0
     );
     
-    // Get overall averages for summary cards
     const totalDuration = durationData.reduce((sum, val) => sum + val, 0);
     const totalCount = countData.reduce((sum, val) => sum + val, 0);
     const avgDuration = totalCount ? parseFloat((totalDuration / totalCount).toFixed(1)) : 0;
     
-    // Find most common sleep times
     const timeDistribution = {};
     sleepData.forEach(log => {
       const startHour = log.timestamp.toDate().getHours();
       timeDistribution[startHour] = (timeDistribution[startHour] || 0) + 1;
     });
     
-    // Format for pie chart
     const sleepTimeDistribution = Object.keys(timeDistribution).map(hour => {
       const colors = [
         '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
@@ -373,6 +381,42 @@ const ReportPage = () => {
     };
   };
 
+  const processSleepHeatMapData = () => {
+    const { periodLabels } = getTimeRange();
+    const hours = Array.from({ length: 24 }, (_, i) => i); // 0-23 hours
+  
+    const heatmapData = hours.map(hour => ({
+      name: `${hour === 0 ? 12 : hour > 12 ? hour - 12 : hour}${hour < 12 ? ' AM' : ' PM'}`,
+      data: periodLabels.map(day => ({ x: day, y: 0 }))
+    }));
+  
+    sleepData.forEach(log => {
+      const logDate = log.timestamp.toDate();
+      const dayIndex = (() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffDays = Math.floor((today - logDate) / (1000 * 60 * 60 * 24));
+        return 6 - Math.min(diffDays, 6);
+      })();
+  
+      const sleepStartHour = logDate.getHours();
+      const durationHours = Math.ceil((log.duration || 0) / 60);
+  
+      for (let i = 0; i < durationHours; i++) {
+        const hourSlot = (sleepStartHour + i) % 24;
+        if (heatmapData[hourSlot] && heatmapData[hourSlot].data[dayIndex]) {
+          heatmapData[hourSlot].data[dayIndex].y += 30; // You can tweak intensity
+        }
+      }
+    });
+  
+    return {
+      series: heatmapData,
+      categories: periodLabels
+    };
+  };
+  
+
   const processDiaperData = () => {
     const { periodLabels } = getTimeRange();
     
@@ -383,33 +427,51 @@ const ReportPage = () => {
     const dryCount = Array(periodLabels.length).fill(0);
     
     diaperData.forEach(log => {
-      const logDate = log.time.toDate();
+      // Consistent date conversion without timezone issues
+      const logDate = new Date(log.time.seconds * 1000);
+      logDate.setHours(0, 0, 0, 0); // Normalize to start of day
+      
       let index;
       
       if (reportRange === 'Weekly') {
-        const dayOfWeek = logDate.getDay();
-        const today = new Date().getDay();
-        index = (dayOfWeek - today + 7) % 7;
+        // Calculate day index normalized
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffTime = Math.abs(today - logDate);
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        index = 6 - Math.min(diffDays, 6); // Ensure it's within bounds 0-6
       } else if (reportRange === 'Monthly') {
-        const daysAgo = Math.floor((new Date() - logDate) / (1000 * 60 * 60 * 24));
-        index = Math.min(3, Math.floor(daysAgo / 7));
+        // Calculate week index normalized
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffTime = Math.abs(today - logDate);
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        index = 3 - Math.min(Math.floor(diffDays / 7), 3); // Ensure it's within bounds 0-3
       } else {
-        const monthDiff = (new Date().getMonth() - logDate.getMonth() + 12) % 12;
-        index = monthDiff;
+        // For annual view, use month index directly
+        index = logDate.getMonth();
       }
       
-      // Increment based on stool type
-      if (log.stoolType === 'Wet') {
-        wetCount[index]++;
-      } else if (log.stoolType === 'BM') {
-        bmCount[index]++;
-      } else if (log.stoolType === 'Wet+BM') {
-        wetBmCount[index]++;
-      } else if (log.stoolType === 'Dry') {
-        dryCount[index]++;
+      // Make sure the index is valid
+      if (index >= 0 && index < wetCount.length) {
+        // Debug to check what stool types we're receiving
+        console.log("Stool type:", log.stoolType);
+        
+        // Increment based on stool type (case-insensitive comparison)
+        const type = (log.stoolType || '').toLowerCase().replace(/\s+/g, '');
+        if (type.includes('wet') && type.includes('bm')) {
+          wetBmCount[index]++;
+        } else if (type.includes('wet')) {
+          wetCount[index]++;
+        } else if (type.includes('bm')) {
+          bmCount[index]++;
+        } else if (type.includes('dry')) {
+          dryCount[index]++;
+        } else {
+          wetCount[index]++;
+        }        
       }
     });
-    
     // Total each type
     const totalWet = wetCount.reduce((sum, val) => sum + val, 0);
     const totalBM = bmCount.reduce((sum, val) => sum + val, 0);
@@ -420,32 +482,30 @@ const ReportPage = () => {
     // Average per time period
     const divisor = reportRange === 'Weekly' ? 7 : reportRange === 'Monthly' ? 4 : 12;
     const avgChanges = parseFloat((totalChanges / divisor).toFixed(1));
-    
+
+    // Ensure no negative values in any diaper data
+    const sanitize = (arr) => arr.map(val => Math.max(0, val));
+
+    const sanitizedWetCount = sanitize(wetCount);
+    const sanitizedBmCount = sanitize(bmCount);
+    const sanitizedWetBmCount = sanitize(wetBmCount);
+    const sanitizedDryCount = sanitize(dryCount);
+
+    // Create a dummy 'Base' array of all zeros
+    const baseZeroArray = new Array(periodLabels.length).fill(0);
+
     return {
-      barData: {
-        labels: periodLabels,
-        datasets: [
-          {
-            data: wetCount,
-            color: (opacity = 1) => `rgba(54, 162, 235, ${opacity})`,
-            legend: 'Wet'
-          },
-          {
-            data: bmCount,
-            color: (opacity = 1) => `rgba(255, 159, 64, ${opacity})`,
-            legend: 'BM'
-          },
-          {
-            data: wetBmCount,
-            color: (opacity = 1) => `rgba(153, 102, 255, ${opacity})`,
-            legend: 'Wet+BM'
-          },
-          {
-            data: dryCount,
-            color: (opacity = 1) => `rgba(75, 192, 192, ${opacity})`,
-            legend: 'Dry'
-          }
-        ]
+      series: [
+        { name: "Base", data: baseZeroArray }, // Invisible stabilizer
+        { name: "Wet", data: sanitizedWetCount },
+        { name: "BM", data: sanitizedBmCount },
+        { name: "Wet + BM", data: sanitizedWetBmCount },
+        { name: "Dry", data: sanitizedDryCount }
+      ],
+      options: {
+        xaxis: {
+          categories: periodLabels
+        }
       },
       summary: [
         { key: 'changes', avg: avgChanges, trend: 'stable', metric: 'normal' },
@@ -454,88 +514,104 @@ const ReportPage = () => {
       ]
     };
   };
+    
 
   const processFeedingData = () => {
     const { periodLabels } = getTimeRange();
     
-    // Initialize datasets
-    const amountData = Array(periodLabels.length).fill(0);
-    const countData = Array(periodLabels.length).fill(0);
-    
-    // Track feeding types
-    const feedingTypes = {};
-    
+    const feedingCounts = Array(periodLabels.length).fill(0);
+    const feedTimestamps = [];
+    const feedingMethodCounts = {};
+    const hourBuckets = new Array(24).fill(0);
+  
     feedingData.forEach(log => {
-      const logDate = log.timestamp.toDate();
-      let index;
-      
-      if (reportRange === 'Weekly') {
-        const dayOfWeek = logDate.getDay();
-        const today = new Date().getDay();
-        index = (dayOfWeek - today + 7) % 7;
-      } else if (reportRange === 'Monthly') {
-        const daysAgo = Math.floor((new Date() - logDate) / (1000 * 60 * 60 * 24));
-        index = Math.min(3, Math.floor(daysAgo / 7));
-      } else {
-        const monthDiff = (new Date().getMonth() - logDate.getMonth() + 12) % 12;
-        index = monthDiff;
-      }
-      
-      // Add amount if it's a number
-      const amount = parseFloat(log.amount);
-      if (!isNaN(amount)) {
-        amountData[index] += amount;
-        countData[index]++;
-      }
-      
-      // Track meal types
-      if (log.feedType) {
-        feedingTypes[log.feedType] = (feedingTypes[log.feedType] || 0) + 1;
+      if (log.timestamp) {
+        const logDate = log.timestamp.toDate();
+        feedTimestamps.push(logDate);
+  
+        let index;
+  
+        if (reportRange === 'Weekly') {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const diffTime = Math.abs(today - logDate);
+          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+          index = 6 - Math.min(diffDays, 6);
+        } else if (reportRange === 'Monthly') {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const diffTime = Math.abs(today - logDate);
+          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+          index = 3 - Math.min(Math.floor(diffDays / 7), 3);
+        } else {
+          index = logDate.getMonth();
+        }
+  
+        if (index >= 0 && index < feedingCounts.length) {
+          feedingCounts[index]++;
+        }
+  
+        const hour = logDate.getHours();
+        hourBuckets[hour]++;
+  
+        if (log.feedType) {
+          feedingMethodCounts[log.feedType] = (feedingMethodCounts[log.feedType] || 0) + 1;
+        }
       }
     });
-    
-    // Calculate average per day
-    const totalAmount = amountData.reduce((sum, val) => sum + val, 0);
-    const totalCount = countData.reduce((sum, val) => sum + val, 0);
-    const divisor = reportRange === 'Weekly' ? 7 : reportRange === 'Monthly' ? 4 : 12;
-    const avgAmount = parseFloat((totalAmount / divisor).toFixed(1));
-    const avgCount = parseFloat((totalCount / divisor).toFixed(1));
-    
-    // Create feeding type distribution for pie chart
-    const feedTypeDistribution = Object.keys(feedingTypes).map((type, index) => {
-      const colors = [
-        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
-        '#FF9F40', '#8AC54B', '#EA5AA0', '#5AC8FA', '#AF52DE'
-      ];
-      
-      return {
-        name: type,
-        count: feedingTypes[type],
-        color: colors[index % colors.length],
-        legendFontColor: '#7F7F7F',
-        legendFontSize: 10
-      };
-    }).sort((a, b) => b.count - a.count);
-    
+  
+    // Calculate average gap
+    let averageGapMinutes = 0;
+    if (feedTimestamps.length >= 2) {
+      feedTimestamps.sort((a, b) => a - b);
+      let totalGap = 0;
+      for (let i = 1; i < feedTimestamps.length; i++) {
+        totalGap += (feedTimestamps[i] - feedTimestamps[i - 1]) / (1000 * 60);
+      }
+      averageGapMinutes = totalGap / (feedTimestamps.length - 1);
+    }
+  
+    // Most common feeding time
+    let mostCommonHour = null;
+    let maxFeedings = 0;
+    hourBuckets.forEach((count, hour) => {
+      if (count > maxFeedings) {
+        mostCommonHour = hour;
+        maxFeedings = count;
+      }
+    });
+  
+    // Most used method
+    let mostUsedMethod = null;
+    let maxMethodCount = 0;
+    for (const method in feedingMethodCounts) {
+      if (feedingMethodCounts[method] > maxMethodCount) {
+        mostUsedMethod = method;
+        maxMethodCount = feedingMethodCounts[method];
+      }
+    }
+  
     return {
+      summary: [
+        { key: 'totalFeedings', value: feedingData.length },
+        { key: 'averageGap', value: averageGapMinutes },
+        { key: 'mostCommonTime', value: mostCommonHour },
+        { key: 'mostUsedMethod', value: mostUsedMethod },
+      ],
       lineData: {
         labels: periodLabels,
         datasets: [
           {
-            data: amountData,
-            color: (opacity = 1) => `rgba(75, 192, 192, ${opacity})`,
-            strokeWidth: 2
+            data: feedingCounts,
+            color: (opacity = 1) => `rgba(255, 152, 0, ${opacity})`, // Orange color
+            strokeWidth: 2,
           }
         ],
-        legend: ["Total Amount"]
+        legend: ["Feedings"],
       },
-      summary: [
-        { key: 'amount', avg: avgAmount, trend: 'stable', metric: 'more' },
-        { key: 'feedings', avg: avgCount, trend: 'stable', metric: 'more' }
-      ],
-      typeDistribution: feedTypeDistribution
     };
-  };
+  };  
+  
 
   // Get chart data based on active tab
   const getChartData = () => {
@@ -693,9 +769,27 @@ const exportReportAsExcel = async () => {
 
   
   // Generate legend items
+
   const getLegend = (chartData) => {
     if (!chartData?.datasets) return null;
   
+    if (chartData.legend && Array.isArray(chartData.legend)) {
+      return (
+        <View style={styles.legendRow}>
+          {chartData.legend.map((legendItem, index) => (
+            <View key={index} style={styles.legendItem}>
+              <View style={[styles.legendColor, { 
+                backgroundColor: chartData.datasets[index]?.color?.(1) || '#1976d2' 
+              }]} />
+              <Text style={styles.legendText}>
+                {legendItem}
+              </Text>
+            </View>
+          ))}
+        </View>
+      );
+    }
+
     return (
       <View style={styles.legendRow}>
         {chartData.datasets.map((dataset, index) => (
@@ -721,6 +815,64 @@ const exportReportAsExcel = async () => {
     );
   };
 
+  // Feeding summary cards helper
+  const renderFeedingSummary = (summary) => (
+    <View style={styles.summaryCardsContainer}>
+      {summary.map((item) => {
+        let displayValue = '';
+        switch (item.key) {
+          case 'totalFeedings':
+            displayValue = `${item.value} feedings`;
+            break;
+          case 'averageGap':
+            const hours = Math.floor(item.value / 60);
+            const minutes = Math.floor(item.value % 60);
+            displayValue = `${hours}h ${minutes}m gap`;
+            break;
+          case 'mostCommonTime':
+            if (item.value !== null) {
+              const ampm = item.value >= 12 ? 'PM' : 'AM';
+              const hour12 = item.value % 12 || 12;
+              displayValue = `${hour12} ${ampm}`;
+            } else {
+              displayValue = 'N/A';
+            }
+            break;
+          case 'mostUsedMethod':
+            displayValue = item.value || 'N/A';
+            break;
+          default:
+            displayValue = item.value;
+        }
+        return (
+          <View key={item.key} style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>
+              {formatSummaryTitle(item.key)}
+            </Text>
+            <Text style={styles.summaryValue}>{displayValue}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+
+  // Feeding summary card titles
+  const formatSummaryTitle = (key) => {
+    switch (key) {
+      case 'totalFeedings':
+        return 'Total Feedings';
+      case 'averageGap':
+        return 'Avg. Time Between Feedings';
+      case 'mostCommonTime':
+        return 'Most Common Feeding Time';
+      case 'mostUsedMethod':
+        return 'Most Common Food Type';
+      default:
+        return key;
+    }
+  };
+
+  
   // Render charts based on tab
   const renderCharts = () => {
     if (isLoading) {
@@ -731,54 +883,57 @@ const exportReportAsExcel = async () => {
         </View>
       );
     }
-
+  
     const data = getChartData();
     const chartType = getChartType(activeTab);
     const yLabel = getYAxisLabel();
     
-    // Define legend labels for readability
     const legendLabels = {
       'duration': 'Sleep Duration',
-      'count': 'Sleep Episodes',
+      'count': 'Nap Duration',
       'changes': 'Diaper Changes',
       'wet': 'Wet Diapers',
       'bm': 'BM Diapers',
       'amount': 'Feeding Amount',
       'feedings': 'Feeding Count'
     };
-
-    // Extract summary metrics
+  
     const summaryMetrics = data.summary || [];
-
+  
     return (
       <View style={styles.chartContainer}>
-        {/* Summary cards at the top of each chart */}
-        <View style={styles.summaryCardsContainer}>
-          {summaryMetrics.map((item) => (
-            <View key={item.key} style={styles.summaryCard}>
-              <Text style={styles.summaryTitle}>
-                {legendLabels[item.key] || item.key.charAt(0).toUpperCase() + item.key.slice(1)}
-              </Text>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryValue}>
-                  {item.avg} {yLabel}
+  
+        {/* Summary cards */}
+        {activeTab === 'Feeding' ? (
+          renderFeedingSummary(data.summary)
+        ) : (
+          <View style={styles.summaryCardsContainer}>
+            {summaryMetrics.map((item) => (
+              <View key={item.key} style={styles.summaryCard}>
+                <Text style={styles.summaryTitle}>
+                  {legendLabels[item.key] || item.key.charAt(0).toUpperCase() + item.key.slice(1)}
                 </Text>
-                <View style={styles.trendIndicator}>
-                  <AntDesign 
-                    name={item.trend === "up" ? "arrowup" : item.trend === "down" ? "arrowdown" : "minus"} 
-                    size={12} 
-                    color={getTrendColor(item.trend, item.metric)} 
-                  />
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryValue}>
+                    {item.avg} {yLabel}
+                  </Text>
+                  <View style={styles.trendIndicator}>
+                    <AntDesign 
+                      name={item.trend === "up" ? "arrowup" : item.trend === "down" ? "arrowdown" : "minus"} 
+                      size={12} 
+                      color={getTrendColor(item.trend, item.metric)} 
+                    />
+                  </View>
                 </View>
+                <Text style={styles.summarySubtitle}>
+                  {`Avg. per ${reportRange === "Weekly" ? "day" : reportRange === "Monthly" ? "week" : "month"}`}
+                </Text>
               </View>
-              <Text style={styles.summarySubtitle}>
-                {`Avg. per ${reportRange === "Weekly" ? "day" : reportRange === "Monthly" ? "week" : "month"}`}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Main chart */}
+            ))}
+          </View>
+        )}
+  
+        {/* Line Chart */}
         {chartType === "line" && data.lineData && (
           <LineChart
             data={data.lineData}
@@ -801,31 +956,19 @@ const exportReportAsExcel = async () => {
             onDataPointClick={showDataLabels ? handleDataPointClick : undefined}
           />
         )}
-
-        {chartType === "bar" && data.barData && (
-          <BarChart
-            data={data.barData}
-            width={adjustedWidth}
-            height={220}
-            yAxisLabel=""
-            yAxisSuffix={yLabel}
-            fromZero
-            chartConfig={{
-              ...chartConfig,
-              paddingLeft: 40,
-              barPercentage: 0.7,
-            }}
-            style={styles.chart}
-            withInnerLines={true}
-            showBarTops={true}
-            showValuesOnTopOfBars={showDataLabels}
+  
+        {/* Bar Chart */}
+        {chartType === "bar" && activeTab === 'Diaper' && data.series && (
+          <StackedBarChart 
+            series={data.series} 
+            categories={data.options?.xaxis?.categories || []} 
+            height={300}
           />
         )}
-        
+  
+        {/* Legend */}
         <View style={styles.legendContainer}>
           {getLegend(activeTab === 'Diaper' ? data.barData : data.lineData)}
-          
-          {/* Option to toggle data labels */}
           <TouchableOpacity 
             style={styles.dataLabelToggle}
             onPress={() => setShowDataLabels(!showDataLabels)}
@@ -835,11 +978,11 @@ const exportReportAsExcel = async () => {
             </Text>
           </TouchableOpacity>
         </View>
-
-        {/* Additional charts based on tab */}
+  
+        {/* Additional Charts */}
         {activeTab === 'Sleep' && data.timeDistribution && data.timeDistribution.length > 0 && (
           <View style={styles.additionalChartContainer}>
-            <Text style={styles.sectionTitle}>Common Sleep Times</Text>
+            <Text style={styles.sectionTitle}>Common Sleep and Nap Times</Text>
             <PieChart
               data={data.timeDistribution}
               width={adjustedWidth}
@@ -852,7 +995,7 @@ const exportReportAsExcel = async () => {
             />
           </View>
         )}
-
+  
         {activeTab === 'Feeding' && data.typeDistribution && data.typeDistribution.length > 0 && (
           <View style={styles.additionalChartContainer}>
             <Text style={styles.sectionTitle}>Feeding Type Distribution</Text>
@@ -1123,19 +1266,21 @@ const styles = StyleSheet.create({
   },
   backText: {
     color: '#1976d2',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '500',
+    marginLeft: 20,
   },
   logoContainer: {
     alignItems: 'center',
   },
   logo: {
-    width: 40,
-    height: 40,
+    width: 60,
+    height: 60,
     resizeMode: 'contain',
+    marginLeft: -30,
   },
   headerRightSpace: {
-    width: 80, // Balance the back button
+    width: 80, 
   },
   title: {
     fontSize: 24,

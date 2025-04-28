@@ -6,7 +6,6 @@ from datetime import datetime
 import sqlite3
 import time
 
-
 # Setup backup folder path
 backup_folder = "backups"
 if not os.path.exists(backup_folder):
@@ -30,7 +29,7 @@ db = firestore.client()
 
 def backup_data():
     try:
-        # Collections you want to back up
+        #  data to backup
         collections_to_backup = ["users", "children", "diaperLogs", "feedLogs", "sleepLogs"]
 
         backup = {"timestamp": datetime.utcnow().isoformat()}
@@ -41,20 +40,25 @@ def backup_data():
 
             collection_data = {}
             for doc in documents:
-                collection_data[doc.id] = doc.to_dict()
+                doc_data = doc.to_dict()
+
+                def convert_firestore_types(obj): # convert time to iso format
+                    if isinstance(obj, dict):
+                        return {k: convert_firestore_types(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [convert_firestore_types(v) for v in obj]
+                    elif isinstance(obj, datetime):
+                        return obj.isoformat()
+                    else:
+                        return obj
+
+                collection_data[doc.id] = convert_firestore_types(doc_data)
 
             backup[collection_name] = collection_data
 
         # Save backup to JSON
-        def convert_firestore_types(obj):
-            if isinstance(obj, datetime):
-                return obj.isoformat()
-            return obj
-
         with open(backup_json_path, "w") as json_file:
-            json.dump(backup, json_file, indent=4, default=convert_firestore_types)
-
-       
+            json.dump(backup, json_file, indent=4)
 
         # Save backup to SQLite database
         conn = sqlite3.connect(backup_db_path)
@@ -85,18 +89,15 @@ def backup_data():
     except Exception as e:
         print(f"[Backup] Error during backup: {e}")
 
-
-
 def start_automatic_backup():
     while True:
         print("[Backup Scheduler] Starting automatic backup...")
         backup_data()
         print("[Backup Scheduler] Backup complete. Next backup in 1 hour.")
-        # time.sleep(3600)  # Uncomment for 1-hour real backups
-        time.sleep(60)     # 1-minute backups for testing
+        time.sleep(3600)    # backup database every hour
+        #time.sleep(60)     # 1-minute backups for testing
 
-if __name__ == "__main__": # Run backup immediately (optional)
+if __name__ == "__main__":
     backup_data()
-
 
 

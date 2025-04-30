@@ -6,7 +6,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "start-dev": "node start-dev.js"
   },
   "dependencies": {
     "@react-native-community/datetimepicker": "8.2.0",
@@ -48,3 +49,4 @@
   },
   "private": true
 }
+

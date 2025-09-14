@@ -13,17 +13,19 @@
       "backgroundColor": "#E3F2FD"
     },
     "jsEngine": "hermes",
-    "experiments": {
-      "bridgeless": false
-    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.angelabrajano.BabyTracker",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#E3F2FD"
-      }
+      },
+      "package": "com.angelabrajano.BabyTracker"
     },
     "web": {
       "favicon": "./assets/logo.png"
@@ -39,10 +41,18 @@
             "useSQLCipher": false
           },
           "ios": {
-            "customBuildFlags": ["-DSQLITE_ENABLE_DBSTAT_VTAB=1 -DSQLITE_ENABLE_SNAPSHOT=1"]
+            "customBuildFlags": [
+              "-DSQLITE_ENABLE_DBSTAT_VTAB=1 -DSQLITE_ENABLE_SNAPSHOT=1"
+            ]
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "92496f8e-4f49-469b-8d11-b3849a528fdc"
+      }
+    },
+    "owner": "angelabrajano"
   }
 }

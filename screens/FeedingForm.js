@@ -11,7 +11,8 @@ import {
   ScrollView,
   Keyboard,
   KeyboardAvoidingView,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  Alert
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -62,34 +63,90 @@ const FeedingForm = ({ navigation }) => {
   const handleCompleteLog = async () => {
     const auth = getAuth();
     const user = auth.currentUser;
-
+  
     if (!user) {
       alert('User not logged in');
       return;
     }
-
+  
     if (!mealType || (!foodType && !customFoodType) || !amount || !amountUnit) {
       alert('Please fill in all required fields before saving the log');
       return;
     }
-
+  
     if (!childId) {
       alert('No child selected');
       return;
     }
-
+  
+    // Convert to number
+    const numericAmount = parseFloat(amount);
+  
+    // Example thresholds (adjust as needed)
+    const MAX_AMOUNT = 1000; // absolute max cap
+    const WARNING_AMOUNT = 500; // show disclaimer above this
+  
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      alert('Please enter a valid positive number for amount');
+      return;
+    }
+  
+    if (numericAmount > MAX_AMOUNT) {
+      alert(
+        `The entered amount (${numericAmount} ${amountUnit}) is too large to be valid. Please double-check.`
+      );
+      return;
+    }
+  
+    // If over warning threshold, show alert confirmation
+    if (numericAmount > WARNING_AMOUNT) {
+      Alert.alert(
+        "Large Amount Entered",
+        `You entered ${numericAmount} ${amountUnit}. Are you sure this amount is correct?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { 
+            text: "Yes, Save", 
+            onPress: async () => {
+              try {
+                const logData = {
+                  timestamp: selectedTime,
+                  feedType: foodType === 'Other' ? customFoodType : foodType,
+                  amount: numericAmount,
+                  amountUnit,
+                  mealType,
+                  notes,
+                  childId,
+                  createdAt: serverTimestamp(),
+                };
+  
+                await addDoc(collection(db, 'feedLogs'), logData);
+                alert('Feeding log saved successfully!');
+                navigation.goBack();
+              } catch (error) {
+                console.error('Error saving feeding log:', error);
+                alert('Failed to save feeding log. Please try again.');
+              }
+            }
+          }
+        ]
+      );
+      return; // stop here, saving continues only if user confirms
+    }
+  
+    // Normal save path
     try {
       const logData = {
         timestamp: selectedTime,
         feedType: foodType === 'Other' ? customFoodType : foodType,
-        amount,
+        amount: numericAmount,
         amountUnit,
         mealType,
         notes,
         childId,
         createdAt: serverTimestamp(),
       };
-
+  
       await addDoc(collection(db, 'feedLogs'), logData);
       alert('Feeding log saved successfully!');
       navigation.goBack();

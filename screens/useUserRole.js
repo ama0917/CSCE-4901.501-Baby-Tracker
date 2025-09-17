@@ -20,7 +20,7 @@ const useUserRole = () => {
         if (!userDoc.exists()) throw new Error('User document not found');
 
         const data = userDoc.data();
-        setRole(data.Role); // Ensure capitalization matches Firestore
+        setRole(data.UserType); // 'parent' | 'caregiver' from Firestore
       } catch (err) {
         console.error('Error fetching role:', err);
         setError(err.message);

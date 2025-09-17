@@ -33,6 +33,7 @@ import {
 } from 'lucide-react-native';
 import '../firebaseConfig';
 import LogoImage from '../assets/logo.png';
+import { signInOrThrowMfa, isTotpChallenge, resolveTotpSignIn } from '../auth/mfa';
 
 const { width, height } = Dimensions.get('window');
 
@@ -266,6 +267,9 @@ export default function LoginScreen() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFocused, setIsFocused] = useState({ email: false, password: false });
+  const [showMfa, setShowMfa] = useState(false);
+  const [mfaCode, setMfaCode] = useState('');
+  const mfaErrorRef = useRef(null); // store the challenge error
 
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -334,42 +338,39 @@ export default function LoginScreen() {
   };
 
   const handleLogin = async () => {
-    animateButton();
-    
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter both email and password');
-      return;
-    }
+  animateButton();
 
-    setIsLoading(true);
-    const auth = getAuth();
-    
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const isNewUser = await checkIfNewUser(userCredential.user);
-      
-      if (isNewUser) {
-        setShowWelcome(true);
-      } else {
-        navigation.navigate('Home');
-      }
-    } catch (error) {
-      console.error(error);
-      let errorMessage = 'Login failed. Please try again.';
-      
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = 'No account found with this email.';
-      } else if (error.code === 'auth/wrong-password') {
-        errorMessage = 'Incorrect password.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Invalid email address.';
-      }
-      
-      Alert.alert('Login Failed', errorMessage);
-    } finally {
-      setIsLoading(false);
+  if (!email.trim() || !password.trim()) {
+    Alert.alert('Error', 'Please enter both email and password');
+    return;
+  }
+
+  setIsLoading(true);
+  try {
+    const user = await signInOrThrowMfa(email, password);
+    const isNewUser = await checkIfNewUser(user);
+    if (isNewUser) {
+      setShowWelcome(true);
+    } else {
+      navigation.navigate('Home');
     }
-  };
+  } catch (error) {
+    if (isTotpChallenge(error)) {
+      // Show MFA code input
+      mfaErrorRef.current = error;
+      setShowMfa(true);
+    } else {
+      let errorMessage = 'Login failed. Please try again.';
+      if (error.code === 'auth/user-not-found') errorMessage = 'No account found with this email.';
+      else if (error.code === 'auth/wrong-password') errorMessage = 'Incorrect password.';
+      else if (error.code === 'auth/invalid-email') errorMessage = 'Invalid email address.';
+      Alert.alert('Login Failed', errorMessage);
+    }
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   const handleWelcomeComplete = () => {
     setShowWelcome(false);
@@ -502,6 +503,53 @@ export default function LoginScreen() {
                     </LinearGradient>
                   </TouchableOpacity>
                 </Animated.View>
+                {/* MFA Code Input */}
+                {showMfa && (
+                  <View style={{ marginTop: 16 }}>
+                    <Text style={{ color: '#2E3A59', fontWeight: '600', marginBottom: 8 }}>
+                      Enter authenticator code
+                    </Text>
+                    <View style={[styles.inputContainer, styles.inputContainerFocused]}>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="6-digit code"
+                        placeholderTextColor="#B0BEC5"
+                        keyboardType="number-pad"
+                        maxLength={6}
+                        value={mfaCode}
+                        onChangeText={setMfaCode}
+                        autoFocus
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+                      onPress={async () => {
+                        try {
+                          if (!mfaCode || mfaCode.length !== 6) {
+                            Alert.alert('MFA', 'Enter the 6-digit code');
+                            return;
+                          }
+                          setIsLoading(true);
+                          const user = await resolveTotpSignIn(mfaErrorRef.current, mfaCode);
+                          setShowMfa(false);
+                          setMfaCode('');
+                          const isNewUser = await checkIfNewUser(user);
+                          if (isNewUser) setShowWelcome(true);
+                          else navigation.navigate('Home');
+                        } catch (e) {
+                          Alert.alert('MFA Error', e.message);
+                        } finally {
+                          setIsLoading(false);
+                        }
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <LinearGradient colors={['#81D4FA', '#81D4FA']} style={styles.loginGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                        <Text style={styles.loginText}>Verify Code</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 {/* Sign Up Link */}
                 <TouchableOpacity 

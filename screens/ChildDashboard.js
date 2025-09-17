@@ -4,6 +4,7 @@ import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/nativ
 import { LinearGradient} from 'expo-linear-gradient';
 import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { app } from '../firebaseConfig';
+import useUserRole from './useUserRole';
 
 const db = getFirestore(app);
 
@@ -12,6 +13,15 @@ export default function ChildDashboard() {
   const route = useRoute();
   const { name, childId, image } = route.params || {};
 
+  const { role } = useUserRole();
+  const isCaregiver = role === 'caregiver';
+
+  const getTodayBounds = () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return { start, end };
+  };
 
   const [activities, setActivities] = useState([]);
   const [history, setHistory] = useState([]);
@@ -42,6 +52,8 @@ export default function ChildDashboard() {
     try {
       console.log("Fetching data for child ID:", childId);
 
+      const { start, end } = getTodayBounds();
+
       const fetchedActivities = [
         { type: 'Feeding', time: '3:00 PM' },
         { type: 'Diaper Change', time: '2:30 PM' },
@@ -59,6 +71,7 @@ export default function ChildDashboard() {
       const diaperLogsQuery = query(
         collection(db, 'diaperLogs'),
         where('childId', '==', childId),
+        ...(isCaregiver ? [where('timestamp', '>=', start), where('timestamp', '<=', end)] : []),
         orderBy('timestamp', 'desc'),
         limit(5)
       );
@@ -75,6 +88,7 @@ export default function ChildDashboard() {
       const feedingLogsQuery = query(
         collection(db, 'feedLogs'),
         where('childId', '==', childId),
+        ...(isCaregiver ? [where('timestamp', '>=', start), where('timestamp', '<=', end)] : []),
         orderBy('timestamp', 'desc'),
         limit(5)
       );
@@ -91,6 +105,7 @@ export default function ChildDashboard() {
       const sleepLogsQuery = query(
         collection(db, 'sleepLogs'),
         where('childId', '==', childId),
+        ...(isCaregiver ? [where('timestamp', '>=', start), where('timestamp', '<=', end)] : []),
         orderBy('timestamp', 'desc'),
         limit(5)
       );
@@ -156,10 +171,14 @@ export default function ChildDashboard() {
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity 
-        style={styles.reportsButton} onPress={() => navigation.navigate('ReportsScreen', { childId, name })}>
+      {!isCaregiver && (
+        <TouchableOpacity
+          style={styles.reportsButton}
+          onPress={() => navigation.navigate('ReportsScreen', { childId, name })}
+    >
         <Text style={styles.reportsText}>View Reports</Text>
-      </TouchableOpacity>
+        </TouchableOpacity>
+   )}
 
 
       <Text style={styles.sectionTitle}>History</Text>

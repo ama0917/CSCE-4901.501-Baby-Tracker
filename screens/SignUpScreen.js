@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Text, 
   TextInput, 
@@ -22,6 +22,8 @@ import { Eye, EyeOff, Mail, Lock } from 'lucide-react-native';
 import { StatusBar } from 'react-native';
 import { Sparkles } from 'lucide-react-native';
 import LogoImage from '../assets/logo.png';
+import { startTotpEnrollment, finishTotpEnrollment } from '../auth/mfa';
+import QRCode from 'react-native-qrcode-svg';
 
 export default function SignUpScreen() {
   const navigation = useNavigation();
@@ -30,30 +32,50 @@ export default function SignUpScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isFocused, setIsFocused] = useState({ email: false, password: false, confirm: false });
+  const [mfaUri, setMfaUri] = useState(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [enrollingMfa, setEnrollingMfa] = useState(false);
 
   const handleSignUp = async () => {
-    if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match!');
-      return;
-    }
+  if (password !== confirmPassword) {
+    Alert.alert('Error', 'Passwords do not match!');
+    return;
+  }
 
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+
+    // Your existing profile doc (kept as-is)
+    await setDoc(doc(db, 'Users', user.uid), {
+      Email: email,
+      Password: '',
+      MFAEnabled: true,
+      UserType: 'parent',
+      Name: '',
+    });
+
+    // Start TOTP enrollment
+    // ---- TOTP enrollment start (wrap in its own try/catch) ----
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      await setDoc(doc(db, 'Users', user.uid), {
-        Email: email,
-        Password: '',
-        MFAEnabled: false,
-        UserType: 'parent',
-        Name: '',
-      });
-
+      setEnrollingMfa(true);
+      const { otpauthUrl } = await startTotpEnrollment(user, { accountName: email, issuer: 'BabyTracker' });
+      setMfaUri(otpauthUrl);
+    } catch (e) {
+      // Backend TOTP not enabled yet -> let user proceed without MFA for now
+      setEnrollingMfa(false);
+      Alert.alert(
+        'MFA not enabled yet',
+        'We’ll enable TOTP for the project soon. You can log in without MFA for now.'
+      );
       navigation.navigate('Login');
-    } catch (error) {
-      Alert.alert('Sign Up Error', error.message);
     }
-  };
+    // ----------------------------------------------------------
+
+} catch (error) {
+  Alert.alert('Sign Up Error', error.message);
+}
+};
 
   return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC', '#F3E5F5']} style={styles.container}>
@@ -143,17 +165,85 @@ export default function SignUpScreen() {
               </View>
 
               {/* Sign Up Button */}
-              <TouchableOpacity style={styles.signupButton} onPress={handleSignUp} activeOpacity={0.85}>
+              {!enrollingMfa && (
+                <TouchableOpacity
+                  style={styles.signupButton}
+                  onPress={handleSignUp}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient
+                    colors={['#81D4FA', '#81D4FA']}
+                    style={styles.signupGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    <Text style={styles.signupButtonText}>Sign Up</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+
+              {/* TOTP MFA enrollment (shown after account creation) */}
+              {enrollingMfa && (
+              <View style={{ marginTop: 24, width: '100%' }}>
+                <Text style={{ fontSize: 16, fontWeight: '600', color: '#2E3A59', marginBottom: 8 }}>
+                   Set up Authenticator (TOTP)
+                </Text>
+                <Text style={{ color: '#7C8B9A', marginBottom: 8 }}>
+                  Copy this into your authenticator app (Google Authenticator, Authy), or scan as a QR:
+                </Text>
+                {/* MFA QR Code */}
+                {mfaUri ? (
+                  <View style={{ marginBottom: 12, alignItems: 'center' }}>
+                    <QRCode value={mfaUri} size={180} />
+                  </View>
+                ) : null}
+                <Text selectable style={{ color: '#2E3A59', fontSize: 12, marginBottom: 12 }}>
+                  {mfaUri}
+                </Text>
+
+              <View style={[styles.inputContainer, styles.inputContainerFocused]}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter 6-digit code"
+                  placeholderTextColor="#B0BEC5"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={mfaCode}
+                  onChangeText={setMfaCode}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.signupButton}
+                onPress={async () => {
+                try {
+                  if (!mfaCode || mfaCode.length !== 6) {
+                     Alert.alert('MFA', 'Enter the 6-digit code from your authenticator app');
+                    return;
+                  }
+                  await finishTotpEnrollment(auth.currentUser, mfaCode);
+                  Alert.alert('Success', 'Two-factor authentication enabled.');
+                  setEnrollingMfa(false);
+                  setMfaUri(null);
+                  setMfaCode('');
+                  navigation.navigate('Login');
+                } catch (e) {
+                  Alert.alert('MFA Error', e.message);
+                }
+                }}
+                activeOpacity={0.85}
+                >
                 <LinearGradient
                   colors={['#81D4FA', '#81D4FA']}
                   style={styles.signupGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                 >
-                  <Text style={styles.signupButtonText}>Sign Up</Text>
+                  <Text style={styles.signupButtonText}>Verify & Enable MFA</Text>
                 </LinearGradient>
               </TouchableOpacity>
-
+            </View>
+          )}  
               {/* Go to Login */}
               <TouchableOpacity onPress={() => navigation.navigate('Login')} style={{ marginTop: 20 }}>
                 <Text style={styles.loginText}>

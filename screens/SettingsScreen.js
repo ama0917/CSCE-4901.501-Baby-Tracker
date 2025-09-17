@@ -1,7 +1,13 @@
-import React, { useState} from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Switch, TextInput, StyleSheet, ScrollView, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient} from 'expo-linear-gradient';
+import { getAuth } from 'firebase/auth';
+import { getFirestore, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { app } from '../firebaseConfig';
+
+const auth = getAuth();
+const db = getFirestore(app);
 
 
 export default function SettingsScreen() {
@@ -9,6 +15,19 @@ export default function SettingsScreen() {
   const [darkMode, setDarkMode] = useState(false);
   const [mfa, setMfa] = useState(false);
   const [notifications, setNotifications] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const u = auth.currentUser;
+      if (!u) return;
+      const snap = await getDoc(doc(db, 'Users', u.uid));
+      if (snap.exists()) {
+        const data = snap.data();
+        setMfa(Boolean(data.MFAEnabled));   // reflect server
+        setDarkMode(Boolean(data.DarkMode)); // optional future
+      }
+    })();
+  }, []);
 
   return (
      <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
@@ -33,7 +52,14 @@ export default function SettingsScreen() {
 
       <View style={styles.settingItem}>
         <Text style={styles.settingText}>Multi-Factor Authentication 🔐</Text>
-        <Switch value={mfa} onValueChange={setMfa} />
+        <Switch 
+          value={mfa} onValueChange={async (val) => {
+            setMfa(val);
+            const u = auth.currentUser;
+            if (!u) return;
+            await updateDoc(doc(db, 'Users', u.uid), { MFAEnabled: val });
+          }}
+        />
       </View>
 
       <View style={styles.settingItem}>

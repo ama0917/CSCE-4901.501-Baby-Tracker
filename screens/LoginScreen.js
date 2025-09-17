@@ -317,7 +317,7 @@ export default function LoginScreen() {
   const checkIfNewUser = async (user) => {
     try {
       const db = getFirestore();
-      const userDocRef = doc(db, 'users', user.uid);
+      const userDocRef = doc(db, 'Users', user.uid);
       const userDoc = await getDoc(userDocRef);
       
       if (!userDoc.exists()) {

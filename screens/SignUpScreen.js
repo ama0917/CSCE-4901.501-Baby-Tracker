@@ -32,15 +32,20 @@ export default function SignUpScreen() {
   const [isFocused, setIsFocused] = useState({ email: false, password: false, confirm: false });
 
   const handleSignUp = async () => {
+    if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
+      Alert.alert('Input Required', 'Please fill in all fields.');
+      return;
+    }
+  
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match!');
       return;
     }
-
+  
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
+  
       await setDoc(doc(db, 'Users', user.uid), {
         Email: email,
         Password: '',
@@ -48,13 +53,13 @@ export default function SignUpScreen() {
         UserType: 'parent',
         Name: '',
       });
-
+  
       navigation.navigate('Login');
     } catch (error) {
       Alert.alert('Sign Up Error', error.message);
     }
   };
-
+    
   return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC', '#F3E5F5']} style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />

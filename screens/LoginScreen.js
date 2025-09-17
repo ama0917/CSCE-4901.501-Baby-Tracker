@@ -267,14 +267,12 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isFocused, setIsFocused] = useState({ email: false, password: false });
 
-  // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const logoScale = useRef(new Animated.Value(0.8)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Animate login screen entrance
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -522,7 +520,6 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  // Welcome Screen Styles
   welcomeContainer: {
     flex: 1,
     backgroundColor: '#FFFFFF',
@@ -634,8 +631,6 @@ const styles = StyleSheet.create({
     color: 'white',
     marginRight: 8,
   },
-
-  // Login Screen Styles
   container: {
     flex: 1,
   },

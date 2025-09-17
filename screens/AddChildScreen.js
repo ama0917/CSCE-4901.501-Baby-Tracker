@@ -15,6 +15,7 @@ import { KeyboardAvoidingView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import { InputAccessoryView } from 'react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -48,7 +49,7 @@ const AddChildScreen = () => {
   const sexOptions = [
     { label: 'Male', icon: 'gender-male', color: '#A5D8FF' },
     { label: 'Female', icon: 'gender-female', color: '#FFCCD5' },
-    { label: 'Other', icon: 'account-question', color: '#D7BCE8' },
+    { label: 'Other', icon: 'account', color: '#D7BCE8' },
   ];
 
   const updateFormData = useCallback((field, value) => {
@@ -277,9 +278,9 @@ const AddChildScreen = () => {
     <>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <LinearGradient 
-        colors={['#AEC6CF', '#F4C2C2']} 
-        start={{ x: 0, y: 0 }} 
-        end={{ x: 1, y: 1 }}
+        colors={['#B2EBF2', '#FCE4EC', '#F3E5F5']} 
+        start={{ x: 0, y: 0.5 }} 
+        end={{ x: 1, y: 0.5 }}
         style={styles.gradient}
       >
         <KeyboardAvoidingView 
@@ -364,8 +365,10 @@ const AddChildScreen = () => {
                         key={option.label}
                         style={[
                           styles.sexOption,
-                          formData.sex === option.label && styles.sexOptionSelected,
-                          { borderColor: option.color }
+                          formData.sex === option.label && {
+                            backgroundColor: option.color,
+                            borderColor: option.color,
+                          }
                         ]}
                         onPress={() => updateFormData('sex', option.label)}
                         activeOpacity={0.7}
@@ -373,12 +376,14 @@ const AddChildScreen = () => {
                         <MaterialCommunityIcons
                           name={option.icon}
                           size={24}
-                          color={formData.sex === option.label ? option.color : '#999'}
+                          color={formData.sex === option.label ? '#fff' : '#999'}
                         />
-                        <Text style={[
-                          styles.sexLabel,
-                          formData.sex === option.label && { color: option.color, fontWeight: '600' }
-                        ]}>
+                        <Text
+                          style={[
+                            styles.sexLabel,
+                            formData.sex === option.label && { color: '#fff', fontWeight: '600' }
+                          ]}
+                        >
                           {option.label}
                         </Text>
                       </TouchableOpacity>
@@ -413,7 +418,6 @@ const AddChildScreen = () => {
                     mode="date"
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                     onChange={handleDateChange}
-                    // Remove maximumDate prop here!
                   />
                   {Platform.OS === 'ios' && (
                     <TouchableOpacity
@@ -430,71 +434,78 @@ const AddChildScreen = () => {
               {/* Physical Information */}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Physical Information</Text>
-                
-                {/* Weight */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Weight</Text>
-                  <View style={styles.measurementRow}>
-                    <TextInput
-                      style={[styles.input, styles.measurementInput]}
-                      placeholder="0"
-                      keyboardType="decimal-pad"
-                      value={formData.weight}
-                      onChangeText={(value) => updateFormData('weight', value)}
-                      onSubmitEditing={Keyboard.dismiss}
-                    />
-                    <View style={styles.unitSelector}>
-                      {['lbs', 'kg'].map((unit) => (
-                        <TouchableOpacity
-                          key={unit}
-                          style={[
-                            styles.unitButton,
-                            formData.weightUnit === unit && styles.unitButtonSelected
-                          ]}
-                          onPress={() => handleWeightUnitChange(unit)}
-                        >
-                          <Text style={[
-                            styles.unitText,
-                            formData.weightUnit === unit && styles.unitTextSelected
-                          ]}>
-                            {unit}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+
+              {/* Row for Weight + Height */}
+                <View style={styles.measurementRow}>
+                  {/* Weight */}
+                  <View style={[styles.inputGroup, styles.halfInput]}>
+                    <Text style={styles.inputLabel}>Weight</Text>
+                    <View style={styles.measurementRow}>
+                      <TextInput
+                        style={[styles.input, styles.measurementInput]}
+                        placeholder="0"
+                        keyboardType="decimal-pad"
+                        value={formData.weight}
+                        onChangeText={(value) => updateFormData('weight', value)}
+                        inputAccessoryViewID="doneBar"
+                      />
+                      <View style={styles.unitSelector}>
+                        {['lbs', 'kg'].map((unit) => (
+                          <TouchableOpacity
+                            key={unit}
+                            style={[
+                              styles.unitButton,
+                              formData.weightUnit === unit && styles.unitButtonSelected,
+                            ]}
+                            onPress={() => handleWeightUnitChange(unit)}
+                          >
+                            <Text
+                              style={[
+                                styles.unitText,
+                                formData.weightUnit === unit && styles.unitTextSelected,
+                              ]}
+                            >
+                              {unit}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
                   </View>
-                </View>
 
-                {/* Height */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Height</Text>
-                  <View style={styles.measurementRow}>
-                    <TextInput
-                      style={[styles.input, styles.measurementInput]}
-                      placeholder="0"
-                      keyboardType="decimal-pad"
-                      value={formData.height}
-                      onChangeText={(value) => updateFormData('height', value)}
-                      onSubmitEditing={Keyboard.dismiss}
-                    />
-                    <View style={styles.unitSelector}>
-                      {['in', 'cm'].map((unit) => (
-                        <TouchableOpacity
-                          key={unit}
-                          style={[
-                            styles.unitButton,
-                            formData.heightUnit === unit && styles.unitButtonSelected
-                          ]}
-                          onPress={() => handleHeightUnitChange(unit)}
-                        >
-                          <Text style={[
-                            styles.unitText,
-                            formData.heightUnit === unit && styles.unitTextSelected
-                          ]}>
-                            {unit}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+                  {/* Height */}
+                  <View style={[styles.inputGroup, styles.halfInput]}>
+                    <Text style={styles.inputLabel}>Height</Text>
+                    <View style={styles.measurementRow}>
+                      <TextInput
+                        style={[styles.input, styles.measurementInput]}
+                        placeholder="0"
+                        keyboardType="decimal-pad"
+                        value={formData.height}
+                        onChangeText={(value) => updateFormData('height', value)}
+                        inputAccessoryViewID="heightDoneBar"
+                      />
+                      <View style={styles.unitSelector}>
+                        {['in', 'cm'].map((unit) => (
+                          <TouchableOpacity
+                            key={unit}
+                            style={[
+                              styles.unitButton,
+                              formData.heightUnit === unit && styles.unitButtonSelected,
+                            ]}
+                            onPress={() => handleHeightUnitChange(unit)}
+                          >
+                            <Text
+                              style={[
+                                styles.unitText,
+                                formData.heightUnit === unit && styles.unitTextSelected,
+                              ]}
+                            >
+                              {unit}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
                   </View>
                 </View>
@@ -524,7 +535,7 @@ const AddChildScreen = () => {
                 activeOpacity={0.8}
               >
                 <LinearGradient
-                  colors={isLoading ? ['#ccc', '#999'] : ['#AEC6CF', '#F4C2C2']}
+                  colors={isLoading ? ['#667eea', '#667eea'] : ['#667eea', '#667eea']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.saveButtonGradient}
@@ -543,6 +554,22 @@ const AddChildScreen = () => {
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
+      {Platform.OS === 'ios' && (
+        <InputAccessoryView nativeID="doneBar">
+          <View style={styles.accessory}>
+            <TouchableOpacity onPress={Keyboard.dismiss} style={styles.accessoryButton}>
+              <Text style={styles.accessoryButtonText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </InputAccessoryView>
+      )}
+         <InputAccessoryView nativeID="heightDoneBar">
+          <View style={styles.accessory}>
+            <TouchableOpacity onPress={Keyboard.dismiss} style={styles.accessoryButton}>
+              <Text style={styles.accessoryButtonText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </InputAccessoryView>
     </>
   );
 };
@@ -577,7 +604,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#fff',
+    color: '#444',
     textAlign: 'center',
   },
   contentCard: {
@@ -734,21 +761,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  measurementInput: {
-    flex: 1,
-    marginRight: 12,
-  },
-  unitSelector: {
-    flexDirection: 'row',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    overflow: 'hidden',
-  },
+measurementInput: {
+  flex: 2,
+  marginRight: 6,
+},
+unitSelector: {
+  flex: 1.2,
+  flexDirection: 'row',
+  backgroundColor: '#f8f9fa',
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: '#e9ecef',
+  overflow: 'hidden',
+},
   unitButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
   },
   unitButtonSelected: {
     backgroundColor: '#667eea',
@@ -799,6 +828,40 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 8,
   },
+  halfInput: {
+    flex: 1,
+    marginRight: 10,
+  },
+  doneButton: {
+    marginTop: 10,
+    alignSelf: 'flex-end',
+    backgroundColor: '#667eea',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  doneButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  accessory: {
+    backgroundColor: '#f8f9fa',
+    padding: 8,
+    borderTopWidth: 1,
+    borderColor: '#e9ecef',
+    alignItems: 'flex-end',
+  },
+  accessoryButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    backgroundColor: '#667eea',
+    borderRadius: 8,
+  },
+  accessoryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },  
 });
 
 export default AddChildScreen;

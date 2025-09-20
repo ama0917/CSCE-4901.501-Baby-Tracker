@@ -5,6 +5,7 @@ import { LinearGradient} from 'expo-linear-gradient';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { app } from '../firebaseConfig';
+import useUserRole from './useUserRole';
 
 const auth = getAuth();
 const db = getFirestore(app);
@@ -15,6 +16,7 @@ export default function SettingsScreen() {
   const [darkMode, setDarkMode] = useState(false);
   const [mfa, setMfa] = useState(false);
   const [notifications, setNotifications] = useState(true);
+  const { role } = useUserRole();
 
   useEffect(() => {
     (async () => {
@@ -70,6 +72,21 @@ export default function SettingsScreen() {
       <TouchableOpacity style={styles.remindersButton}>
         <Text style={styles.remindersText}>Set Reminders</Text>
       </TouchableOpacity>
+
+      {role !== 'parent' && (
+        <TouchableOpacity style={styles.inviteButton} onPress={() => navigation.navigate('AcceptInvite')}>
+          <Text style={styles.inviteText}>Enter caregiver invite code</Text>
+        </TouchableOpacity>
+      )}
+
+      {role === 'parent' && (
+        <TouchableOpacity
+          style={styles.inviteCaregiverButton}
+          onPress={() => navigation.navigate('ManageCaregivers')}
+        >
+          <Text style={styles.inviteText}>Manage Caregivers</Text>
+        </TouchableOpacity>
+      )}
 
       <View style={styles.passwordSection}>
         <Text style={styles.sectionTitle}>Change Password 🔑</Text>
@@ -196,4 +213,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
   },
+  inviteButton: {
+  backgroundColor: '#81D4FA',
+  paddingVertical: 12,
+  paddingHorizontal: 20,
+  borderRadius: 20,
+  marginVertical: 10,
+  alignItems: 'center',
+  width: '100%',
+  },
+  inviteText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  inviteCaregiverButton: {
+  backgroundColor: '#81D4FA',
+  paddingVertical: 12,
+  paddingHorizontal: 20,
+  borderRadius: 20,
+  marginVertical: 10,
+  alignItems: 'center',
+  width: '100%',
+},
+inviteText: {
+  fontSize: 16,
+  fontWeight: '600',
+  color: '#fff',
+},
+
 });

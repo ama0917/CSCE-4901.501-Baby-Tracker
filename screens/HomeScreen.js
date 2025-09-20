@@ -5,6 +5,8 @@ import { LinearGradient} from 'expo-linear-gradient';
 import { getFirestore, collection, getDocs, query, onSnapshot, where, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { app } from '../firebaseConfig';
+import useUserRole from './useUserRole';
+
 
 const HomeScreen = () => {
   const navigation = useNavigation();
@@ -12,28 +14,48 @@ const HomeScreen = () => {
   const [showEditButtons, setShowEditButtons] =useState(false);
   const db = getFirestore(app);
   const auth = getAuth();
+  const { role } = useUserRole(); // 'parent' | 'caregiver' | undefined
+
 
   useEffect(() => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-  
-    const q = query(
-      collection(db, 'children'),
-      where('userId', '==', currentUser.uid)
-    );
+  const currentUser = auth.currentUser;
+  if (!currentUser) return;
+  const uid = currentUser?.uid;
+  if (!uid) return;
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const updatedProfiles = snapshot.docs.map(doc => ({
+  // Parent sees children they own; Caregiver sees children assigned to them
+  const base = collection(db, 'children');
+  if (!role) return; // if hook can be undefined briefly
+  const qRoles =
+    role === 'parent'
+     ? query(base, where('userId', '==', uid))
+     : query(base, where('caregivers', 'array-contains', uid));
+
+  const unsubscribe = onSnapshot(
+    qRoles,
+    (snapshot) => {
+      const updatedProfiles = snapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
       }));
-      setProfiles(updatedProfiles);
-    }, (error) => {
+      if (role === 'parent') {
+        setProfiles(updatedProfiles);
+      } else {
+        const uid = auth.currentUser?.uid;
+        const visible = updatedProfiles.filter(
+          c => (c.caregiverPerms?.[uid] === 'on') || (c.caregiverPerms?.[uid] === 'log') // compat
+        );
+        setProfiles(visible);
+      }
+    },
+    (error) => {
       console.error('Realtime profile listener error:', error);
-    });
-  
-    return () => unsubscribe(); 
-  }, []);
+    }
+  );
+
+  return () => unsubscribe();
+}, [role]);
+
 
   const toggleEditButtons =() => setShowEditButtons(prev => !prev);
     return (
@@ -48,7 +70,18 @@ const HomeScreen = () => {
         </View>
 
         <Text style={styles.title}>Welcome to Baby Tracker</Text>
-        <Text style={styles.subtitle}>Select a profile</Text>
+
+        <Text style={styles.subtitle}>
+          {role !== 'parent' ? 'Select an assigned child' : 'Select a profile'}
+        </Text>
+        {role !== 'parent' && profiles.length === 0 && (
+          <TouchableOpacity
+            style={{ marginTop: 14, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: '#CFD8DC' }}
+            onPress={() => navigation.navigate('AcceptInvite')}
+          >
+            <Text style={{ color: '#2E3A59', fontWeight: '700' }}>Enter caregiver invite code</Text>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.profileList}>
           {profiles.map((profile) => {
@@ -76,13 +109,17 @@ const HomeScreen = () => {
           })}
         </View>
 
-        <TouchableOpacity style={styles.editButton} onPress={toggleEditButtons}>
-          <Text style={styles.buttonText}>✏️ Edit Profiles</Text>
-        </TouchableOpacity>
+        {role === 'parent' && (
+          <>
+            <TouchableOpacity style={styles.editButton} onPress={toggleEditButtons}>
+              <Text style={styles.buttonText}>✏️ Edit Profiles</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate('AddChild')}>
-          <Text style={styles.buttonText}>➕ Add Child</Text>
-        </TouchableOpacity>
+            <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate('AddChild')}>
+              <Text style={styles.buttonText}>➕ Add Child</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </ScrollView>
     </LinearGradient>

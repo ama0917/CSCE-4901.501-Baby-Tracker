@@ -8,7 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getFirestore, collection, addDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { app } from '../firebaseConfig';
 import { getAuth } from 'firebase/auth';
 import { KeyboardAvoidingView } from 'react-native';
@@ -189,6 +189,16 @@ const AddChildScreen = () => {
       };
 
       const docRef = await addDoc(collection(db, 'children'), newProfile);
+      // Ensure role recorded for this user
+      try {
+        const userRef = doc(db, 'Users', currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
+          await setDoc(userRef, { UserType: 'parent' }, { merge: true });
+        } else if (!userSnap.data()?.UserType) {
+          await updateDoc(userRef, { UserType: 'parent' });
+        }
+      } catch (_) {}
       
       if (Platform.OS === 'ios') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

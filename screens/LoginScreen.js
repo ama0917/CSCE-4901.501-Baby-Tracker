@@ -374,7 +374,7 @@ export default function LoginScreen() {
 
   const handleWelcomeComplete = () => {
     setShowWelcome(false);
-    navigation.navigate('Home');
+    navigation.navigate('Home'); //REVERT BACK TO HOME JUST NEED TO TEST
   };
 
   if (showWelcome) {

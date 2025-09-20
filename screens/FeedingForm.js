@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+
 import {
   View,
   Text,
@@ -22,10 +23,28 @@ import { db } from '../firebaseConfig';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { LinearGradient} from 'expo-linear-gradient';
+import useUserRole from './useUserRole';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 const FeedingForm = ({ navigation }) => {
   const route = useRoute();
   const { childId, name } = route.params || {};
+  const { role } = useUserRole();                    // 'parent' | 'caregiver' | 'unassigned'
+  const auth = getAuth();
+  const uid = auth.currentUser?.uid;
+  const [canLog, setCanLog] = useState(role === 'parent');
+
+  useEffect(() => {
+   if (role === 'parent') { setCanLog(true); return; }
+   if (!childId || !uid) { setCanLog(false); return; }
+   const ref = doc(db, 'children', childId);
+   const unsub = onSnapshot(ref, (snap) => {
+     const data = snap.data() || {};
+     const v = (data.caregiverPerms || {})[uid];
+     setCanLog(data.userId === uid || v === 'on' || v === 'log');
+   });
+   return () => unsub();
+  }, [role, childId, uid]);
 
   const [selectedTime, setSelectedTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -61,6 +80,7 @@ const FeedingForm = ({ navigation }) => {
   };
 
   const handleCompleteLog = async () => {
+    if (!canLog) { Alert.alert('Access is off', 'Parent has turned off access for this child.'); return; }
     const auth = getAuth();
     const user = auth.currentUser;
   
@@ -155,6 +175,24 @@ const FeedingForm = ({ navigation }) => {
       alert('Failed to save feeding log. Please try again.');
     }
   };
+
+  if (!canLog) {
+  return (
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={{ flex: 1, justifyContent: 'center' }}>
+      <View style={{ margin: 20, backgroundColor: '#fff', borderRadius: 12, padding: 16 }}>
+        <Text style={{ color: '#2E3A59', marginBottom: 12 }}>
+          View-only access. Ask the parent for logging permission.
+        </Text>
+        <TouchableOpacity
+          onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}
+          style={{ padding: 12, backgroundColor: '#CFD8DC', borderRadius: 10, alignItems: 'center' }}
+        >
+          <Text style={{ color: '#2E3A59', fontWeight: '700' }}>Back</Text>
+        </TouchableOpacity>
+      </View>
+    </LinearGradient>
+  );
+}
 
   return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>

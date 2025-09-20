@@ -9,6 +9,14 @@ import { addDoc, collection, Timestamp } from 'firebase/firestore';
 import useUserRole from './useUserRole';
 import { doc, onSnapshot } from 'firebase/firestore';
 
+const getTodayStr = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`; // e.g., "2025-09-20"
+};
+
 
 const DiaperChangeForm = ({ navigation, route }) => {
   const { childId } = route.params || {};
@@ -86,6 +94,7 @@ const DiaperChangeForm = ({ navigation, route }) => {
         time: Timestamp.fromDate(selectedTime),
         timestamp: Timestamp.now(),
         createdBy: user.uid,
+        logDate: getTodayStr(),
       };
       
 

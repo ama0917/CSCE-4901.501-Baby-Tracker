@@ -10,6 +10,15 @@ import { getAuth } from 'firebase/auth';
 
 const db = getFirestore(app);
 
+const getTodayStr = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`; // e.g., "2025-09-20"
+};
+
+
 export default function ChildDashboard() {
   const navigation = useNavigation();
   const route = useRoute();
@@ -66,7 +75,7 @@ export default function ChildDashboard() {
               if (doc) {
                 const data = doc.data() || {};
                 const perms = (data.caregiverPerms || {})[/* current user */ (await import('firebase/auth')).getAuth().currentUser?.uid];
-                setCanLog(perms === 'log'); // caregivers can log only if explicitly 'log'
+                setCanLog(perms === 'on' || perms === 'log');
               }
             } catch (e) {
               console.log('perm check error', e);
@@ -112,7 +121,7 @@ export default function ChildDashboard() {
       const diaperLogsQuery = query(
         collection(db, 'diaperLogs'),
         where('childId', '==', childId),
-        ...(isCaregiver ? [where('timestamp', '>=', start), where('timestamp', '<=', end)] : []),
+        ...(isCaregiver ? [where('logDate', '==', getTodayStr())] : []),
         orderBy('timestamp', 'desc'),
         limit(5)
       );
@@ -129,7 +138,7 @@ export default function ChildDashboard() {
       const feedingLogsQuery = query(
         collection(db, 'feedLogs'),
         where('childId', '==', childId),
-        ...(isCaregiver ? [where('timestamp', '>=', start), where('timestamp', '<=', end)] : []),
+        ...(isCaregiver ? [where('logDate', '==', getTodayStr())] : []),
         orderBy('timestamp', 'desc'),
         limit(5)
       );
@@ -146,7 +155,7 @@ export default function ChildDashboard() {
       const sleepLogsQuery = query(
         collection(db, 'sleepLogs'),
         where('childId', '==', childId),
-        ...(isCaregiver ? [where('timestamp', '>=', start), where('timestamp', '<=', end)] : []),
+        ...(isCaregiver ? [where('logDate', '==', getTodayStr())] : []),
         orderBy('timestamp', 'desc'),
         limit(5)
       );

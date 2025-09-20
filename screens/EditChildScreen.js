@@ -4,11 +4,12 @@ import {
   ActivityIndicator, Alert, ScrollView, Platform, Keyboard 
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { getFirestore, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, updateDoc, deleteDoc, arrayRemove, deleteField, onSnapshot } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import { app } from '../firebaseConfig';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { getAuth } from 'firebase/auth';
 
 const AGE_WARNING_YEARS = 18;
 const WEIGHT_WARNING_LBS = 200;
@@ -18,6 +19,10 @@ const EditChildScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const { childId } = route.params || {};
+  const auth = getAuth();
+  const [cgList, setCgList] = useState([]);        // caregivers []
+  const [cgPerms, setCgPerms] = useState({});      // caregiverPerms map
+
 
   const db = getFirestore(app);
 
@@ -41,6 +46,18 @@ const EditChildScreen = () => {
       loadChildData();
     }
   }, []);
+
+  useEffect(() => {
+  if (!childId) return;
+  const ref = doc(db, 'children', childId);
+  const unsub = onSnapshot(ref, (snap) => {
+    const data = snap.data() || {};
+    setCgList(Array.isArray(data.caregivers) ? data.caregivers : []);
+    setCgPerms(data.caregiverPerms || {});
+  });
+  return () => unsub();
+}, [childId]);
+
 
   const loadChildData = async () => {
     try {
@@ -258,6 +275,19 @@ const EditChildScreen = () => {
     }
   };
 
+  const setPerm = async (uid, perm) => {
+    await updateDoc(doc(db, 'children', childId), {
+      [`caregiverPerms.${uid}`]: perm,
+    });
+  };
+
+  const removeCaregiver = async (uid) => {
+    await updateDoc(doc(db, 'children', childId), {
+      caregivers: arrayRemove(uid),
+      [`caregiverPerms.${uid}`]: deleteField(),
+    });
+  };
+
   const genderOptions = ['Male', 'Female'];
 
   if (loading) {
@@ -399,6 +429,54 @@ const EditChildScreen = () => {
           value={childData.notes}
           onChangeText={text => updateField('notes', text)}
         />
+
+        <View style={{ marginTop: 20, padding: 12, backgroundColor: '#F5F7FA', borderRadius: 12 }}>
+          <Text style={{ fontWeight: '700', fontSize: 16, color: '#2E3A59', marginBottom: 10 }}>
+            Manage Caregivers
+          </Text>
+
+          {cgList.length === 0 ? (
+            <Text style={{ color: '#7C8B9A' }}>No caregivers assigned yet.</Text>
+          ) : (
+            cgList.map((uid) => {
+              const perm = cgPerms?.[uid] || 'view';
+              const isView = perm === 'view';
+              const isLog = perm === 'log';
+              return (
+                <View key={uid} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#ECEFF1' }}>
+                  <Text style={{ color: '#2E3A59', marginBottom: 8 }}>{uid}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity
+                      onPress={() => setPerm(uid, 'view')}
+                      style={{
+                        paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8,
+                        backgroundColor: isView ? '#CFD8DC' : '#ECEFF1', marginRight: 8
+                      }}
+                    >
+                      <Text style={{ color: '#2E3A59', fontWeight: '600' }}>View</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setPerm(uid, 'log')}
+                      style={{
+                        paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8,
+                        backgroundColor: isLog ? '#81D4FA' : '#ECEFF1', marginRight: 8
+                      }}
+                    >
+                      <Text style={{ color: isLog ? '#fff' : '#2E3A59', fontWeight: '600' }}>Log</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => removeCaregiver(uid)}
+                      style={{ marginLeft: 'auto', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#FFCDD2' }}
+                    >
+                      <Text style={{ color: '#B71C1C', fontWeight: '700' }}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
+
 
         {/* Save */}
         <TouchableOpacity style={styles.saveButton} onPress={handleUpdate}>

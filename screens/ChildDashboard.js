@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient} from 'expo-linear-gradient';
-import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, query, where, orderBy, limit, getDocs, doc, onSnapshot } from 'firebase/firestore';
 import { app } from '../firebaseConfig';
 import useUserRole from './useUserRole';
+import { getAuth } from 'firebase/auth';
+
 
 const db = getFirestore(app);
 
@@ -15,6 +17,29 @@ export default function ChildDashboard() {
 
   const { role } = useUserRole();
   const isCaregiver = role === 'caregiver';
+
+  const uid = getAuth().currentUser?.uid;
+  const [canView, setCanView] = useState(true);
+  const [isOwner, setIsOwner] = useState(false);
+  const [canLog, setCanLog] = useState(true); // parents true, caregivers only when ON
+
+  useEffect(() => {
+    if (!childId || !uid) { setCanView(false); setIsOwner(false); setCanLog(false); return; }
+
+    const ref = doc(db, 'children', childId);
+    const unsub = onSnapshot(ref, (snap) => {
+      const data = snap.data() || {};
+      const val = data?.caregiverPerms?.[uid];
+      const owner = data?.userId === uid;
+      setIsOwner(owner);
+      // View:
+      setCanView(owner || val === 'on' || val === 'log');
+      // Log:
+      setCanLog(owner || val === 'on' || val === 'log');
+    });
+    return () => unsub();
+  }, [childId, uid]);
+
 
   const getTodayBounds = () => {
     const now = new Date();
@@ -33,6 +58,22 @@ export default function ChildDashboard() {
         navigation.goBack();
       } else {
         fetchChildData();
+        if (isCaregiver) {
+          (async () => {
+            try {
+              const snap = await getDocs(query(collection(db, 'children'), where('__name__', '==', childId)));
+              const doc = snap.docs[0];
+              if (doc) {
+                const data = doc.data() || {};
+                const perms = (data.caregiverPerms || {})[/* current user */ (await import('firebase/auth')).getAuth().currentUser?.uid];
+                setCanLog(perms === 'log'); // caregivers can log only if explicitly 'log'
+              }
+            } catch (e) {
+              console.log('perm check error', e);
+              setCanLog(false);
+            }
+          })();
+        }
       }
     }, [childId])
   );
@@ -131,6 +172,23 @@ export default function ChildDashboard() {
     }
   };
 
+  if (!canView) {
+    return (
+      <LinearGradient colors={['#E3F2FD', '#FFFFFF']} style={{ flex: 1, justifyContent: 'center' }}>
+        <View style={{ margin: 20, backgroundColor: '#fff', borderRadius: 12, padding: 16 }}>
+          <Text style={{ color: '#2E3A59', marginBottom: 12 }}>Access is turned off by the parent.</Text>
+          <TouchableOpacity
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}
+            style={{ padding: 12, backgroundColor: '#CFD8DC', borderRadius: 10, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#2E3A59', fontWeight: '700' }}>Back</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+    );
+  }
+
+
   return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
     <View style={styles.container}>
@@ -151,7 +209,8 @@ export default function ChildDashboard() {
       <Image source={require('../assets/default-profile.png')} style={styles.profileImage} />
       )}
       <Text style={styles.sectionTitle}>Log Activities</Text>
-      <View style={styles.activitiesContainer}>
+      {(isOwner || canLog) ? (
+        <View style={styles.activitiesContainer}>
         <TouchableOpacity style={styles.activityButton} onPress={() => navigation.navigate('FeedingForm', { childId, name })}>
           <Image source={require('../assets/bottle.png')} style={styles.activityIcon} />
           <Text style={styles.activityText}>Feeding</Text>
@@ -170,8 +229,13 @@ export default function ChildDashboard() {
           <Text style={styles.activityText}>Sleep</Text>
         </TouchableOpacity>
       </View>
+      ) : (
+        <View style={{ padding: 12, backgroundColor: '#FFF9B0', borderRadius: 10, marginBottom: 10 }}>
+          <Text style={{ color: '#2E3A59' }}>View-only access. Ask the parent for logging permission.</Text>
+        </View>
+      )}
 
-      {!isCaregiver && (
+      {isOwner && (
         <TouchableOpacity
           style={styles.reportsButton}
           onPress={() => navigation.navigate('ReportsScreen', { childId, name })}

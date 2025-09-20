@@ -26,6 +26,7 @@ import { LinearGradient} from 'expo-linear-gradient';
 import useUserRole from './useUserRole';
 import { doc, onSnapshot } from 'firebase/firestore';
 
+
 const FeedingForm = ({ navigation }) => {
   const route = useRoute();
   const { childId, name } = route.params || {};
@@ -138,6 +139,7 @@ const FeedingForm = ({ navigation }) => {
                   notes,
                   childId,
                   createdAt: serverTimestamp(),
+                  logDate: getTodayStr(),
                 };
   
                 await addDoc(collection(db, 'feedLogs'), logData);
@@ -165,6 +167,7 @@ const FeedingForm = ({ navigation }) => {
         notes,
         childId,
         createdAt: serverTimestamp(),
+        logDate: getTodayStr(),
       };
   
       await addDoc(collection(db, 'feedLogs'), logData);
@@ -181,7 +184,7 @@ const FeedingForm = ({ navigation }) => {
     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={{ flex: 1, justifyContent: 'center' }}>
       <View style={{ margin: 20, backgroundColor: '#fff', borderRadius: 12, padding: 16 }}>
         <Text style={{ color: '#2E3A59', marginBottom: 12 }}>
-          View-only access. Ask the parent for logging permission.
+          Access is off. Ask the parent for logging permission.
         </Text>
         <TouchableOpacity
           onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}

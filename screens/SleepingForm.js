@@ -10,6 +10,13 @@ import useUserRole from './useUserRole';
 import { getAuth } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 
+const getTodayStr = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`; // e.g., "2025-09-20"
+};
 
 const SleepingForm = ({ navigation }) => {
   const route = useRoute();
@@ -106,7 +113,8 @@ const SleepingForm = ({ navigation }) => {
         childId, // Match the field name in ChildDashboard.js
         sleepType,
         endTime,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        logDate: getTodayStr(),
       };
       
       await addDoc(collection(db, 'sleepLogs'), logData);

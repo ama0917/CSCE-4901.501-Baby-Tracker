@@ -13,6 +13,7 @@ import DiaperChangeForm from './screens/DiaperChangeForm';
 import SleepingForm from './screens/SleepingForm';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 import EditChildScreen from './screens/EditChildScreen';
+import RemindersScreen from './screens/RemindersScreen';
 
 const Stack = createStackNavigator();
 
@@ -32,6 +33,7 @@ export default function App() {
         <Stack.Screen name="SleepingForm" component={SleepingForm} />
         <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         <Stack.Screen name="EditChild" component={EditChildScreen}/>
+        <Stack.Screen name="RemindersScreen" component={RemindersScreen}/>
 
       </Stack.Navigator>
     </NavigationContainer>

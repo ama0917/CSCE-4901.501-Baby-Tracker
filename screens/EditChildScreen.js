@@ -471,12 +471,12 @@ const EditChildScreen = () => {
                         <MaterialCommunityIcons
                           name={option.icon}
                           size={24}
-                          color={formData.sex === option.label ? '#fff' : '#999'} // icon turns white if selected
+                          color={formData.sex === option.label ? '#fff' : '#999'}
                         />
                         <Text
                           style={[
                             styles.sexLabel,
-                            formData.sex === option.label && { color: '#fff', fontWeight: '600' } // text turns white if selected
+                            formData.sex === option.label && { color: '#fff', fontWeight: '600' }
                           ]}
                         >
                           {option.label}

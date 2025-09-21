@@ -15,20 +15,48 @@ if not os.path.exists(backup_folder):
 backup_json_path = os.path.join(backup_folder, "backup_data.json")
 backup_db_path = os.path.join(backup_folder, "backup_data.db")
 
-# Initialize Firebase Admin SDK
+# Initialize Firebase Admin SDK (robustly)
+db = None
 try:
-    cred = credentials.Certificate(os.getenv('FIREBASE_SERVICE_ACCOUNT'))
-    firebase_admin.initialize_app(cred)
-    print("[Firebase] Successfully initialized Firestore client.")
-except Exception as e:
-    print(f"[Firebase] Error initializing Firebase Admin SDK: {e}")
-    raise
+    service_account_env = os.getenv('FIREBASE_SERVICE_ACCOUNT')
+    cred = None
 
-# Firestore client
-db = firestore.client()
+    # Try environment variable first. It may be a path or a JSON string.
+    if service_account_env:
+        # If it points to an existing file path, use it
+        if os.path.isfile(service_account_env):
+            cred = credentials.Certificate(service_account_env)
+        else:
+            # If it looks like JSON, try parsing it
+            try:
+                sa_dict = json.loads(service_account_env)
+                cred = credentials.Certificate(sa_dict)
+            except Exception:
+                # Not a JSON string; fall through to try default file below
+                cred = None
+
+    # If no valid env var credential, try the local service account file
+    if not cred:
+        default_sa = os.path.join(os.path.dirname(__file__), 'firebase-service-account.json')
+        if os.path.isfile(default_sa):
+            cred = credentials.Certificate(default_sa)
+
+    if not cred:
+        raise ValueError('No valid Firebase service account found (FIREBASE_SERVICE_ACCOUNT unset or invalid, and firebase-service-account.json not present)')
+
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+    print('[Firebase] Successfully initialized Firestore client.')
+except Exception as e:
+    # Don't crash the whole process — log and allow the app to run without backup functionality.
+    print(f"[Firebase] Error initializing Firebase Admin SDK: {e}")
+    db = None
 
 def backup_data():
     try:
+        if db is None:
+            print('[Backup] No Firestore client available; skipping Firestore backup.')
+            return
         #  data to backup
         collections_to_backup = ["users", "children", "diaperLogs", "feedLogs", "sleepLogs"]
 

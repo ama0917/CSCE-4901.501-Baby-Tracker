@@ -23,6 +23,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { FontAwesome5 } from '@expo/vector-icons';
 import StackedBarChart from './StackedBarChart';
+import WeeklySummaryCard from '../src/components/WeeklySummaryCard';
 
 const { width } = Dimensions.get('window');
 const adjustedWidth = width - 40;
@@ -1108,6 +1109,8 @@ const exportReportAsExcel = async () => {
         </View>
 
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+          {/* Weekly summary card */}
+          {childId && <WeeklySummaryCard childId={childId} childName={name} />}
           {renderCharts()}
         </ScrollView> 
 

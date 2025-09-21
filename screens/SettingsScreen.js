@@ -1,7 +1,12 @@
-import React, { useState} from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Switch, TextInput, StyleSheet, ScrollView, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient} from 'expo-linear-gradient';
+import { auth, db } from '../firebaseConfig';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import NotificationService from '../src/notifications/notificationService';
+import { summaryRepository } from '../src/data/summaryRepository';
+import { useActiveChild } from '../src/contexts/ActiveChildContext';
 
 
 export default function SettingsScreen() {
@@ -9,6 +14,52 @@ export default function SettingsScreen() {
   const [darkMode, setDarkMode] = useState(false);
   const [mfa, setMfa] = useState(false);
   const [notifications, setNotifications] = useState(true);
+  const [weeklyDigest, setWeeklyDigest] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+      try {
+        const docRef = doc(db, 'users', currentUser.uid);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          setWeeklyDigest(!!(data?.settings?.notifications?.weeklyDigest));
+        }
+      } catch (e) { console.error('load settings', e); }
+    };
+    load();
+  }, []);
+
+  const { activeChildId, activeChildName } = (() => {
+    try {
+      return useActiveChild();
+    } catch (e) {
+      return { activeChildId: null, activeChildName: null };
+    }
+  })();
+
+  const [testNotifId, setTestNotifId] = useState(null);
+
+  const sendTestNotification = async () => {
+    const granted = await NotificationService.requestNotificationPermission();
+    if (!granted) { console.warn('test notif permission denied'); return; }
+    // Prefer active child name for message
+    const name = activeChildName || 'your child';
+    const body = `Test digest for ${name}: this message arrives in ~2 minutes.`;
+    const id = await NotificationService.scheduleImmediateTestNotification(body, 2);
+    if (id) {
+      setTestNotifId(id);
+      console.log('Scheduled test notification id=', id);
+    }
+  };
+
+  const cancelTestNotification = async () => {
+    if (!testNotifId) return;
+    await NotificationService.cancelScheduledNotification(testNotifId);
+    setTestNotifId(null);
+  };
 
   return (
      <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
@@ -39,6 +90,68 @@ export default function SettingsScreen() {
       <View style={styles.settingItem}>
         <Text style={styles.settingText}>Notifications & Reminders 🔔</Text>
         <Switch value={notifications} onValueChange={setNotifications} />
+      </View>
+
+      <View style={styles.settingItem}>
+        <Text style={styles.settingText}>Weekly Digest Notifications</Text>
+        <Switch value={weeklyDigest} onValueChange={async (val) => {
+          setWeeklyDigest(val);
+          const currentUser = auth.currentUser;
+          if (!currentUser) return;
+          const docRef = doc(db, 'users', currentUser.uid);
+          try {
+            const snap = await getDoc(docRef);
+            if (!snap.exists()) {
+              await setDoc(docRef, { settings: { notifications: { weeklyDigest: val } } });
+            } else {
+              await updateDoc(docRef, { 'settings.notifications.weeklyDigest': val });
+            }
+            // If enabling, request permission and schedule. Save notificationId.
+            if (val) {
+              const granted = await NotificationService.requestNotificationPermission();
+              if (!granted) {
+                console.warn('Notification permission not granted');
+                return;
+              }
+              // fetch latest summary for body
+              let body = 'Your weekly summary is ready.';
+              try {
+                // Prefer the active child from context if available
+                let childToUse = activeChildId || null;
+                if (!childToUse) {
+                  console.warn('No activeChildId available in Settings — falling back to first child in user doc');
+                  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+                  const childIds = userSnap.exists() ? userSnap.data()?.children || [] : [];
+                  if (Array.isArray(childIds) && childIds.length) childToUse = childIds[0];
+                }
+
+                if (childToUse) {
+                  const s = await summaryRepository.getLatestSummary(childToUse);
+                  if (s && s.text) body = s.text;
+                }
+              } catch (e) { console.error('fetch latest summary for notification', e); }
+
+              const id = await NotificationService.scheduleWeeklyDigestNotification(body);
+              await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': id });
+            } else {
+              // Cancel scheduled notification if id exists
+              try {
+                const data = snap.exists() ? snap.data() : {};
+                const id = data?.settings?.notifications?.weeklyNotificationId;
+                if (id) {
+                  await NotificationService.cancelScheduledNotification(id);
+                  await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': null });
+                }
+              } catch (e) { console.error('cancel notification', e); }
+            }
+          } catch (e) { console.error('save weeklyDigest', e); }
+        }} />
+      </View>
+
+      <View style={[styles.settingItem, { justifyContent: 'center' }]}>
+        <TouchableOpacity style={{ padding: 10, backgroundColor: '#D1E8FF', borderRadius: 12 }} onPress={testNotifId ? cancelTestNotification : sendTestNotification}>
+          <Text style={{ fontWeight: '600' }}>{testNotifId ? 'Cancel Test Notification' : 'Send Test Notification (2m)'}</Text>
+        </TouchableOpacity>
       </View>
 
       <TouchableOpacity style={styles.remindersButton}>

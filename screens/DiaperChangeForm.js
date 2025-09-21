@@ -6,6 +6,7 @@ import { LinearGradient} from 'expo-linear-gradient';
 import { getAuth } from 'firebase/auth';
 import { db } from '../firebaseConfig';
 import { addDoc, collection, Timestamp } from 'firebase/firestore';
+import NotificationService from '../src/notifications/notificationService';
 
 const DiaperChangeForm = ({ navigation, route }) => {
   const { childId } = route.params || {};
@@ -72,10 +73,13 @@ const DiaperChangeForm = ({ navigation, route }) => {
 
       console.log('Saving diaper log with data:', logData);
 
-      await addDoc(collection(db, 'diaperLogs'), logData);
+  await addDoc(collection(db, 'diaperLogs'), logData);
 
-      Alert.alert('Success', 'Log saved successfully!');
-      navigation.goBack();
+  // Fire-and-forget: attempt to send a digest notification for this child
+  try { NotificationService.sendDigestNotificationForChild(childId).catch(() => {}); } catch (e) { /* ignore */ }
+
+  Alert.alert('Success', 'Log saved successfully!');
+  navigation.goBack();
     } catch (error) {
       console.error('Error saving diaper log:', error);
       Alert.alert('Error', 'Something went wrong. Please try again.');

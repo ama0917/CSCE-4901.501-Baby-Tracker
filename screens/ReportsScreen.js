@@ -5,12 +5,12 @@ import {
   StyleSheet,
   SafeAreaView,
   TouchableOpacity,
-  ScrollView,
   Dimensions,
   ActivityIndicator,
   Image,
   Alert,
 } from 'react-native';
+import { ScrollView } from 'react-native';
 import * as XLSX from 'xlsx';
 import * as FileSystem from 'expo-file-system';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -1112,7 +1112,7 @@ const exportReportAsExcel = async () => {
           {/* Weekly summary card */}
           {childId && <WeeklySummaryCard childId={childId} childName={name} />}
           {renderCharts()}
-        </ScrollView> 
+        </ScrollView>
 
         <ExportReportSection 
           exportReportAsPDF={exportReportAsPDF} 

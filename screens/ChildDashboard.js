@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { ScrollView } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient} from 'expo-linear-gradient';
 import NotificationService from '../src/notifications/notificationService';
@@ -132,7 +133,8 @@ export default function ChildDashboard() {
 
   return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
-    <View style={styles.container}>
+  <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backButton}>← Home</Text>
@@ -210,6 +212,7 @@ export default function ChildDashboard() {
         )}
       </ScrollView>
     </View>
+  </ScrollView>
     </LinearGradient>
   );
 }

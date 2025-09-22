@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Image, Platform, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Image, Platform, Alert } from 'react-native';
+import { ScrollView } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { LinearGradient} from 'expo-linear-gradient';
@@ -88,8 +89,8 @@ const DiaperChangeForm = ({ navigation, route }) => {
 
   return (
      <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+      <SafeAreaView style={styles.container}>
+  <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
         <View style={styles.formContainer}>
           <View style={styles.header}>
             <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -179,7 +180,7 @@ const DiaperChangeForm = ({ navigation, route }) => {
             <Text style={styles.completeButtonText}>Complete Log</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+  </ScrollView>
     </SafeAreaView>
     </LinearGradient>
   );

@@ -10,11 +10,13 @@ import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import NotificationService from '../src/notifications/notificationService';
 import { summaryRepository } from '../src/data/summaryRepository';
 import { useActiveChild } from '../src/contexts/ActiveChildContext';
+import { ArrowLeft, Settings as SettingsIcon } from 'lucide-react-native';
 
-// Neon gradients for dark mode
+// Neon gradients (match ChildDashboard)
 const neonGradients = {
-  card: ['#81d4fa8a', '#81D4FA'],
-  button: ['#f488bebb', '#ffb84dc0'],
+  card: ['#6491ebff', '#7676dbff'],
+  button: ['#5aececff', '#62a8e5ff'],
+  warn: ['#faaa72ff', '#f68dc0ff'],
   input: ['#fad0c43f', '#ffd1ff4a'],
 };
 
@@ -24,6 +26,7 @@ export default function SettingsScreen() {
   const [mfa, setMfa] = useState(false);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
   const [testNotifId, setTestNotifId] = useState(null);
+  const [throttleInfo, setThrottleInfo] = useState(null);
 
   useEffect(() => {
     const load = async () => {
@@ -51,9 +54,6 @@ export default function SettingsScreen() {
     }
   })();
 
-  const [testNotifId, setTestNotifId] = useState(null);
-  const [throttleInfo, setThrottleInfo] = useState(null);
-
   const sendTestNotification = async () => {
     const granted = await NotificationService.requestNotificationPermission();
     if (!granted) {
@@ -65,7 +65,6 @@ export default function SettingsScreen() {
     const id = await NotificationService.scheduleImmediateTestNotification(body, 2);
     if (id) {
       setTestNotifId(id);
-      console.log('Scheduled test notification id=', id);
     }
   };
 
@@ -75,30 +74,28 @@ export default function SettingsScreen() {
     setTestNotifId(null);
   };
 
-  const currentTheme = darkMode ? appTheme.dark : appTheme.light;
-
   // Debug helpers for throttle key
   const showThrottle = async () => {
     try {
       const childId = activeChildId;
       if (!childId) { Alert.alert('No active child', 'Set an active child before checking throttle.'); return; }
-        const key = `digestNotifiedTimes:${childId}`;
-        const val = await AsyncStorage.getItem(key);
-        if (!val) {
-          setThrottleInfo(null);
-          Alert.alert('Throttle', 'No throttle entry found for child');
-          return;
-        }
-        let arr = [];
-        try { arr = JSON.parse(val) || []; } catch (e) { arr = []; }
-        if (!arr.length) {
-          Alert.alert('Throttle', 'No timestamps stored');
-          setThrottleInfo(null);
-          return;
-        }
-        const when = new Date(arr[arr.length-1]).toLocaleString();
-        setThrottleInfo({ key, arr });
-        Alert.alert('Throttle', `Last notified: ${when} (count=${arr.length})`);
+      const key = `digestNotifiedTimes:${childId}`;
+      const val = await AsyncStorage.getItem(key);
+      if (!val) {
+        setThrottleInfo(null);
+        Alert.alert('Throttle', 'No throttle entry found for child');
+        return;
+      }
+      let arr = [];
+      try { arr = JSON.parse(val) || []; } catch (e) { arr = []; }
+      if (!arr.length) {
+        Alert.alert('Throttle', 'No timestamps stored');
+        setThrottleInfo(null);
+        return;
+      }
+      const when = new Date(arr[arr.length - 1]).toLocaleString();
+      setThrottleInfo({ key, arr });
+      Alert.alert('Throttle', `Last notified: ${when} (count=${arr.length})`);
     } catch (e) {
       console.error('showThrottle', e);
       Alert.alert('Error', String(e));
@@ -109,10 +106,10 @@ export default function SettingsScreen() {
     try {
       const childId = activeChildId;
       if (!childId) { Alert.alert('No active child', 'Set an active child before clearing throttle.'); return; }
-  const key = `digestNotifiedTimes:${childId}`;
-  await AsyncStorage.removeItem(key);
-  setThrottleInfo(null);
-  Alert.alert('Throttle cleared', `Removed ${key}`);
+      const key = `digestNotifiedTimes:${childId}`;
+      await AsyncStorage.removeItem(key);
+      setThrottleInfo(null);
+      Alert.alert('Throttle cleared', `Removed ${key}`);
     } catch (e) {
       console.error('clearThrottle', e);
       Alert.alert('Error', String(e));
@@ -135,13 +132,20 @@ export default function SettingsScreen() {
     }
   };
 
+  const currentTheme = darkMode ? appTheme.dark : appTheme.light;
+
   return (
     <ThemedBackground>
       <ScrollView contentContainerStyle={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={[styles.backButton, { color: currentTheme.textPrimary }]}>← Home</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+            <LinearGradient
+              colors={darkMode ? neonGradients.card : ['#fff', '#f5f5f5']}
+              style={styles.headerButtonGradient}
+            >
+              <ArrowLeft size={20} color={darkMode ? "#fff" : "#2E3A59"} />
+            </LinearGradient>
           </TouchableOpacity>
 
           <Image source={require('../assets/logo.png')} style={styles.logo} />
@@ -154,156 +158,100 @@ export default function SettingsScreen() {
         <Text style={[styles.title, { color: currentTheme.textPrimary }]}>Settings</Text>
 
         {/* Dark Mode */}
-        <LinearGradient
-          colors={darkMode ? neonGradients.card : [currentTheme.card, currentTheme.card]}
-          style={styles.settingItem}
-        >
+        <LinearGradient colors={darkMode ? neonGradients.card : [currentTheme.card]} style={styles.settingItem}>
           <Text style={[styles.settingText, { color: darkMode ? '#fff' : currentTheme.textPrimary }]}>Dark Mode</Text>
           <Switch value={darkMode} onValueChange={setDarkMode} />
         </LinearGradient>
 
         {/* MFA */}
-        <LinearGradient
-          colors={darkMode ? neonGradients.card : [currentTheme.card, currentTheme.card]}
-          style={styles.settingItem}
-        >
+        <LinearGradient colors={darkMode ? neonGradients.card : [currentTheme.card]} style={styles.settingItem}>
           <Text style={[styles.settingText, { color: darkMode ? '#fff' : currentTheme.textPrimary }]}>
             Multi-Factor Authentication
           </Text>
           <Switch value={mfa} onValueChange={setMfa} />
         </LinearGradient>
 
-        {/* Weekly Digest Notifications */}
-        <View style={styles.settingItem}>
-          <Text style={styles.settingText}>Weekly Digest Notifications</Text>
-          <Switch
-            value={weeklyDigest}
-            onValueChange={async (val) => {
-              setWeeklyDigest(val);
-              const currentUser = auth.currentUser;
-              if (!currentUser) return;
-              const docRef = doc(db, 'users', currentUser.uid);
-              try {
-                const snap = await getDoc(docRef);
-                if (!snap.exists()) {
-                  await setDoc(docRef, { settings: { notifications: { weeklyDigest: val } } });
-                } else {
-                  await updateDoc(docRef, { 'settings.notifications.weeklyDigest': val });
-                }
-                if (val) {
-                  const granted = await NotificationService.requestNotificationPermission();
-                  if (!granted) {
-                    console.warn('Notification permission not granted');
-                    return;
-                  }
-                  let body = 'Your weekly summary is ready.';
-                  try {
-                    let childToUse = activeChildId || null;
-                    if (!childToUse) {
-                      const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-                      const childIds = userSnap.exists() ? userSnap.data()?.children || [] : [];
-                      if (Array.isArray(childIds) && childIds.length) childToUse = childIds[0];
-                    }
-                    if (childToUse) {
-                      const s = await summaryRepository.getLatestSummary(childToUse);
-                      if (s && s.text) body = s.text;
-                    }
-                  } catch (e) {
-                    console.error('fetch latest summary for notification', e);
-                  }
-                  const id = await NotificationService.scheduleWeeklyDigestNotification(body);
-                  await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': id });
-                } else {
-                  try {
-                    const data = snap.exists() ? snap.data() : {};
-                    const id = data?.settings?.notifications?.weeklyNotificationId;
-                    if (id) {
-                      await NotificationService.cancelScheduledNotification(id);
-                      await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': null });
-                    }
-                  } catch (e) {
-                    console.error('cancel notification', e);
-                  }
-                }
-              } catch (e) {
-                console.error('save weeklyDigest', e);
+        {/* Weekly Digest */}
+        <LinearGradient colors={darkMode ? neonGradients.card : [currentTheme.card]} style={styles.settingItem}>
+          <Text style={[styles.settingText, { color: darkMode ? '#fff' : currentTheme.textPrimary }]}>Weekly Digest Notifications</Text>
+          <Switch value={weeklyDigest} onValueChange={async (val) => {
+            setWeeklyDigest(val);
+            const currentUser = auth.currentUser;
+            if (!currentUser) return;
+            const docRef = doc(db, 'users', currentUser.uid);
+            try {
+              const snap = await getDoc(docRef);
+              if (!snap.exists()) {
+                await setDoc(docRef, { settings: { notifications: { weeklyDigest: val } } });
+              } else {
+                await updateDoc(docRef, { 'settings.notifications.weeklyDigest': val });
               }
-            }}
-          />
-        </View>
+              if (val) {
+                const granted = await NotificationService.requestNotificationPermission();
+                if (!granted) return;
+                let body = 'Your weekly summary is ready.';
+                try {
+                  let childToUse = activeChildId || null;
+                  if (!childToUse) {
+                    const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+                    const childIds = userSnap.exists() ? userSnap.data()?.children || [] : [];
+                    if (Array.isArray(childIds) && childIds.length) childToUse = childIds[0];
+                  }
+                  if (childToUse) {
+                    const s = await summaryRepository.getLatestSummary(childToUse);
+                    if (s?.text) body = s.text;
+                  }
+                } catch {}
+                const id = await NotificationService.scheduleWeeklyDigestNotification(body);
+                await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': id });
+              } else {
+                const data = snap.exists() ? snap.data() : {};
+                const id = data?.settings?.notifications?.weeklyNotificationId;
+                if (id) {
+                  await NotificationService.cancelScheduledNotification(id);
+                  await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': null });
+                }
+              }
+            } catch (e) {
+              console.error('save weeklyDigest', e);
+            }
+          }} />
+        </LinearGradient>
 
         {/* Test Notification */}
-        <View style={[styles.settingItem, { justifyContent: 'center' }]}>
-          <TouchableOpacity
-            style={{ padding: 10, backgroundColor: '#D1E8FF', borderRadius: 12 }}
-            onPress={testNotifId ? cancelTestNotification : sendTestNotification}
-          >
-            <Text style={{ fontWeight: '600' }}>
+        <LinearGradient colors={darkMode ? neonGradients.card : [currentTheme.card]} style={styles.settingItem}>
+          <TouchableOpacity onPress={testNotifId ? cancelTestNotification : sendTestNotification}>
+            <Text style={{ fontWeight: '600', color: darkMode ? '#fff' : '#333' }}>
               {testNotifId ? 'Cancel Test Notification' : 'Send Test Notification (2m)'}
             </Text>
           </TouchableOpacity>
-        </View>
+        </LinearGradient>
 
-      {/* Debug controls for throttle */}
-      <View style={[styles.settingItem, { flexDirection: 'column', alignItems: 'stretch' }]}>
-        <TouchableOpacity style={{ padding: 10, backgroundColor: '#FFF1C6', borderRadius: 12, marginBottom: 8 }} onPress={showThrottle}>
-          <Text style={{ fontWeight: '600' }}>Show Digest Throttle</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={{ padding: 10, backgroundColor: '#FFE6E6', borderRadius: 12, marginBottom: 8 }} onPress={clearThrottle}>
-          <Text style={{ fontWeight: '600' }}>Clear Digest Throttle</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={{ padding: 10, backgroundColor: '#D6F5D6', borderRadius: 12 }} onPress={forceSendDigest}>
-          <Text style={{ fontWeight: '600' }}>Force Send Digest Now</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Dev immediate raw notification */}
-      <View style={[styles.settingItem, { justifyContent: 'center' }]}>
-        <TouchableOpacity style={{ padding: 10, backgroundColor: '#E8F4FF', borderRadius: 12 }} onPress={async () => {
-          const id = await NotificationService.scheduleImmediateTestNotification('Immediate test notification (3s)', 0.05);
-          if (id) Alert.alert('Scheduled', `id=${id}`);
-          else Alert.alert('Failed', 'No id returned');
-        }}>
-          <Text style={{ fontWeight: '600' }}>Immediate Raw Notification (3s)</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Debug Controls */}
+        <LinearGradient colors={darkMode ? neonGradients.card : [currentTheme.card]} style={[styles.settingItem, { flexDirection: 'column' }]}>
+          <TouchableOpacity onPress={showThrottle} style={styles.debugButton}><Text>Show Digest Throttle</Text></TouchableOpacity>
+          <TouchableOpacity onPress={clearThrottle} style={styles.debugButton}><Text>Clear Digest Throttle</Text></TouchableOpacity>
+          <TouchableOpacity onPress={forceSendDigest} style={styles.debugButton}><Text>Force Send Digest Now</Text></TouchableOpacity>
+        </LinearGradient>
 
         {/* Reminders */}
         <TouchableOpacity style={styles.remindersWrapper}>
-          <LinearGradient
-            colors={darkMode ? neonGradients.button : [currentTheme.card, currentTheme.card]}
-            style={styles.remindersButton}
-          >
-            <Text style={[styles.remindersText, { color: darkMode ? '#000' : currentTheme.textPrimary }]}>
-              Set Reminders
-            </Text>
+          <LinearGradient colors={darkMode ? neonGradients.warn : ['#FFD1FF', '#FAD0C4']} style={styles.remindersButton}>
+            <Text style={styles.remindersText}>Set Reminders</Text>
           </LinearGradient>
         </TouchableOpacity>
 
         {/* Change Password */}
-        <LinearGradient
-          colors={darkMode ? neonGradients.card : [currentTheme.card, currentTheme.card]}
-          style={styles.passwordSection}
-        >
-          <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : currentTheme.textPrimary }]}>
-            Change Password
-          </Text>
-
-          <LinearGradient colors={darkMode ? neonGradients.input : [currentTheme.input, currentTheme.input]} style={styles.input}>
-            <TextInput placeholder="Current Password" placeholderTextColor={darkMode ? '#ccc' : '#555'} secureTextEntry style={styles.inputText} />
-          </LinearGradient>
-
-          <LinearGradient colors={darkMode ? neonGradients.input : [currentTheme.input, currentTheme.input]} style={styles.input}>
-            <TextInput placeholder="New Password" placeholderTextColor={darkMode ? '#ccc' : '#555'} secureTextEntry style={styles.inputText} />
-          </LinearGradient>
-
-          <LinearGradient colors={darkMode ? neonGradients.input : [currentTheme.input, currentTheme.input]} style={styles.input}>
-            <TextInput placeholder="Confirm New Password" placeholderTextColor={darkMode ? '#ccc' : '#555'} secureTextEntry style={styles.inputText} />
-          </LinearGradient>
-
+        <LinearGradient colors={darkMode ? neonGradients.card : [currentTheme.card]} style={styles.passwordSection}>
+          <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : currentTheme.textPrimary }]}>Change Password</Text>
+          {['Current Password', 'New Password', 'Confirm New Password'].map((ph, i) => (
+            <LinearGradient key={i} colors={darkMode ? neonGradients.input : [currentTheme.input]} style={styles.input}>
+              <TextInput placeholder={ph} placeholderTextColor={darkMode ? '#ccc' : '#555'} secureTextEntry style={styles.inputText} />
+            </LinearGradient>
+          ))}
           <TouchableOpacity style={styles.resetWrapper}>
             <LinearGradient colors={darkMode ? neonGradients.button : ['#FFCDD2', '#FFCDD2']} style={styles.resetButton}>
-              <Text style={[styles.resetText, { color: darkMode ? '#000' : '#333' }]}>Reset Password</Text>
+              <Text style={styles.resetText}>Reset Password</Text>
             </LinearGradient>
           </TouchableOpacity>
         </LinearGradient>
@@ -311,6 +259,7 @@ export default function SettingsScreen() {
     </ThemedBackground>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: 

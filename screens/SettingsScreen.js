@@ -1,20 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Switch, TextInput, StyleSheet, ScrollView, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { LinearGradient} from 'expo-linear-gradient';
+import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
+import { useDarkMode } from '../screens/DarkMode';
+import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db } from '../firebaseConfig';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import NotificationService from '../src/notifications/notificationService';
 import { summaryRepository } from '../src/data/summaryRepository';
 import { useActiveChild } from '../src/contexts/ActiveChildContext';
 
+// Neon gradients for dark mode
+const neonGradients = {
+  card: ['#81d4fa8a', '#81D4FA'],
+  button: ['#f488bebb', '#ffb84dc0'],
+  input: ['#fad0c43f', '#ffd1ff4a'],
+};
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
-  const [darkMode, setDarkMode] = useState(false);
+  const { darkMode, setDarkMode } = useDarkMode();
   const [mfa, setMfa] = useState(false);
-  const [notifications, setNotifications] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
+  const [testNotifId, setTestNotifId] = useState(null);
 
   useEffect(() => {
     const load = async () => {
@@ -27,7 +35,9 @@ export default function SettingsScreen() {
           const data = snap.data();
           setWeeklyDigest(!!(data?.settings?.notifications?.weeklyDigest));
         }
-      } catch (e) { console.error('load settings', e); }
+      } catch (e) {
+        console.error('load settings', e);
+      }
     };
     load();
   }, []);
@@ -40,12 +50,12 @@ export default function SettingsScreen() {
     }
   })();
 
-  const [testNotifId, setTestNotifId] = useState(null);
-
   const sendTestNotification = async () => {
     const granted = await NotificationService.requestNotificationPermission();
-    if (!granted) { console.warn('test notif permission denied'); return; }
-    // Prefer active child name for message
+    if (!granted) {
+      console.warn('test notif permission denied');
+      return;
+    }
     const name = activeChildName || 'your child';
     const body = `Test digest for ${name}: this message arrives in ~2 minutes.`;
     const id = await NotificationService.scheduleImmediateTestNotification(body, 2);
@@ -61,226 +71,273 @@ export default function SettingsScreen() {
     setTestNotifId(null);
   };
 
+  const currentTheme = darkMode ? appTheme.dark : appTheme.light;
+
   return (
-     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
-    <ScrollView contentContainerStyle={styles.container}>
-        {/* Header Section */}
-    <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-         <Text style={styles.backButton}>← Home</Text>
-        </TouchableOpacity>
-  
-        <Image source={require('../assets/logo.png')} style={styles.logo} />
-        <TouchableOpacity style ={styles.signOutButton} onPress={() => navigation.navigate('Login')}>
-         <Text style={styles.signOutText}>Sign out</Text>
-        </TouchableOpacity>
+    <ThemedBackground>
+      <ScrollView contentContainerStyle={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={[styles.backButton, { color: currentTheme.textPrimary }]}>← Home</Text>
+          </TouchableOpacity>
+
+          <Image source={require('../assets/logo.png')} style={styles.logo} />
+
+          <TouchableOpacity style={styles.signOutButton} onPress={() => navigation.navigate('Login')}>
+            <Text style={styles.signOutText}>Sign out</Text>
+          </TouchableOpacity>
         </View>
 
-      <Text style={styles.title}>Settings</Text>
-      <View style={styles.settingItem}>
-        <Text style={styles.settingText}>Dark Mode 🌙</Text>
-        <Switch value={darkMode} onValueChange={setDarkMode} />
-      </View>
+        <Text style={[styles.title, { color: currentTheme.textPrimary }]}>Settings</Text>
 
-      <View style={styles.settingItem}>
-        <Text style={styles.settingText}>Multi-Factor Authentication 🔐</Text>
-        <Switch value={mfa} onValueChange={setMfa} />
-      </View>
+        {/* Dark Mode */}
+        <LinearGradient
+          colors={darkMode ? neonGradients.card : [currentTheme.card, currentTheme.card]}
+          style={styles.settingItem}
+        >
+          <Text style={[styles.settingText, { color: darkMode ? '#fff' : currentTheme.textPrimary }]}>Dark Mode</Text>
+          <Switch value={darkMode} onValueChange={setDarkMode} />
+        </LinearGradient>
 
-      <View style={styles.settingItem}>
-        <Text style={styles.settingText}>Notifications & Reminders 🔔</Text>
-        <Switch value={notifications} onValueChange={setNotifications} />
-      </View>
+        {/* MFA */}
+        <LinearGradient
+          colors={darkMode ? neonGradients.card : [currentTheme.card, currentTheme.card]}
+          style={styles.settingItem}
+        >
+          <Text style={[styles.settingText, { color: darkMode ? '#fff' : currentTheme.textPrimary }]}>
+            Multi-Factor Authentication
+          </Text>
+          <Switch value={mfa} onValueChange={setMfa} />
+        </LinearGradient>
 
-      <View style={styles.settingItem}>
-        <Text style={styles.settingText}>Weekly Digest Notifications</Text>
-        <Switch value={weeklyDigest} onValueChange={async (val) => {
-          setWeeklyDigest(val);
-          const currentUser = auth.currentUser;
-          if (!currentUser) return;
-          const docRef = doc(db, 'users', currentUser.uid);
-          try {
-            const snap = await getDoc(docRef);
-            if (!snap.exists()) {
-              await setDoc(docRef, { settings: { notifications: { weeklyDigest: val } } });
-            } else {
-              await updateDoc(docRef, { 'settings.notifications.weeklyDigest': val });
-            }
-            // If enabling, request permission and schedule. Save notificationId.
-            if (val) {
-              const granted = await NotificationService.requestNotificationPermission();
-              if (!granted) {
-                console.warn('Notification permission not granted');
-                return;
+        {/* Weekly Digest Notifications */}
+        <View style={styles.settingItem}>
+          <Text style={styles.settingText}>Weekly Digest Notifications</Text>
+          <Switch
+            value={weeklyDigest}
+            onValueChange={async (val) => {
+              setWeeklyDigest(val);
+              const currentUser = auth.currentUser;
+              if (!currentUser) return;
+              const docRef = doc(db, 'users', currentUser.uid);
+              try {
+                const snap = await getDoc(docRef);
+                if (!snap.exists()) {
+                  await setDoc(docRef, { settings: { notifications: { weeklyDigest: val } } });
+                } else {
+                  await updateDoc(docRef, { 'settings.notifications.weeklyDigest': val });
+                }
+                if (val) {
+                  const granted = await NotificationService.requestNotificationPermission();
+                  if (!granted) {
+                    console.warn('Notification permission not granted');
+                    return;
+                  }
+                  let body = 'Your weekly summary is ready.';
+                  try {
+                    let childToUse = activeChildId || null;
+                    if (!childToUse) {
+                      const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+                      const childIds = userSnap.exists() ? userSnap.data()?.children || [] : [];
+                      if (Array.isArray(childIds) && childIds.length) childToUse = childIds[0];
+                    }
+                    if (childToUse) {
+                      const s = await summaryRepository.getLatestSummary(childToUse);
+                      if (s && s.text) body = s.text;
+                    }
+                  } catch (e) {
+                    console.error('fetch latest summary for notification', e);
+                  }
+                  const id = await NotificationService.scheduleWeeklyDigestNotification(body);
+                  await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': id });
+                } else {
+                  try {
+                    const data = snap.exists() ? snap.data() : {};
+                    const id = data?.settings?.notifications?.weeklyNotificationId;
+                    if (id) {
+                      await NotificationService.cancelScheduledNotification(id);
+                      await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': null });
+                    }
+                  } catch (e) {
+                    console.error('cancel notification', e);
+                  }
+                }
+              } catch (e) {
+                console.error('save weeklyDigest', e);
               }
-              // fetch latest summary for body
-              let body = 'Your weekly summary is ready.';
-              try {
-                // Prefer the active child from context if available
-                let childToUse = activeChildId || null;
-                if (!childToUse) {
-                  console.warn('No activeChildId available in Settings — falling back to first child in user doc');
-                  const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-                  const childIds = userSnap.exists() ? userSnap.data()?.children || [] : [];
-                  if (Array.isArray(childIds) && childIds.length) childToUse = childIds[0];
-                }
+            }}
+          />
+        </View>
 
-                if (childToUse) {
-                  const s = await summaryRepository.getLatestSummary(childToUse);
-                  if (s && s.text) body = s.text;
-                }
-              } catch (e) { console.error('fetch latest summary for notification', e); }
+        {/* Test Notification */}
+        <View style={[styles.settingItem, { justifyContent: 'center' }]}>
+          <TouchableOpacity
+            style={{ padding: 10, backgroundColor: '#D1E8FF', borderRadius: 12 }}
+            onPress={testNotifId ? cancelTestNotification : sendTestNotification}
+          >
+            <Text style={{ fontWeight: '600' }}>
+              {testNotifId ? 'Cancel Test Notification' : 'Send Test Notification (2m)'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-              const id = await NotificationService.scheduleWeeklyDigestNotification(body);
-              await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': id });
-            } else {
-              // Cancel scheduled notification if id exists
-              try {
-                const data = snap.exists() ? snap.data() : {};
-                const id = data?.settings?.notifications?.weeklyNotificationId;
-                if (id) {
-                  await NotificationService.cancelScheduledNotification(id);
-                  await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': null });
-                }
-              } catch (e) { console.error('cancel notification', e); }
-            }
-          } catch (e) { console.error('save weeklyDigest', e); }
-        }} />
-      </View>
-
-      <View style={[styles.settingItem, { justifyContent: 'center' }]}>
-        <TouchableOpacity style={{ padding: 10, backgroundColor: '#D1E8FF', borderRadius: 12 }} onPress={testNotifId ? cancelTestNotification : sendTestNotification}>
-          <Text style={{ fontWeight: '600' }}>{testNotifId ? 'Cancel Test Notification' : 'Send Test Notification (2m)'}</Text>
+        {/* Reminders */}
+        <TouchableOpacity style={styles.remindersWrapper}>
+          <LinearGradient
+            colors={darkMode ? neonGradients.button : [currentTheme.card, currentTheme.card]}
+            style={styles.remindersButton}
+          >
+            <Text style={[styles.remindersText, { color: darkMode ? '#000' : currentTheme.textPrimary }]}>
+              Set Reminders
+            </Text>
+          </LinearGradient>
         </TouchableOpacity>
-      </View>
 
-      <TouchableOpacity style={styles.remindersButton}>
-        <Text style={styles.remindersText}>Set Reminders</Text>
-      </TouchableOpacity>
+        {/* Change Password */}
+        <LinearGradient
+          colors={darkMode ? neonGradients.card : [currentTheme.card, currentTheme.card]}
+          style={styles.passwordSection}
+        >
+          <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : currentTheme.textPrimary }]}>
+            Change Password
+          </Text>
 
-      <View style={styles.passwordSection}>
-        <Text style={styles.sectionTitle}>Change Password 🔑</Text>
+          <LinearGradient colors={darkMode ? neonGradients.input : [currentTheme.input, currentTheme.input]} style={styles.input}>
+            <TextInput placeholder="Current Password" placeholderTextColor={darkMode ? '#ccc' : '#555'} secureTextEntry style={styles.inputText} />
+          </LinearGradient>
 
-        <TextInput placeholder="Current Password" style={styles.input} secureTextEntry />
-        <TextInput placeholder="New Password" style={styles.input} secureTextEntry />
-        <TextInput placeholder="Confirm New Password" style={styles.input} secureTextEntry />
+          <LinearGradient colors={darkMode ? neonGradients.input : [currentTheme.input, currentTheme.input]} style={styles.input}>
+            <TextInput placeholder="New Password" placeholderTextColor={darkMode ? '#ccc' : '#555'} secureTextEntry style={styles.inputText} />
+          </LinearGradient>
 
-        <TouchableOpacity style={styles.resetButton}>
-          <Text style={styles.resetText}>Reset Password</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
-    </LinearGradient>
+          <LinearGradient colors={darkMode ? neonGradients.input : [currentTheme.input, currentTheme.input]} style={styles.input}>
+            <TextInput placeholder="Confirm New Password" placeholderTextColor={darkMode ? '#ccc' : '#555'} secureTextEntry style={styles.inputText} />
+          </LinearGradient>
+
+          <TouchableOpacity style={styles.resetWrapper}>
+            <LinearGradient colors={darkMode ? neonGradients.button : ['#FFCDD2', '#FFCDD2']} style={styles.resetButton}>
+              <Text style={[styles.resetText, { color: darkMode ? '#000' : '#333' }]}>Reset Password</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </LinearGradient>
+      </ScrollView>
+    </ThemedBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
-  container: {
+  container: 
+  { 
     flexGrow: 1,
-    padding: 30,
-    alignItems: 'center',
-  },
-  header: {
-    flexDirection: 'row',
+     padding: 30, 
+     alignItems: 'center' },
+  header: 
+  { 
+    flexDirection: 'row', 
     justifyContent: 'space-between',
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: 10,
-    marginTop: 10,
+     width: '100%', 
+     alignItems: 'center', 
+     marginBottom: 10, 
+     marginTop: 10 
+    },
+  backButton:
+   { 
+    fontSize: 14, 
+    marginBottom: 20 
   },
-  backButton: {
-    alignSelf: 'flex-start',
-    color: '#007AFF',
-    fontSize: 14,
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginVertical: 15,
-  },
-  settingItem: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#FFF9B0',
-    padding: 15,
+  title: 
+  {
+     fontSize: 28,
+     fontWeight: 'bold',
+      marginVertical: 15 
+    },
+  settingItem: 
+  { 
+    width: '100%', 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    padding: 15, 
     borderRadius: 20,
-    marginVertical: 10,
+     marginVertical: 10 
+    },
+  settingText: 
+  { 
+    fontSize: 16
+   },
+  remindersWrapper: 
+  {
+     width: '100%',
+      marginVertical: 15 
+    },
+  remindersButton: 
+  { 
+    paddingVertical: 12, 
+    paddingHorizontal: 20, 
+    borderRadius: 20 
   },
-  settingText: {
+  remindersText: 
+  { 
     fontSize: 16,
-  },
-  remindersButton: {
-    backgroundColor: '#C6F6D5',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    marginVertical: 15,
-  },
-  remindersText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  passwordSection: {
-    width: '100%',
-    backgroundColor: '#fff',
+     fontWeight: '600', 
+     textAlign: 'center' 
+    },
+  passwordSection: 
+  { 
+    width: '100%', 
     borderRadius: 30,
-    padding: 20,
-    marginTop: 20,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
+     padding: 20,
+      marginTop: 20 
+    },
+  sectionTitle: 
+  { 
+    fontSize: 20, 
+    fontWeight: 'bold', 
+    marginBottom: 15 
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 15,
-  },
-  input: {
-    backgroundColor: '#F0F8FF',
+  input:
+   { 
     borderRadius: 15,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    marginVertical: 8,
+     marginVertical: 8,
+      paddingHorizontal: 1
+     },
+  inputText: 
+  { 
+    paddingHorizontal: 15, 
+    paddingVertical: 10, 
+    color: '#fff' 
   },
-  resetButton: {
-    backgroundColor: '#FFCDD2',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+  resetWrapper: 
+  { 
+    marginTop: 15, 
+    borderRadius: 20
+  },
+  resetButton: 
+  { 
     borderRadius: 20,
-    marginTop: 15,
-  },
-  resetText: {
+     paddingVertical: 12,
+      paddingHorizontal: 20 
+    },
+  resetText: 
+  { 
     fontSize: 16,
-    color: '#333',
-    fontWeight: 'bold',
-    textAlign: 'center',
+     fontWeight: 'bold', 
+     textAlign: 'center'
+     },
+  logo: 
+  { width: 65, 
+    height: 65, 
+    resizeMode: 'contain', 
+    marginTop: 10 
   },
-  logo: {
-    width:65,
-    height: 65,
-    resizeMode: 'contain',
-    marginTop: 10,
-   },
-   signOutButton:{
-    backgroundColor: '#FFCDD2',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 15,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-   },
-   signOutText: {
-    color: '#FF3B30',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
+  signOutButton:
+   { backgroundColor: '#FFCDD2',
+     paddingVertical: 8,
+      paddingHorizontal: 12,
+       borderRadius: 15 },
+  signOutText:
+   { color: '#FF3B30',
+    fontSize: 14, 
+    fontWeight: 'bold' },
 });

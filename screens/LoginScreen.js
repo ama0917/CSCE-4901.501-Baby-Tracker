@@ -11,8 +11,8 @@ import {
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
   Platform,
-  ScrollView
 } from 'react-native';
+import { ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
@@ -42,10 +42,7 @@ export default function LoginScreen() {
         style={styles.keyboardAvoid}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView 
-            contentContainerStyle={styles.scrollViewContent}
-            keyboardShouldPersistTaps="handled"
-          >
+          <ScrollView contentContainerStyle={styles.scrollViewContent}>
             <View style={styles.innerContainer}>
               <Image source={require('../assets/logo.png')} style={styles.logoImage} />
               <Text style={styles.title}>LOGIN</Text>

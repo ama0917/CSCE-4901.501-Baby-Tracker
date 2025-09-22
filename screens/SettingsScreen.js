@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Switch, TextInput, StyleSheet, ScrollView, Image } from 'react-native';
+import { View, Text, TouchableOpacity, Switch, TextInput, StyleSheet, ScrollView, Image, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { useDarkMode } from '../screens/DarkMode';
@@ -50,6 +51,9 @@ export default function SettingsScreen() {
     }
   })();
 
+  const [testNotifId, setTestNotifId] = useState(null);
+  const [throttleInfo, setThrottleInfo] = useState(null);
+
   const sendTestNotification = async () => {
     const granted = await NotificationService.requestNotificationPermission();
     if (!granted) {
@@ -72,6 +76,64 @@ export default function SettingsScreen() {
   };
 
   const currentTheme = darkMode ? appTheme.dark : appTheme.light;
+
+  // Debug helpers for throttle key
+  const showThrottle = async () => {
+    try {
+      const childId = activeChildId;
+      if (!childId) { Alert.alert('No active child', 'Set an active child before checking throttle.'); return; }
+        const key = `digestNotifiedTimes:${childId}`;
+        const val = await AsyncStorage.getItem(key);
+        if (!val) {
+          setThrottleInfo(null);
+          Alert.alert('Throttle', 'No throttle entry found for child');
+          return;
+        }
+        let arr = [];
+        try { arr = JSON.parse(val) || []; } catch (e) { arr = []; }
+        if (!arr.length) {
+          Alert.alert('Throttle', 'No timestamps stored');
+          setThrottleInfo(null);
+          return;
+        }
+        const when = new Date(arr[arr.length-1]).toLocaleString();
+        setThrottleInfo({ key, arr });
+        Alert.alert('Throttle', `Last notified: ${when} (count=${arr.length})`);
+    } catch (e) {
+      console.error('showThrottle', e);
+      Alert.alert('Error', String(e));
+    }
+  };
+
+  const clearThrottle = async () => {
+    try {
+      const childId = activeChildId;
+      if (!childId) { Alert.alert('No active child', 'Set an active child before clearing throttle.'); return; }
+  const key = `digestNotifiedTimes:${childId}`;
+  await AsyncStorage.removeItem(key);
+  setThrottleInfo(null);
+  Alert.alert('Throttle cleared', `Removed ${key}`);
+    } catch (e) {
+      console.error('clearThrottle', e);
+      Alert.alert('Error', String(e));
+    }
+  };
+
+  const forceSendDigest = async () => {
+    try {
+      const childId = activeChildId;
+      if (!childId) { Alert.alert('No active child', 'Select an active child first.'); return; }
+      const id = await NotificationService.sendDigestNotificationForChild(childId, { force: true });
+      if (id) {
+        Alert.alert('Notification scheduled', `id=${id}`);
+      } else {
+        Alert.alert('No notification sent', 'Throttled or no data available for digest');
+      }
+    } catch (e) {
+      console.error('forceSendDigest', e);
+      Alert.alert('Error', String(e));
+    }
+  };
 
   return (
     <ThemedBackground>
@@ -181,6 +243,30 @@ export default function SettingsScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+      {/* Debug controls for throttle */}
+      <View style={[styles.settingItem, { flexDirection: 'column', alignItems: 'stretch' }]}>
+        <TouchableOpacity style={{ padding: 10, backgroundColor: '#FFF1C6', borderRadius: 12, marginBottom: 8 }} onPress={showThrottle}>
+          <Text style={{ fontWeight: '600' }}>Show Digest Throttle</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={{ padding: 10, backgroundColor: '#FFE6E6', borderRadius: 12, marginBottom: 8 }} onPress={clearThrottle}>
+          <Text style={{ fontWeight: '600' }}>Clear Digest Throttle</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={{ padding: 10, backgroundColor: '#D6F5D6', borderRadius: 12 }} onPress={forceSendDigest}>
+          <Text style={{ fontWeight: '600' }}>Force Send Digest Now</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Dev immediate raw notification */}
+      <View style={[styles.settingItem, { justifyContent: 'center' }]}>
+        <TouchableOpacity style={{ padding: 10, backgroundColor: '#E8F4FF', borderRadius: 12 }} onPress={async () => {
+          const id = await NotificationService.scheduleImmediateTestNotification('Immediate test notification (3s)', 0.05);
+          if (id) Alert.alert('Scheduled', `id=${id}`);
+          else Alert.alert('Failed', 'No id returned');
+        }}>
+          <Text style={{ fontWeight: '600' }}>Immediate Raw Notification (3s)</Text>
+        </TouchableOpacity>
+      </View>
 
         {/* Reminders */}
         <TouchableOpacity style={styles.remindersWrapper}>

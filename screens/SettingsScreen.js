@@ -53,7 +53,7 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.settingItem}>
-        <Text style={styles.settingText}>Multi-Factor Authentication 🔐</Text>
+        <Text style={styles.settingText}>Require Email Link at Sign-In 🔐</Text>
         <Switch 
           value={mfa} onValueChange={async (val) => {
             setMfa(val);

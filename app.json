@@ -1,5 +1,6 @@
 {
   "expo": {
+    "scheme": "babytracker",
     "name": "BabyTracker",
     "slug": "BabyTracker",
     "version": "1.0.0",

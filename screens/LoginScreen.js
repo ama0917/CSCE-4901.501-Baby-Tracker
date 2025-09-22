@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { getAuth, isSignInWithEmailLink, sendSignInLinkToEmail, signInWithEmailLink } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import { 
   Baby, 
@@ -34,6 +34,9 @@ import {
 import '../firebaseConfig';
 import LogoImage from '../assets/logo.png';
 import { signInOrThrowMfa, isTotpChallenge, resolveTotpSignIn } from '../auth/mfa';
+import * as Linking from 'expo-linking';
+import * as Crypto from 'expo-crypto';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 
@@ -278,6 +281,44 @@ export default function LoginScreen() {
   const buttonScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    const completeIfEmailLink = async (incomingUrl) => {
+      try {
+        if (!incomingUrl) return;
+
+        // Our Hosting page redirects like: babytracker://email-link?url=<ENCODED_FIREBASE_LINK>
+        const parsed = Linking.parse(incomingUrl);
+        const raw = parsed?.queryParams?.url
+          ? decodeURIComponent(parsed.queryParams.url)
+          : incomingUrl;
+
+        // Only proceed for actual Firebase email links
+        if (!isSignInWithEmailLink(getAuth(), raw)) return;
+
+        const stored = await AsyncStorage.getItem('pendingEmailForLink');
+        if (!stored) return;
+
+        setIsLoading(true);
+        const cred = await signInWithEmailLink(getAuth(), stored, raw);
+        await AsyncStorage.removeItem('pendingEmailForLink');
+
+        const isNew = await checkIfNewUser(cred.user);
+        if (isNew) setShowWelcome(true);
+        else navigation.navigate('Home');
+      } catch (e) {
+        Alert.alert('Sign-in link error', e.message || 'Could not complete sign-in.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    // Handle both cold start and warm links
+    Linking.getInitialURL().then(completeIfEmailLink).catch(() => {});
+    const sub = Linking.addEventListener('url', ({ url }) => completeIfEmailLink(url));
+    return () => sub.remove();
+  }, []);
+
+
+  useEffect(() => {
     // Animate login screen entrance
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -337,16 +378,44 @@ export default function LoginScreen() {
     }
   };
 
+const actionCodeSettings = {
+  url: 'https://babytracker-ab1ed.web.app/finishSignIn/',
+  handleCodeInApp: true,
+};
+
+const hashEmail = async (e) =>
+  Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, (e || '').toLowerCase().trim());
+
+const getLoginModeFor = async (email) => {
+  try {
+    const db = getFirestore();
+    const h = await hashEmail(email);
+    const snap = await getDoc(doc(db, 'loginPrefs', h));
+    return snap.exists() ? (snap.data().mode || 'password') : 'password';
+  } catch {
+    return 'password';
+  }
+};
+
+
   const handleLogin = async () => {
   animateButton();
 
-  if (!email.trim() || !password.trim()) {
-    Alert.alert('Error', 'Please enter both email and password');
-    return;
+  if (!email.trim()) {
+   Alert.alert('Error', 'Please enter your email');
+   return;
   }
 
   setIsLoading(true);
   try {
+    const mode = await getLoginModeFor(email);
+    if (mode === 'email_link') {
+      await sendSignInLinkToEmail(getAuth(), email.trim(), actionCodeSettings);
+      await AsyncStorage.setItem('pendingEmailForLink', email.trim());
+      Alert.alert('Check your email', 'Tap the link in your email to finish signing in.');
+      setIsLoading(false);
+      return;
+    }
     const user = await signInOrThrowMfa(email, password);
     const isNewUser = await checkIfNewUser(user);
     if (isNewUser) {

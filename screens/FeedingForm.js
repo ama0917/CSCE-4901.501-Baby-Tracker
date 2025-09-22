@@ -8,11 +8,11 @@ import {
   SafeAreaView,
   Image,
   Platform,
-  ScrollView,
   Keyboard,
   KeyboardAvoidingView,
   TouchableWithoutFeedback
 } from 'react-native';
+import { ScrollView } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRoute } from '@react-navigation/native';
@@ -111,7 +111,6 @@ const FeedingForm = ({ navigation }) => {
             <ScrollView
               style={styles.scrollView}
               contentContainerStyle={styles.scrollViewContent}
-              keyboardShouldPersistTaps="handled"
             >
               <View style={styles.formContainer}>
                 <View style={styles.header}>

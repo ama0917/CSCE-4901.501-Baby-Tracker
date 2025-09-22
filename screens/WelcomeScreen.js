@@ -19,6 +19,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { ScrollView } from 'react-native';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import '../firebaseConfig';
 
@@ -248,11 +249,7 @@ export default function LoginScreen() {
         style={styles.keyboardAvoid}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView 
-            contentContainerStyle={styles.scrollViewContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
+          <ScrollView contentContainerStyle={styles.scrollViewContent} showsVerticalScrollIndicator={false}>
             <Animated.View 
               style={[
                 styles.innerContainer,

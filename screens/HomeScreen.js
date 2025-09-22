@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient} from 'expo-linear-gradient';
 import { getFirestore, collection, getDocs, query, onSnapshot, where, serverTimestamp } from 'firebase/firestore';
@@ -41,7 +42,7 @@ const HomeScreen = () => {
   const toggleEditButtons =() => setShowEditButtons(prev => !prev);
     return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
-    <ScrollView contentContainerStyle={styles.scrollContainer}>
+  <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.container}>
         <View style={styles.topBar}>
           <Image source={require('../assets/logo.png')} style={styles.logo} />
@@ -101,7 +102,7 @@ const HomeScreen = () => {
           <Text style={styles.buttonText}>➕ Add Child</Text>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+  </ScrollView>
     </LinearGradient>
   );
 };

@@ -15,6 +15,7 @@ import { ArrowLeft, Settings as SettingsIcon } from 'lucide-react-native';
 const neonGradients = {
   card: ['#6491ebff', '#7676dbff'],
   button: ['#5aececff', '#62a8e5ff'],
+  button2: ['#000001ff', '#000004ff'],
   warn: ['#faaa72ff', '#f68dc0ff'],
   input: ['#fad0c43f', '#ffd1ff4a'],
 };
@@ -140,7 +141,7 @@ export default function SettingsScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-         <LinearGradient colors={darkMode ? neonGradients.card : ['#fff', '#f5f5f5']} style={styles.headerButtonGradient}>
+         <LinearGradient colors={darkMode ? neonGradients.button2 : ['#fff', '#f5f5f5']} style={styles.headerButtonGradient}>
               <ArrowLeft size={20} color={darkMode ? "#fff" : "#000000ff"} />
             </LinearGradient>
           </TouchableOpacity>
@@ -157,20 +158,19 @@ export default function SettingsScreen() {
         </View>
 
         {/* Dark Mode */}
-        <LinearGradient colors={darkMode ? neonGradients.card : ['#ffffffee', '#f9f9ff']} style={styles.settingCard}>
+        <LinearGradient colors={darkMode ? neonGradients.card : ['#fbd687ee', '#f9f9ff']} style={styles.settingCard}>
           <Text style={[styles.settingText, { color: currentTheme.textPrimary }]}>Dark Mode</Text>
           <Switch value={darkMode} onValueChange={setDarkMode} />
         </LinearGradient>
 
         {/* MFA */}
-        <LinearGradient colors={darkMode ? neonGradients.card : ['#ffffffee', '#f9f9ff']} style={styles.settingCard}>
+        <LinearGradient colors={darkMode ? neonGradients.card : ['#fbd687ee', '#f9f9ff']} style={styles.settingCard}>
           <Text style={[styles.settingText, { color: currentTheme.textPrimary }]}>Multi-Factor Authentication</Text>
           <Switch value={mfa} onValueChange={setMfa} />
         </LinearGradient>
 
         {/* Weekly Digest */}
-        <LinearGradient colors={darkMode ? neonGradients.card : ['#ffffffee', '#f9f9ff']} style={styles.settingCard}>
-          <View style={styles.settingRow}>
+        <LinearGradient colors={darkMode ? neonGradients.card : ['#fbd687ee', '#f9f9ff']} style={styles.settingCard}>
         <Text style={[styles.settingText, { color: currentTheme.textPrimary }]}>Weekly Digest Notifications</Text>
           <Switch value={weeklyDigest} onValueChange={async (val) => {
             setWeeklyDigest(val);
@@ -214,7 +214,6 @@ export default function SettingsScreen() {
               console.error('save weeklyDigest', e);
             }
           }} />
-          </View>
         </LinearGradient>
 
         {/* Test Notification */}

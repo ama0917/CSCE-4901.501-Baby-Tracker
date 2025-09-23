@@ -3,36 +3,25 @@ import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Image, Platform
 import { ScrollView } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
-import { LinearGradient} from 'expo-linear-gradient';
+import { LinearGradient } from 'expo-linear-gradient';
 import { getAuth } from 'firebase/auth';
 import { db } from '../firebaseConfig';
 import { addDoc, collection, Timestamp } from 'firebase/firestore';
 import NotificationService from '../src/notifications/notificationService';
+import { useDarkMode } from '../screens/DarkMode';
+import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
+import { ArrowLeft } from 'lucide-react-native';
 
 const DiaperChangeForm = ({ navigation, route }) => {
   const { childId } = route.params || {};
-  
-  // Add console logging to verify childId is received correctly
-  console.log('Received childId in DiaperChangeForm:', childId);
+  const { darkMode } = useDarkMode();
+  const currentTheme = darkMode ? appTheme.dark : appTheme.light;
 
   const [selectedTime, setSelectedTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [bathroomType, setBathroomType] = useState('Diaper Change');
   const [stoolType, setStoolType] = useState('');
   const [showStoolPicker, setShowStoolPicker] = useState(false);
-
-  const handleTimeChange = (event, selected) => {
-    if (Platform.OS === 'android') {
-      if (selected) setSelectedTime(selected);
-      if (event.type === 'set') setShowTimePicker(false);
-    } else {
-      if (selected) setSelectedTime(selected);
-    }
-  };
-
-  const confirmTimePicker = () => {
-    setShowTimePicker(false);
-  };
 
   const formatTime = (date) => {
     let hours = date.getHours();
@@ -51,36 +40,32 @@ const DiaperChangeForm = ({ navigation, route }) => {
         Alert.alert('Authentication Error', 'You must be logged in to save logs.');
         return;
       }
-
       if (!stoolType) {
         Alert.alert('Missing Info', 'Please select a stool type.');
         return;
       }
-      
       if (!childId) {
         Alert.alert('Error', 'Child ID is missing. Please go back and try again.');
         return;
       }
 
       const logData = {
-        childId: childId,
-        stoolType: stoolType,
-        bathroomType: bathroomType,
+        childId,
+        stoolType,
+        bathroomType,
         time: Timestamp.fromDate(selectedTime),
         timestamp: Timestamp.now(),
         createdBy: user.uid,
       };
-      
 
-      console.log('Saving diaper log with data:', logData);
+      await addDoc(collection(db, 'diaperLogs'), logData);
 
-  await addDoc(collection(db, 'diaperLogs'), logData);
+      try {
+        NotificationService.sendDigestNotificationForChild(childId).catch(() => {});
+      } catch (e) {}
 
-  // Fire-and-forget: attempt to send a digest notification for this child
-  try { NotificationService.sendDigestNotificationForChild(childId).catch(() => {}); } catch (e) { /* ignore */ }
-
-  Alert.alert('Success', 'Log saved successfully!');
-  navigation.goBack();
+      Alert.alert('Success', 'Log saved successfully!');
+      navigation.goBack();
     } catch (error) {
       console.error('Error saving diaper log:', error);
       Alert.alert('Error', 'Something went wrong. Please try again.');
@@ -88,296 +73,151 @@ const DiaperChangeForm = ({ navigation, route }) => {
   };
 
   return (
-     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
+    <ThemedBackground>
       <SafeAreaView style={styles.container}>
-  <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
-        <View style={styles.formContainer}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-              <Text style={styles.backText}>← Dashboard</Text>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+              <LinearGradient
+                colors={darkMode ? currentTheme.card : ['#fff', '#f5f5f5']}
+                style={styles.headerButtonGradient}
+              >
+                <ArrowLeft size={20} color={darkMode ? '#fff' : '#2E3A59'} />
+              </LinearGradient>
             </TouchableOpacity>
-            <View style={styles.logoContainer}>
-              <Image source={require('../assets/logo.png')} style={styles.logo} />
-            </View>
-            <View style={styles.headerRightSpace} />
+            <Image source={require('../assets/logo.png')} style={styles.logo} />
+            <View style={{ width: 44 }} />
           </View>
 
-          <Text style={styles.title}>Diaper Change/Potty Log</Text>
+          <Text style={[styles.title, { color: currentTheme.textPrimary }]}>
+            Diaper Change / Potty Log
+          </Text>
 
           {/* Time Picker */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Time</Text>
-            <TouchableOpacity onPress={() => setShowTimePicker(true)} style={styles.timeButton}>
-              <Text style={styles.timeButtonText}>{formatTime(selectedTime)}</Text>
+          <LinearGradient colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']} style={styles.inputCard}>
+            <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Time</Text>
+            <TouchableOpacity onPress={() => setShowTimePicker(true)} style={styles.fieldButton}>
+              <Text style={{ color: currentTheme.textPrimary }}>{formatTime(selectedTime)}</Text>
             </TouchableOpacity>
-
             {showTimePicker && (
-              <View style={styles.timePickerContainer}>
-                <DateTimePicker
-                  value={selectedTime}
-                  mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={handleTimeChange}
-                  style={[styles.timePicker, { width: '100%' }]}
-                />
-
-                {Platform.OS === 'ios' && (
-                  <TouchableOpacity style={styles.confirmTimeButton} onPress={confirmTimePicker}>
-                    <Text style={styles.confirmTimeText}>Confirm Time</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              <DateTimePicker
+                value={selectedTime}
+                mode="time"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(e, date) => date && setSelectedTime(date)}
+              />
             )}
-          </View>
+          </LinearGradient>
 
-          {/* Bathroom Type Selection */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Select Bathroom Type</Text>
+          {/* Bathroom Type */}
+          <LinearGradient colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']} style={styles.inputCard}>
+            <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Bathroom Type</Text>
             <View style={styles.toggleContainer}>
-              <TouchableOpacity
-                style={[styles.toggleButton, bathroomType === 'Diaper Change' && styles.selectedButton]}
-                onPress={() => setBathroomType('Diaper Change')}
-              >
-                <Text style={[styles.toggleText, bathroomType === 'Diaper Change' && styles.selectedText]}>
-                  Diaper Change
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.toggleButton, bathroomType === 'Potty' && styles.selectedButton]}
-                onPress={() => setBathroomType('Potty')}
-              >
-                <Text style={[styles.toggleText, bathroomType === 'Potty' && styles.selectedText]}>Potty</Text>
-              </TouchableOpacity>
+              {['Diaper Change', 'Potty'].map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  onPress={() => setBathroomType(type)}
+                  style={[
+                    styles.toggleButton,
+                    bathroomType === type && { backgroundColor: darkMode ? '#0072ff' : '#81D4FA' },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.toggleText,
+                      { color: bathroomType === type ? '#fff' : currentTheme.textPrimary },
+                    ]}
+                  >
+                    {type}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          </View>
+          </LinearGradient>
 
-          {/* Stool Type Picker */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Stool Type</Text>
-            <TouchableOpacity style={styles.dropdownButton} onPress={() => setShowStoolPicker(!showStoolPicker)}>
-              <Text style={styles.dropdownButtonText}>{stoolType || 'Select Stool Type'}</Text>
-              <Text style={styles.dropdownIcon}>▼</Text>
+          {/* Stool Type */}
+          <LinearGradient colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']} style={styles.inputCard}>
+            <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Stool Type</Text>
+            <TouchableOpacity onPress={() => setShowStoolPicker(!showStoolPicker)} style={styles.fieldButton}>
+              <Text style={{ color: currentTheme.textPrimary }}>
+                {stoolType || 'Select Stool Type'}
+              </Text>
             </TouchableOpacity>
-
             {showStoolPicker && (
               <View style={styles.pickerContainer}>
-                <Picker selectedValue={stoolType} onValueChange={(itemValue) => setStoolType(itemValue)}>
-                  <Picker.Item label="Select Stool Type" value="" />
+                <Picker selectedValue={stoolType} onValueChange={(val) => setStoolType(val)}>
                   <Picker.Item label="Wet" value="Wet" />
                   <Picker.Item label="BM" value="BM" />
                   <Picker.Item label="Dry" value="Dry" />
                   <Picker.Item label="Wet + BM" value="Wet+BM" />
                 </Picker>
-                <TouchableOpacity style={styles.confirmPickerButton} onPress={() => setShowStoolPicker(false)}>
-                  <Text style={styles.confirmPickerText}>Confirm Selection</Text>
-                </TouchableOpacity>
               </View>
             )}
-          </View>
+          </LinearGradient>
 
-          {/* Submit Button */}
-          <TouchableOpacity style={styles.completeButton} onPress={handleCompleteLog}>
-            <Text style={styles.completeButtonText}>Complete Log</Text>
+          {/* Submit */}
+          <TouchableOpacity onPress={handleCompleteLog} style={{ marginTop: 20 }}>
+            <LinearGradient
+              colors={darkMode ? ['#ff6a00', '#ee0979'] : ['#F8BBD9', '#FFB74D']}
+              style={styles.submitButton}
+            >
+              <Text style={styles.submitText}>Complete Log</Text>
+            </LinearGradient>
           </TouchableOpacity>
-        </View>
-  </ScrollView>
-    </SafeAreaView>
-    </LinearGradient>
+        </ScrollView>
+      </SafeAreaView>
+    </ThemedBackground>
   );
 };
 
-// Styles (same as your original, unchanged)
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollViewContent: {
-    flexGrow: 1,
-    paddingBottom: 30,
-  },
-  formContainer: {
-    flex: 1,
-    padding: 20,
-  },
+  container: { flex: 1 },
+  scrollContent: { padding: 20, paddingBottom: 40 },
   header: {
     flexDirection: 'row',
-    marginBottom: 50,
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  backButton: {
-    padding: 8,
-  },
-  backText: {
-    color: '#007bff',
-    fontSize: 12,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -20,
-  },
-  logo: {
-    width: 60,
-    height: 60,
-  },
-  headerRightSpace: {
-    width: 70,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 30,
-  },
-  inputGroup: {
     marginBottom: 20,
   },
-  label: {
-    fontSize: 16,
-    marginBottom: 10,
-    fontWeight: '500',
+  headerButton: { borderRadius: 16 },
+  headerButtonGradient: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  timeButton: {
-    backgroundColor: '#fff',
+  logo: { width: 50, height: 50, resizeMode: 'contain' },
+  title: { fontSize: 26, fontWeight: '700', textAlign: 'center', marginBottom: 20 },
+  inputCard: {
+    borderRadius: 20,
     padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  timeButtonText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  timePickerContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 5,
-    marginTop: 5,
-    padding: 10,
-    width: '100%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  timePicker: {
-    backgroundColor: Platform.OS === 'ios' ? '#fff' : 'transparent',
-    borderRadius: 5,
-  },
-  confirmTimeButton: {
-    backgroundColor: '#007bff',
-    padding: 10,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  confirmTimeText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  toggleButton: {
-    flex: 1,
-    padding: 15,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    marginHorizontal: 5,
-    borderRadius: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  selectedButton: {
-    backgroundColor: '#4CAF50',
-  },
-  toggleText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
-  },
-  selectedText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  dropdownButton: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 5,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  dropdownButtonText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  dropdownIcon: {
-    fontSize: 16,
-    color: '#333',
-  },
-  pickerContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 5,
-    marginTop: 5,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  confirmPickerButton: {
-    backgroundColor: '#007bff',
-    padding: 10,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 5,
-  },
-  confirmPickerText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  completeButton: {
-    backgroundColor: '#fcfcd4',
-    padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginTop: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
+    marginVertical: 10,
     elevation: 3,
   },
-  completeButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
+  label: { fontSize: 16, fontWeight: '600', marginBottom: 8 },
+  fieldButton: {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
+  pickerContainer: {
+    borderRadius: 12,
+    marginTop: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  toggleContainer: { flexDirection: 'row', justifyContent: 'space-between' },
+  toggleButton: {
+    flex: 1,
+    marginHorizontal: 5,
+    padding: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  toggleText: { fontSize: 16, fontWeight: '600' },
+  submitButton: { borderRadius: 20, paddingVertical: 16, alignItems: 'center' },
+  submitText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });
 
 export default DiaperChangeForm;

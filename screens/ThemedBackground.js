@@ -15,7 +15,7 @@ export const appTheme = {
     backgroundGradient: ['#0f2027', '#05090b', '#020404'], // dark gradient
     textPrimary: '#EAEAEA',
     textSecondary: '#9E9E9E',
-    card: '#2a2a40',
+    card: '#a4a4b6ff',
     input: '#333',
   },
 };

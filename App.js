@@ -3,7 +3,6 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { DarkModeProvider } from './screens/DarkMode'; 
 import { ActiveChildProvider } from './src/contexts/ActiveChildContext';
-
 import { auth } from './firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 
@@ -42,7 +41,7 @@ export default function App() {
       console.log("Notifications not available:", e);
     }
 
-    // Firebase auth persistence
+    // Listen for Firebase auth state changes
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       if (initializing) setInitializing(false);
@@ -51,36 +50,34 @@ export default function App() {
   }, []);
 
   if (initializing) {
-    return null; // or splash/loading screen
+    // Optional: show a splash screen here
+    return null;
   }
 
   return (
     <DarkModeProvider>
       <ActiveChildProvider>
         <NavigationContainer>
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
-            {user ? (
-              // Signed-in flow
-              <>
-                <Stack.Screen name="Home" component={HomeScreen} />
-                <Stack.Screen name="ChildDashboard" component={ChildDashboard} />
-                <Stack.Screen name="Settings" component={SettingsScreen}/>
-                <Stack.Screen name="AddChild" component={AddChildScreen} />
-                <Stack.Screen name="ReportsScreen" component={ReportsScreen} />
-                <Stack.Screen name="FeedingForm" component={FeedingForm} />
-                <Stack.Screen name="DiaperChangeForm" component={DiaperChangeForm} />
-                <Stack.Screen name="SleepingForm" component={SleepingForm} />
-                <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-                <Stack.Screen name="EditChild" component={EditChildScreen}/>
-                <Stack.Screen name="RemindersScreen" component={RemindersScreen}/>
-              </>
-            ) : (
-              // Auth flow
-              <>
-                <Stack.Screen name="Login" component={LoginScreen} />
-                <Stack.Screen name="SignUp" component={SignUpScreen} />
-              </>
-            )}
+          <Stack.Navigator
+            screenOptions={{ headerShown: false }}
+            initialRouteName={user ? 'Home' : 'Login'}
+          >
+            {/* Auth screens */}
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="SignUp" component={SignUpScreen} />
+
+            {/* Main app screens */}
+            <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="ChildDashboard" component={ChildDashboard} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="AddChild" component={AddChildScreen} />
+            <Stack.Screen name="ReportsScreen" component={ReportsScreen} />
+            <Stack.Screen name="FeedingForm" component={FeedingForm} />
+            <Stack.Screen name="DiaperChangeForm" component={DiaperChangeForm} />
+            <Stack.Screen name="SleepingForm" component={SleepingForm} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen name="EditChild" component={EditChildScreen} />
+            <Stack.Screen name="RemindersScreen" component={RemindersScreen} />
           </Stack.Navigator>
         </NavigationContainer>
       </ActiveChildProvider>

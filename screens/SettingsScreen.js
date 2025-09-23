@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Switch, TextInput, StyleSheet, ScrollView, Image, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Switch, TextInput, StyleSheet, ScrollView, Image, Alert, StatusBar } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
@@ -12,7 +12,6 @@ import { summaryRepository } from '../src/data/summaryRepository';
 import { useActiveChild } from '../src/contexts/ActiveChildContext';
 import { ArrowLeft, Settings as SettingsIcon } from 'lucide-react-native';
 
-// Neon gradients (match ChildDashboard)
 const neonGradients = {
   card: ['#6491ebff', '#7676dbff'],
   button: ['#5aececff', '#62a8e5ff'],
@@ -136,15 +135,13 @@ export default function SettingsScreen() {
 
   return (
     <ThemedBackground>
+      <StatusBar barstyle ={darkMode ? "light-content" : "dark-content"} translucent />
       <ScrollView contentContainerStyle={styles.container}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-            <LinearGradient
-              colors={darkMode ? neonGradients.card : ['#fff', '#f5f5f5']}
-              style={styles.headerButtonGradient}
-            >
-              <ArrowLeft size={20} color={darkMode ? "#fff" : "#2E3A59"} />
+         <LinearGradient colors={darkMode ? neonGradients.card : ['#fff', '#f5f5f5']} style={styles.headerButtonGradient}>
+              <ArrowLeft size={20} color={darkMode ? "#fff" : "#000000ff"} />
             </LinearGradient>
           </TouchableOpacity>
 
@@ -155,25 +152,26 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={[styles.title, { color: currentTheme.textPrimary }]}>Settings</Text>
+        <View style={styles.titleWrapper}>
+          <Text style={[styles.title, { color: currentTheme.textPrimary }]}> Settings </Text>
+        </View>
 
         {/* Dark Mode */}
-        <LinearGradient colors={darkMode ? neonGradients.card : [currentTheme.card]} style={styles.settingItem}>
-          <Text style={[styles.settingText, { color: darkMode ? '#fff' : currentTheme.textPrimary }]}>Dark Mode</Text>
+        <LinearGradient colors={darkMode ? neonGradients.card : ['#ffffffee', '#f9f9ff']} style={styles.settingCard}>
+          <Text style={[styles.settingText, { color: currentTheme.textPrimary }]}>Dark Mode</Text>
           <Switch value={darkMode} onValueChange={setDarkMode} />
         </LinearGradient>
 
         {/* MFA */}
-        <LinearGradient colors={darkMode ? neonGradients.card : [currentTheme.card]} style={styles.settingItem}>
-          <Text style={[styles.settingText, { color: darkMode ? '#fff' : currentTheme.textPrimary }]}>
-            Multi-Factor Authentication
-          </Text>
+        <LinearGradient colors={darkMode ? neonGradients.card : ['#ffffffee', '#f9f9ff']} style={styles.settingCard}>
+          <Text style={[styles.settingText, { color: currentTheme.textPrimary }]}>Multi-Factor Authentication</Text>
           <Switch value={mfa} onValueChange={setMfa} />
         </LinearGradient>
 
         {/* Weekly Digest */}
-        <LinearGradient colors={darkMode ? neonGradients.card : [currentTheme.card]} style={styles.settingItem}>
-          <Text style={[styles.settingText, { color: darkMode ? '#fff' : currentTheme.textPrimary }]}>Weekly Digest Notifications</Text>
+        <LinearGradient colors={darkMode ? neonGradients.card : ['#ffffffee', '#f9f9ff']} style={styles.settingCard}>
+          <View style={styles.settingRow}>
+        <Text style={[styles.settingText, { color: currentTheme.textPrimary }]}>Weekly Digest Notifications</Text>
           <Switch value={weeklyDigest} onValueChange={async (val) => {
             setWeeklyDigest(val);
             const currentUser = auth.currentUser;
@@ -216,23 +214,49 @@ export default function SettingsScreen() {
               console.error('save weeklyDigest', e);
             }
           }} />
+          </View>
         </LinearGradient>
 
         {/* Test Notification */}
-        <LinearGradient colors={darkMode ? neonGradients.card : [currentTheme.card]} style={styles.settingItem}>
+        <LinearGradient colors={darkMode ? neonGradients.card : ['#ffffffee', '#f9f9ff']} style={styles.settingCard}>
           <TouchableOpacity onPress={testNotifId ? cancelTestNotification : sendTestNotification}>
-            <Text style={{ fontWeight: '600', color: darkMode ? '#fff' : '#333' }}>
+            <Text style={{ fontWeight: '600', color: currentTheme.textPrimary }}>
               {testNotifId ? 'Cancel Test Notification' : 'Send Test Notification (2m)'}
             </Text>
           </TouchableOpacity>
         </LinearGradient>
 
         {/* Debug Controls */}
-        <LinearGradient colors={darkMode ? neonGradients.card : [currentTheme.card]} style={[styles.settingItem, { flexDirection: 'column' }]}>
-          <TouchableOpacity onPress={showThrottle} style={styles.debugButton}><Text>Show Digest Throttle</Text></TouchableOpacity>
-          <TouchableOpacity onPress={clearThrottle} style={styles.debugButton}><Text>Clear Digest Throttle</Text></TouchableOpacity>
-          <TouchableOpacity onPress={forceSendDigest} style={styles.debugButton}><Text>Force Send Digest Now</Text></TouchableOpacity>
-        </LinearGradient>
+    <LinearGradient
+      colors={darkMode ? neonGradients.card : ['#ffffffee', '#f9f9ff']}
+       style={styles.settingItem}
+      >
+       <TouchableOpacity onPress={showThrottle} style={styles.settingRow}>
+     <Text style={[styles.settingText, { color: currentTheme.textPrimary }]}> Show Digest Throttle </Text>
+     </TouchableOpacity>
+    </LinearGradient>
+
+    <LinearGradient
+      colors={darkMode ? neonGradients.card : ['#ffffffee', '#f9f9ff']}
+      style={styles.settingItem}
+    >
+      <TouchableOpacity onPress={clearThrottle} style={styles.settingRow}>
+        <Text style={[styles.settingText, { color: currentTheme.textPrimary }]}>
+          Clear Digest Throttle
+        </Text>
+      </TouchableOpacity>
+    </LinearGradient>
+
+<LinearGradient
+  colors={darkMode ? neonGradients.card : ['#ffffffee', '#f9f9ff']}
+  style={styles.settingItem}
+>
+  <TouchableOpacity onPress={forceSendDigest} style={styles.settingRow}>
+    <Text style={[styles.settingText, { color: currentTheme.textPrimary }]}>
+      Force Send Digest Now
+    </Text>
+  </TouchableOpacity>
+</LinearGradient>
 
         {/* Reminders */}
         <TouchableOpacity style={styles.remindersWrapper}>
@@ -242,19 +266,19 @@ export default function SettingsScreen() {
         </TouchableOpacity>
 
         {/* Change Password */}
-        <LinearGradient colors={darkMode ? neonGradients.card : [currentTheme.card]} style={styles.passwordSection}>
-          <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : currentTheme.textPrimary }]}>Change Password</Text>
+        <LinearGradient colors={darkMode ? neonGradients.card : ['#ffffffee', '#f9f9ff']} style={styles.passwordSection}>
+          <Text style={[styles.sectionTitle, { color: currentTheme.textPrimary }]}>Change Password</Text>
           {['Current Password', 'New Password', 'Confirm New Password'].map((ph, i) => (
-            <LinearGradient key={i} colors={darkMode ? neonGradients.input : [currentTheme.input]} style={styles.input}>
-              <TextInput placeholder={ph} placeholderTextColor={darkMode ? '#ccc' : '#555'} secureTextEntry style={styles.inputText} />
+            <LinearGradient key={i} colors={darkMode ? neonGradients.input : ['#f0f0f0', '#fff']} style={styles.input}>
+              <TextInput placeholder={ph} placeholderTextColor={darkMode ? '#ccc' : '#7C8B9A'} secureTextEntry style={styles.inputText} />
             </LinearGradient>
           ))}
           <TouchableOpacity style={styles.resetWrapper}>
-            <LinearGradient colors={darkMode ? neonGradients.button : ['#FFCDD2', '#FFCDD2']} style={styles.resetButton}>
+            <LinearGradient colors={darkMode ? neonGradients.button : ['#FFCDD2', '#dcbbc5ff']} style={styles.resetButton}>
               <Text style={styles.resetText}>Reset Password</Text>
             </LinearGradient>
           </TouchableOpacity>
-        </LinearGradient>
+          </LinearGradient>
       </ScrollView>
     </ThemedBackground>
   );
@@ -265,27 +289,40 @@ const styles = StyleSheet.create({
   container: 
   { 
     flexGrow: 1,
-     padding: 30, 
-     alignItems: 'center' },
+     padding: 20, 
+ },
   header: 
   { 
     flexDirection: 'row', 
     justifyContent: 'space-between',
      width: '100%', 
      alignItems: 'center', 
-     marginBottom: 10, 
-     marginTop: 10 
+     marginBottom: 20, 
+    },
+     headerButton:
+    {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+    headerButtonGradient: {
+    padding: 8,
+    borderRadius: 12,
     },
   backButton:
    { 
     fontSize: 14, 
     marginBottom: 20 
   },
+  titleWrapper:
+  {
+    width: '100%',
+    alignItems: 'center', 
+    marginVertical: 15,
+  },
   title: 
   {
      fontSize: 28,
      fontWeight: 'bold',
-      marginVertical: 15 
     },
   settingItem: 
   { 
@@ -297,9 +334,23 @@ const styles = StyleSheet.create({
     borderRadius: 20,
      marginVertical: 10 
     },
+  settingCard:
+    {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 18,
+    marginVertical: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
   settingText: 
   { 
-    fontSize: 16
+    fontSize: 16,
+     fontWeight: '600',
    },
   remindersWrapper: 
   {
@@ -307,72 +358,90 @@ const styles = StyleSheet.create({
       marginVertical: 15 
     },
   remindersButton: 
-  { 
-    paddingVertical: 12, 
-    paddingHorizontal: 20, 
-    borderRadius: 20 
+  {
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: 'center',
   },
   remindersText: 
   { 
     fontSize: 16,
      fontWeight: '600', 
-     textAlign: 'center' 
+     textAlign: 'center', 
     },
   passwordSection: 
   { 
-    width: '100%', 
-    borderRadius: 30,
-     padding: 20,
-      marginTop: 20 
+    marginTop: 25,
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
     },
   sectionTitle: 
   { 
     fontSize: 20, 
     fontWeight: 'bold', 
-    marginBottom: 15 
+    marginBottom: 15, 
   },
   input:
    { 
     borderRadius: 15,
      marginVertical: 8,
-      paddingHorizontal: 1
+      paddingHorizontal: 1,
      },
   inputText: 
   { 
     paddingHorizontal: 15, 
     paddingVertical: 10, 
-    color: '#fff' 
+    color: '#fff' ,
   },
   resetWrapper: 
   { 
     marginTop: 15, 
-    borderRadius: 20
+    borderRadius: 20,
   },
   resetButton: 
   { 
     borderRadius: 20,
      paddingVertical: 12,
-      paddingHorizontal: 20 
+      paddingHorizontal: 20, 
     },
   resetText: 
   { 
     fontSize: 16,
      fontWeight: 'bold', 
-     textAlign: 'center'
+     textAlign: 'center',
      },
   logo: 
   { width: 65, 
     height: 65, 
     resizeMode: 'contain', 
-    marginTop: 10 
+    marginTop: 10, 
   },
   signOutButton:
-   { backgroundColor: '#FFCDD2',
+   { 
+    backgroundColor: '#ffffffff',
      paddingVertical: 8,
-      paddingHorizontal: 12,
-       borderRadius: 15 },
+     paddingHorizontal: 12,
+    borderRadius: 15,
+    },
   signOutText:
-   { color: '#FF3B30',
+   { color: '#000000ff',
     fontSize: 14, 
-    fontWeight: 'bold' },
+    fontWeight: 'bold',
+   },
+   settingRow:
+    {
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+  width: '100%',
+},
+debugButton: {
+  width: '100%',
+  alignItems: 'center',
+  paddingVertical: 10,
+},
 });

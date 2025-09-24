@@ -142,7 +142,7 @@ export default function SettingsScreen() {
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
          <LinearGradient colors={darkMode ? neonGradients.button2 : ['#fff', '#f5f5f5']} style={styles.headerButtonGradient}>
-              <ArrowLeft size={20} color={darkMode ? "#fff" : "#000000ff"} />
+              <ArrowLeft size={20} color={darkMode ? "#fff" : "#2E3A59"} />
             </LinearGradient>
           </TouchableOpacity>
 

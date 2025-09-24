@@ -6,10 +6,15 @@ import { LinearGradient} from 'expo-linear-gradient';
 import { db } from '../firebaseConfig';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { useRoute } from '@react-navigation/native';
+import { ArrowLeft } from 'lucide-react-native';
+import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
+import { useDarkMode } from '../screens/DarkMode';
 
 const SleepingForm = ({ navigation }) => {
   const route = useRoute();
   const { childId, name } = route.params || {};
+  const { darkMode } = useDarkMode();
+  const currentTheme = darkMode ? appTheme.dark : appTheme.light;
 
   const [startTime, setStartTime] = useState(new Date());
   const [endTime, setEndTime] = useState(new Date());
@@ -18,374 +23,232 @@ const SleepingForm = ({ navigation }) => {
   const [sleepType, setSleepType] = useState('');
   const [showSleepTypePicker, setShowSleepTypePicker] = useState(false);
 
-  const handleTimeChange = (event, selectedTime, isStart) => {
-    if (Platform.OS === 'android') {
-      if (selectedTime) {
-        isStart ? setStartTime(selectedTime) : setEndTime(selectedTime);
-      }
-      if (event.type === 'set') { 
-        isStart ? setShowStartPicker(false) : setShowEndPicker(false);
-      }
-    } else {
-      if (selectedTime) {
-        isStart ? setStartTime(selectedTime) : setEndTime(selectedTime);
-      }
-    }
-  };
-
-  const confirmTimePicker = (isStart) => {
-    isStart ? setShowStartPicker(false) : setShowEndPicker(false);
-  };
-
-  const formatTime = (date) => {
+const formatTime = (date) => {
     let hours = date.getHours();
     const minutes = date.getMinutes().toString().padStart(2, '0');
     const ampm = hours >= 12 ? 'p.m.' : 'a.m.';
-    hours = hours % 12;
-    hours = hours ? hours : 12;
+    hours = hours % 12 || 12;
     return `${hours}:${minutes} ${ampm}`;
   };
 
   const calculateDuration = () => {
     const diffMs = endTime - startTime;
-    const adjustedDiffMs = diffMs < 0 ? diffMs + (24 * 60 * 60 * 1000) : diffMs;
-    const minutes = Math.floor(adjustedDiffMs / (1000 * 60));
-    return minutes;
+    const adjustedDiffMs = diffMs < 0 ? diffMs + 24 * 60 * 60 * 1000 : diffMs;
+    return Math.floor(adjustedDiffMs / (1000 * 60));
   };
 
   const formatDuration = () => {
     const minutes = calculateDuration();
     const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return `${hours} hr ${remainingMinutes} min`;
-  };
-
-  const handleSleepTypeChange = (itemValue) => {
-    setSleepType(itemValue);
-  };
-
-  const closeSleepTypePicker = () => {
-    setShowSleepTypePicker(false);
+    const mins = minutes % 60;
+    return `${hours} hr ${mins} min`;
   };
 
   const handleCompleteLog = async () => {
     if (!childId) {
-      alert('No child selected');
+      Alert.alert('Error', 'No child selected');
       return;
     }
-
     if (!sleepType) {
-      alert('Please select a sleep type');
+      Alert.alert('Error', 'Please select a sleep type');
       return;
     }
-
     try {
       const logData = {
         timestamp: startTime,
-        duration: calculateDuration(), // Store as minutes for easier calculations
-        childId, // Match the field name in ChildDashboard.js
+        duration: calculateDuration(),
+        childId,
         sleepType,
         endTime,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
       };
-      
       await addDoc(collection(db, 'sleepLogs'), logData);
-      console.log('Sleep log saved:', logData);
-      alert('Log saved successfully!');
+      Alert.alert('Success', 'Sleep log saved!');
       navigation.goBack();
     } catch (error) {
-      console.error('Error adding document: ', error);
-      alert('Failed to save log. Please try again.');
+      console.error('Error adding sleep log:', error);
+      Alert.alert('Error', 'Failed to save log. Please try again.');
     }
   };
 
   return (
-     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.formContainer}>
+    <ThemedBackground>
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Text style={styles.backText}>← Dashboard</Text>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+              <LinearGradient
+                colors={darkMode ? currentTheme.card : ['#fff', '#f5f5f5']}
+                style={styles.headerButtonGradient}
+              >
+                <ArrowLeft size={20} color={darkMode ? '#fff' : '#2E3A59'} />
+              </LinearGradient>
             </TouchableOpacity>
-            <View style={styles.logoContainer}>
-              <Image 
-                source={require('../assets/logo.png')} 
-                style={styles.logo}
-              />
-            </View>
-            <View style={styles.headerSpacer} />
+            <Image source={require('../assets/logo.png')} style={styles.logo} />
+            <View style={{ width: 44 }} />
           </View>
 
-          <Text style={styles.title}>Sleeping Log</Text>
+          <Text style={[styles.title, { color: currentTheme.textPrimary }]}>Sleeping Log</Text>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Start Time</Text>
-            <TouchableOpacity 
-              onPress={() => {
-                setShowStartPicker(true);
-                setShowEndPicker(false);
-                setShowSleepTypePicker(false);
-              }} 
-              style={styles.timeButton}
-            >
-              <Text style={styles.timeButtonText}>{formatTime(startTime)}</Text>
+          {/* Start Time */}
+          <LinearGradient colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']} style={styles.inputCard}>
+            <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Start Time</Text>
+            <TouchableOpacity onPress={() => setShowStartPicker(true)} style={styles.fieldButton}>
+              <Text style={{ color: currentTheme.textPrimary }}>{formatTime(startTime)}</Text>
             </TouchableOpacity>
-            
             {showStartPicker && (
-              <>
-                <DateTimePicker 
-                  value={startTime} 
-                  mode="time" 
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(event, selectedTime) => handleTimeChange(event, selectedTime, true)}
-                  style={styles.timePicker}
-                />
-                
-                {Platform.OS === 'ios' && (
-                  <TouchableOpacity 
-                    style={styles.confirmTimeButton}
-                    onPress={() => confirmTimePicker(true)}
-                  >
-                    <Text style={styles.confirmTimeText}>Confirm Start Time</Text>
-                  </TouchableOpacity>
-                )}
-              </>
+              <DateTimePicker
+                value={startTime}
+                mode="time"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(e, time) => time && setStartTime(time)}
+              />
             )}
-          </View>
+          </LinearGradient>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>End Time</Text>
-            <TouchableOpacity 
-              onPress={() => {
-                setShowEndPicker(true);
-                setShowStartPicker(false);
-                setShowSleepTypePicker(false);
-              }} 
-              style={styles.timeButton}
-            >
-              <Text style={styles.timeButtonText}>{formatTime(endTime)}</Text>
+          {/* End Time */}
+          <LinearGradient colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']} style={styles.inputCard}>
+            <Text style={[styles.label, { color: currentTheme.textPrimary }]}>End Time</Text>
+            <TouchableOpacity onPress={() => setShowEndPicker(true)} style={styles.fieldButton}>
+              <Text style={{ color: currentTheme.textPrimary }}>{formatTime(endTime)}</Text>
             </TouchableOpacity>
-            
             {showEndPicker && (
-              <>
-                <DateTimePicker 
-                  value={endTime} 
-                  mode="time" 
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(event, selectedTime) => handleTimeChange(event, selectedTime, false)}
-                  style={styles.timePicker}
-                />
-                
-                {Platform.OS === 'ios' && (
-                  <TouchableOpacity 
-                    style={styles.confirmTimeButton}
-                    onPress={() => confirmTimePicker(false)}
-                  >
-                    <Text style={styles.confirmTimeText}>Confirm End Time</Text>
-                  </TouchableOpacity>
-                )}
-              </>
+              <DateTimePicker
+                value={endTime}
+                mode="time"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(e, time) => time && setEndTime(time)}
+              />
             )}
-          </View>
+          </LinearGradient>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Duration</Text>
-            <View style={styles.durationDisplay}>
-              <Text style={styles.durationText}>{formatDuration()}</Text>
+          {/* Duration */}
+          <LinearGradient colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']} style={styles.inputCard}>
+            <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Duration</Text>
+            <View style={styles.durationBox}>
+              <Text style={{ color: currentTheme.textPrimary, fontWeight: '600' }}>
+                {formatDuration()}
+              </Text>
             </View>
-          </View>
+          </LinearGradient>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Type</Text>
-            <TouchableOpacity 
-              style={styles.dropdownButton}
-              onPress={() => {
-                setShowSleepTypePicker(!showSleepTypePicker);
-                setShowStartPicker(false);
-                setShowEndPicker(false);
-              }}
-            >
-              <Text style={styles.dropdownButtonText}>
+          {/* Sleep Type */}
+          <LinearGradient colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']} style={styles.inputCard}>
+            <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Sleep Type</Text>
+            <TouchableOpacity onPress={() => setShowSleepTypePicker(!showSleepTypePicker)} style={styles.fieldButton}>
+              <Text style={{ color: currentTheme.textPrimary }}>
                 {sleepType || 'Select Sleep Type'}
               </Text>
-              <Text style={styles.dropdownIcon}>▼</Text>
             </TouchableOpacity>
-
             {showSleepTypePicker && (
               <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={sleepType}
-                  onValueChange={handleSleepTypeChange}
-                >
-                  <Picker.Item label="Select Type" value="" />
+                <Picker selectedValue={sleepType} onValueChange={(val) => setSleepType(val)}>
                   <Picker.Item label="Nap" value="Nap" />
                   <Picker.Item label="Sleep" value="Sleep" />
                 </Picker>
-                
-                <TouchableOpacity 
-                  style={styles.doneButton}
-                  onPress={closeSleepTypePicker}
-                >
-                  <Text style={styles.doneButtonText}>Done</Text>
-                </TouchableOpacity>
               </View>
             )}
-          </View>
+          </LinearGradient>
 
-          <TouchableOpacity 
-            style={styles.completeButton}
-            onPress={handleCompleteLog}
-          >
-            <Text style={styles.completeButtonText}>Complete Log</Text>
+          {/* Submit */}
+          <TouchableOpacity onPress={handleCompleteLog} style={{ marginTop: 20 }}>
+            <LinearGradient
+              colors={darkMode ? ['#8e2de2', '#4a00e0'] : ['#A5D6A7', '#81D4FA']}
+              style={styles.submitButton}
+            >
+              <Text style={styles.submitText}>Complete Log</Text>
+            </LinearGradient>
           </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-    </LinearGradient>
+        </ScrollView>
+      </SafeAreaView>
+    </ThemedBackground>
   );
 };
 
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
-  scrollContainer: {
-    flexGrow: 1,
-  },
-  formContainer: {
-    flex: 1,
-    padding: 20,
-  },
-  header: {
+  container: 
+  {
+     flex: 1
+     },
+  scrollContent: 
+  {
+     padding: 20,
+      paddingBottom: 40,
+     },
+  header:
+   {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 50,
-    position: 'relative',
+    marginBottom: 20,
   },
-  backButton: {
-    padding: 8,
-    zIndex: 1,
-  },
-  backText: {
-    color: '#007bff',
-    fontSize: 12,
-  },
-  logoContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
+  headerButton:
+   { 
+    borderRadius: 16
+   },
+  headerButtonGradient: 
+  {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  logo: {
-    width: 60,
-    height: 60,
-  },
-  headerSpacer: {
-    width: 80, 
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+  logo: 
+  {
+     width: 50, 
+     height: 50, 
+     resizeMode: 'contain' 
+    },
+  title: 
+  { 
+    fontSize: 26, 
+    fontWeight: '700', 
     textAlign: 'center',
-    marginBottom: 30,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 16,
-    marginBottom: 10,
-  },
-  timeButton: {
-    backgroundColor: '#fff',
+     marginBottom: 20 
+    },
+  inputCard: 
+  {
+    borderRadius: 20,
     padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-  },
-  timeButtonText: {
-    fontSize: 16,
-  },
-  timePicker: {
-    backgroundColor: Platform.OS === 'ios' ? '#fff' : 'transparent',
-    borderRadius: 5,
-    marginTop: 5,
-  },
-  confirmTimeButton: {
-    backgroundColor: '#007bff',
-    padding: 10,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  confirmTimeText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  durationDisplay: {
-    backgroundColor: '#f0f0f0',
-    padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-  },
-  durationText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  dropdownButton: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 5,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dropdownButtonText: {
-    fontSize: 16,
-    color: '#555',
-  },
-  dropdownIcon: {
-    fontSize: 16,
-  },
-  pickerContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 5,
-    marginTop: 5,
-    zIndex: 999,
-  },
-  doneButton: {
-    backgroundColor: '#007bff',
-    padding: 10,
-    borderRadius: 5,
-    alignItems: 'center',
     marginVertical: 10,
-    marginHorizontal: 20,
+    elevation: 3,
   },
-  doneButtonText: {
-    color: '#fff',
+  label: 
+  { 
     fontSize: 16,
-    fontWeight: 'bold',
+     fontWeight: '600',
+      marginBottom: 8 
+    },
+  fieldButton: 
+  {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  completeButton: {
-    backgroundColor: '#fcfcd4',
-    padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 20,
+  durationBox: 
+  {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  completeButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  pickerContainer:
+   {
+    borderRadius: 12,
+    marginTop: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  submitButton:
+   { 
+    borderRadius: 20, 
+    paddingVertical: 16, 
+    alignItems: 'center' 
+  },
+  submitText: 
+  { color: '#fff', 
+    fontWeight: '700', 
+    fontSize: 16 
   },
 });
 

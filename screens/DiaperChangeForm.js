@@ -172,31 +172,60 @@ const DiaperChangeForm = ({ navigation, route }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 40 },
-  header: {
+  container:
+   { 
+    flex: 1 
+  },
+  scrollContent: 
+  { 
+    padding: 20,
+     paddingBottom: 40 
+    },
+  header:
+  {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
   },
-  headerButton: { borderRadius: 16 },
-  headerButtonGradient: {
+  headerButton: 
+  { 
+    borderRadius: 16
+  },
+  headerButtonGradient: 
+  {
     width: 44,
     height: 44,
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  logo: { width: 50, height: 50, resizeMode: 'contain' },
-  title: { fontSize: 26, fontWeight: '700', textAlign: 'center', marginBottom: 20 },
-  inputCard: {
+  logo:
+   { 
+    width: 50,
+     height: 50, 
+     resizeMode: 'contain' 
+    },
+  title:
+   {
+     fontSize: 26, 
+     fontWeight: '700', 
+     textAlign: 'center',
+      marginBottom: 20
+    },
+  inputCard: 
+  {
     borderRadius: 20,
     padding: 15,
     marginVertical: 10,
     elevation: 3,
   },
-  label: { fontSize: 16, fontWeight: '600', marginBottom: 8 },
+  label:
+   { 
+    fontSize: 16,
+     fontWeight: '600', 
+     marginBottom: 8 
+    },
   fieldButton: {
     padding: 12,
     borderRadius: 12,
@@ -207,17 +236,36 @@ const styles = StyleSheet.create({
     marginTop: 10,
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  toggleContainer: { flexDirection: 'row', justifyContent: 'space-between' },
-  toggleButton: {
+  toggleContainer: 
+  { 
+    flexDirection: 'row',
+     justifyContent: 'space-between'
+     },
+  toggleButton:
+   {
     flex: 1,
     marginHorizontal: 5,
     padding: 12,
     borderRadius: 12,
     alignItems: 'center',
   },
-  toggleText: { fontSize: 16, fontWeight: '600' },
-  submitButton: { borderRadius: 20, paddingVertical: 16, alignItems: 'center' },
-  submitText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  toggleText: 
+  {
+     fontSize: 16, 
+     fontWeight: '600' 
+    },
+  submitButton:
+   {
+     borderRadius: 20,
+      paddingVertical: 16, 
+      alignItems: 'center' 
+    },
+  submitText: 
+  { 
+    color: '#fff',
+     fontWeight: '700',
+      fontSize: 16 
+    },
 });
 
 export default DiaperChangeForm;

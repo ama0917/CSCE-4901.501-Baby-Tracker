@@ -1,17 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Alert, ScrollView, SafeAreaView } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { getFirestore, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import { app } from '../firebaseConfig';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ArrowLeft, Trash2 } from 'lucide-react-native';
+import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
+import { useDarkMode } from '../screens/DarkMode';
 
 const EditChildScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const { childId } = route.params || {};
-
+  const { darkMode } = useDarkMode();
+  const currentTheme = darkMode ? appTheme.dark : appTheme.light;
   const db = getFirestore(app);
+
   const [childData, setChildData] = useState({
     firstName: '',
     lastName: '',
@@ -23,9 +28,7 @@ const EditChildScreen = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (childId) {
-      loadChildData();
-    }
+    if (childId) loadChildData();
   }, []);
 
   const loadChildData = async () => {
@@ -110,123 +113,180 @@ const EditChildScreen = () => {
   }
 
   return (
-    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backButton}>← Back</Text>
+    <ThemedBackground>
+      <SafeAreaView Style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+
+        <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+          <LinearGradient colors={darkMode ? currentTheme.card : ['#fff', '#f5f5f5']}
+                style={styles.headerButtonGradient}>
+                <ArrowLeft size={20} color={darkMode ? '#fff' : '#2E3A59'} />
+          </LinearGradient>
         </TouchableOpacity>
+         <Image source={require('../assets/logo.png')} style={styles.logo} />
+            <View style={{ width: 44 }} />
+        </View>
+        <Text style={[styles.title, { color: currentTheme.textPrimary }]}>Edit Child</Text>
 
         <TouchableOpacity onPress={pickImage} style={styles.imageWrapper}>
           {childData.image ? (
             <Image source={{ uri: childData.image }} style={styles.profilePic} />
           ) : (
-            <Text style={styles.imagePlaceholder}>Edit Photo</Text>
+            <Text style={{ color: currentTheme.textSecondary}}>Edit Photo</Text>
           )}
         </TouchableOpacity>
-
-        <Text style={styles.label}>First Name</Text>
+          <LinearGradient colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']} style={styles.inputCard}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { color: currentTheme.textPrimary}]}
           placeholder="First Name"
+          placeholderTextColor={currentTheme.textSecondary}
           value={childData.firstName}
           onChangeText={(text) => setChildData({ ...childData, firstName: text })}
         />
-        <Text style={styles.label}>Last Name</Text>
+        </LinearGradient>
+          <LinearGradient colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']} style={styles.inputCard}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { color: currentTheme.textPrimary}]}
           placeholder="Last Name"
+          placeholderTextColor={currentTheme.textSecondary}
           value={childData.lastName}
           onChangeText={(text) => setChildData({ ...childData, lastName: text })}
         />
+      </LinearGradient>
 
-        <Text style={styles.label}>Gender</Text>
+        <Text style={[styles.label, { color: currentTheme.textPrimary}]}>Gender</Text>
         <View style={styles.genderRow}>
-          <TouchableOpacity
-            style={[styles.genderBtn, childData.gender === 'Male' && styles.genderSelected]}
-            onPress={() => setChildData({ ...childData, gender: 'Male' })}
-          >
-            <Text>Male</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.genderBtn, childData.gender === 'Female' && styles.genderSelected]}
-            onPress={() => setChildData({ ...childData, gender: 'Female' })}
-          >
-            <Text>Female</Text>
-          </TouchableOpacity>
+   {['Male', 'Female'].map((g) => (
+              <TouchableOpacity
+                key={g}
+                style={[
+                  styles.genderBtn,
+                  childData.gender === g && { backgroundColor: darkMode ? '#6C63FF' : '#b2ebf2' },
+                ]}
+                onPress={() => setChildData({ ...childData, gender: g })}
+              >
+                <Text style={{ color: childData.gender === g ? '#fff' : currentTheme.textPrimary }}>{g}</Text>
+              </TouchableOpacity>
+            ))}
         </View>
 
-        <Text style={styles.label}>Birth Date</Text>
-        <View style={styles.birthRow}>
-          <TextInput
-            style={styles.birthInput}
-            placeholder="MM"
-            value={childData.birthDate?.month}
-            onChangeText={(text) => setChildData({ ...childData, birthDate: { ...childData.birthDate, month: text } })}
-          />
-          <TextInput
-            style={styles.birthInput}
-            placeholder="DD"
-            value={childData.birthDate?.day}
-            onChangeText={(text) => setChildData({ ...childData, birthDate: { ...childData.birthDate, day: text } })}
-          />
-          <TextInput
-            style={styles.birthInput}
-            placeholder="YYYY"
-            value={childData.birthDate?.year}
-            onChangeText={(text) => setChildData({ ...childData, birthDate: { ...childData.birthDate, year: text } })}
-          />
+        <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Birth Date</Text>
+          <View style={styles.birthRow}>
+            {['MM', 'DD', 'YYYY'].map((ph, i) => (
+              <LinearGradient
+                key={ph}
+                colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']}
+                style={[styles.inputCard, { flex: 1, marginRight: i < 2 ? 8 : 0 }]}
+              >
+                <TextInput
+                  style={[styles.input, { textAlign: 'center', color: currentTheme.textPrimary }]}
+                  placeholder={ph}
+                  placeholderTextColor={currentTheme.textSecondary}
+                  keyboardType="numeric"
+                  maxLength={ph === 'YYYY' ? 4 : 2}
+                  value={
+                    ph === 'MM'
+                      ? childData.birthDate?.month
+                      : ph === 'DD'
+                      ? childData.birthDate?.day
+                      : childData.birthDate?.year
+                  }
+                  onChangeText={(val) =>
+                    setChildData({
+                      ...childData,
+                      birthDate: {
+                        ...childData.birthDate,
+                        ...(ph === 'MM' ? { month: val } : ph === 'DD' ? { day: val } : { year: val }),
+                      },
+                    })
+                  }
+                />
+              </LinearGradient>
+            ))}
         </View>
 
-        <Text style={styles.label}>Notes</Text>
-        <TextInput
-          style={styles.notesInput}
-          multiline
-          numberOfLines={3}
-          value={childData.notes}
-          onChangeText={(text) => setChildData({ ...childData, notes: text })}
-        />
+          <LinearGradient colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']} style={styles.inputCard}>
+            <TextInput
+              style={[styles.input, { height: 100, textAlignVertical: 'top', color: currentTheme.textPrimary }]}
+              placeholder="Notes (optional)"
+              placeholderTextColor={currentTheme.textSecondary}
+              value={childData.notes}
+              onChangeText={(text) => setChildData({ ...childData, notes: text })}
+              multiline
+            />
+          </LinearGradient>
 
-        <TouchableOpacity style={styles.saveButton} onPress={handleUpdate}>
-          <Text style={styles.buttonText}>Save Changes</Text>
-        </TouchableOpacity>
+       <TouchableOpacity onPress={handleUpdate} style={{ marginTop: 20 }}>
+            <LinearGradient
+              colors={darkMode ? ['#00c6ff', '#0072ff'] : ['#90CAF9', '#81D4FA']}
+              style={styles.actionButton}
+            >
+              <Text style={styles.buttonText}>Save Changes</Text>
+            </LinearGradient>
+          </TouchableOpacity>
 
-        <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-          <Text style={styles.buttonText}>🗑️ Delete Profile</Text>
+          <TouchableOpacity onPress={handleDelete} style={{ marginTop: 10 }}>
+            <LinearGradient
+              colors={['#ff6a00', '#ee0979']}
+              style={styles.actionButton}
+            >
+              <Trash2 size={18} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.buttonText}>Delete Profile</Text>
+            </LinearGradient>
         </TouchableOpacity>
       </ScrollView>
-    </LinearGradient>
+      </SafeAreaView>
+    </ThemedBackground>
   );
 };
 
 const styles = StyleSheet.create({
-  gradient: { 
+  container: { 
     flex: 1 
   },
-  container: { 
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    flexGrow: 1,
+  scrollContent: { 
+    padding: 20,
+    paddingBottom: 40,
 },
-  backButton: { 
-    alignSelf: 'flex-start',
-    color: '#007AFF',
-    fontSize: 14,
+header:
+{
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 20,
+},
+  headerButton: { 
+  borderRadius: 16,
+},
+headerButtonGradient: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logo:
+  {
+    width: 50,
+    height:50,
+    resizeMode: 'contain',
+  },
+  title: {
+    fontSize: 26,
+    fontweight: '700',
+    textAlign: 'center',
     marginBottom: 20,
-},
+  },
   imageWrapper: {
     alignSelf: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     borderRadius: 60,
     width: 100,
     height: 100,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
   },
   profilePic: { 
     width: 100, 
@@ -237,66 +297,48 @@ const styles = StyleSheet.create({
     fontSize: 14, color: '#666' 
 },
   label: { 
+    fontSize: 16,
     fontWeight: '600', 
-    marginBottom: 5 
-},
-  input: {
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 10,
+    marginBottom: 5, 
+    marginTop:15,
+}, 
+  inputCard:
+  {
+    borderRadius: 16,
+    padding: 4,
     marginBottom: 10,
+  },
+  input: {
+    padding: 12,
+    fontSize: 16,
   },
   genderRow: { 
     flexDirection: 'row', 
+    justifyContent: 'space-between',
     marginBottom: 10 
 },
   genderBtn: {
     flex: 1,
-    padding: 12,
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
+    padding: 14,
+    borderRadius: 12,
     marginRight: 10,
     alignItems: 'center',
   },
-  genderSelected: { 
-    backgroundColor: '#b2ebf2' 
-},
   birthRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 10,
   },
-  birthInput: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    flex: 1,
-    marginRight: 10,
-    padding: 12,
-    textAlign: 'center',
-  },
-  notesInput: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 20,
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  saveButton: {
-    backgroundColor: '#eaffd0',
-    paddingVertical: 14,
-    borderRadius: 10,
+  actionButton:{
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 15,
-  },
-  deleteButton: {
-    backgroundColor: '#ffcdd2',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
+    borderRadius: 20,
+    paddingVertical: 16,
   },
   buttonText: {
-    fontWeight: '600',
+    color: '#fff',
+    fontWeight: '700',
     fontSize: 16,
   },
 });

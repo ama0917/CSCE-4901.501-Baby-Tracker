@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
 from backup_service import start_automatic_backup
 from threading import Thread
+import os
 
 app = Flask(__name__)
 
@@ -27,3 +28,4 @@ if __name__ == "__main__":
         start_background_tasks()
 
     app.run(debug=True, host='127.0.0.1', port=5001)
+

@@ -37,7 +37,30 @@ const AddChildScreen = () => {
       Alert.alert('Missing Info', 'Please fill out required fields.');
       return;
     }
-  
+
+    // Validate age cap (max 5 years)
+    const birth = new Date(
+      parseInt(birthDate.year),
+      parseInt(birthDate.month) - 1,
+      parseInt(birthDate.day)
+    );
+    const today = new Date();
+
+    if (isNaN(birth.getTime())) {
+      Alert.alert('Invalid Date', 'Please enter a valid birth date.');
+      return;
+    }
+
+    // calculating child age to 5 years within current date
+    const ageDiffMs = today - birth;
+    const ageDate = new Date(ageDiffMs);
+    const ageYears = Math.abs(ageDate.getUTCFullYear() - 1970);
+
+    if (ageYears >= 5) {
+      Alert.alert('Age Limit', 'Child must be under 5 years old to be added.');
+      return;
+    }
+
     try {
       const auth = getAuth();
       const currentUser = auth.currentUser;
@@ -46,7 +69,7 @@ const AddChildScreen = () => {
         Alert.alert('Authentication Error', 'You must be logged in to add a child.');
         return;
       }
-  
+
       const newProfile = {
         name: `${firstName} ${lastName}`.trim(),
         gender,
@@ -56,14 +79,14 @@ const AddChildScreen = () => {
         userId: currentUser.uid, // Link child to the current user
         createdAt: new Date()
       };
-  
+
       // Save the new child profile to Firestore
       const docRef = await addDoc(collection(db, 'children'), newProfile);
       console.log('Document written with ID: ', docRef.id);
-  
+
       // Navigate back to HomeScreen with the new profile
       navigation.navigate('Home', { newProfile: { id: docRef.id, ...newProfile } });
-  
+
     } catch (e) {
       console.error('Error adding child profile: ', e);
       Alert.alert('Error', 'Something went wrong while saving the profile.');
@@ -269,3 +292,8 @@ const styles = StyleSheet.create({
 });
 
 export default AddChildScreen;
+
+
+  
+   
+    

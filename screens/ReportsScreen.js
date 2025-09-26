@@ -5,12 +5,12 @@ import {
   StyleSheet,
   SafeAreaView,
   TouchableOpacity,
-  ScrollView,
   Dimensions,
   ActivityIndicator,
   Image,
   Alert,
 } from 'react-native';
+import { ScrollView } from 'react-native';
 import * as XLSX from 'xlsx';
 import * as FileSystem from 'expo-file-system';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -24,6 +24,7 @@ import * as Sharing from 'expo-sharing';
 import { FontAwesome5 } from '@expo/vector-icons';
 import StackedBarChart from './StackedBarChart';
 import useUserRole from './useUserRole';
+import WeeklySummaryCard from '../src/components/WeeklySummaryCard';
 
 const { width } = Dimensions.get('window');
 const adjustedWidth = width - 40;
@@ -1119,8 +1120,10 @@ const exportReportAsExcel = async () => {
         </View>
 
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+          {/* Weekly summary card */}
+          {childId && <WeeklySummaryCard childId={childId} childName={name} />}
           {renderCharts()}
-        </ScrollView> 
+        </ScrollView>
 
         <ExportReportSection 
           exportReportAsPDF={exportReportAsPDF} 

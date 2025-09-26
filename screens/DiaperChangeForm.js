@@ -1,21 +1,76 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Image, Platform, Alert } from 'react-native';
-import { ScrollView } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  Image,
+  Platform,
+  Alert,
+  ScrollView,
+} from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAuth } from 'firebase/auth';
 import { db } from '../firebaseConfig';
-import { addDoc, collection, Timestamp } from 'firebase/firestore';
+import {
+  addDoc,
+  collection,
+  Timestamp,
+  doc,
+  onSnapshot,
+} from 'firebase/firestore';
+
 import NotificationService from '../src/notifications/notificationService';
 import { useDarkMode } from '../screens/DarkMode';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { ArrowLeft } from 'lucide-react-native';
 
+// add role hook so we can gate logging for caregivers
+import useUserRole from './useUserRole';
+
+const getTodayStr = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 const DiaperChangeForm = ({ navigation, route }) => {
   const { childId } = route.params || {};
   const { darkMode } = useDarkMode();
   const currentTheme = darkMode ? appTheme.dark : appTheme.light;
+
+  // caregiver role + permission gate
+  const { role } = useUserRole();
+  const uid = getAuth().currentUser?.uid;
+  const [canLog, setCanLog] = useState(role === 'parent');
+
+  // verify we received childId correctly
+  console.log('Received childId in DiaperChangeForm:', childId);
+
+  // live permission check — parents always true; caregivers only if parent has allowed
+  useEffect(() => {
+    if (role === 'parent') {
+      setCanLog(true);
+      return;
+    }
+    if (!childId || !uid) {
+      setCanLog(false);
+      return;
+    }
+    const ref = doc(db, 'children', childId);
+    const unsub = onSnapshot(ref, (snap) => {
+      const data = snap.data() || {};
+      const v = (data.caregiverPerms || {})[uid];
+      // allow if owner or caregiver permission is 'on' or 'log'
+      setCanLog(data.userId === uid || v === 'on' || v === 'log');
+    });
+    return () => unsub();
+  }, [role, childId, uid]);
 
   const [selectedTime, setSelectedTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -32,6 +87,7 @@ const DiaperChangeForm = ({ navigation, route }) => {
   };
 
   const handleCompleteLog = async () => {
+    if (!canLog) { Alert.alert('Access is off', 'Parent has turned off access for this child.'); return; }
     try {
       const auth = getAuth();
       const user = auth.currentUser;
@@ -56,6 +112,7 @@ const DiaperChangeForm = ({ navigation, route }) => {
         time: Timestamp.fromDate(selectedTime),
         timestamp: Timestamp.now(),
         createdBy: user.uid,
+        logDate: getTodayStr(),
       };
 
       await addDoc(collection(db, 'diaperLogs'), logData);
@@ -71,6 +128,25 @@ const DiaperChangeForm = ({ navigation, route }) => {
       Alert.alert('Error', 'Something went wrong. Please try again.');
     }
   };
+
+  if (!canLog) {
+    return (
+      <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={{ flex: 1, justifyContent: 'center' }}>
+        <View style={{ margin: 20, backgroundColor: '#fff', borderRadius: 12, padding: 16 }}>
+          <Text style={{ color: '#2E3A59', marginBottom: 12 }}>
+            View-only access. Ask the parent for logging permission.
+          </Text>
+          <TouchableOpacity
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}
+            style={{ padding: 12, backgroundColor: '#CFD8DC', borderRadius: 10, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#2E3A59', fontWeight: '700' }}>Back</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+    );
+  }
+
 
   return (
     <ThemedBackground>

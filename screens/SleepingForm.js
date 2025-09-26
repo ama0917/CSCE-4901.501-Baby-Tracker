@@ -1,18 +1,51 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Image, Platform, ScrollView } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, Image, Platform, ScrollView, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
-import { LinearGradient} from 'expo-linear-gradient';
+import { LinearGradient } from 'expo-linear-gradient';
 import { db } from '../firebaseConfig';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, doc, onSnapshot } from 'firebase/firestore'; 
 import { useRoute } from '@react-navigation/native';
+
 import { ArrowLeft } from 'lucide-react-native';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { useDarkMode } from '../screens/DarkMode';
 
+// caregiver/role gating imports
+import useUserRole from './useUserRole';
+import { getAuth } from 'firebase/auth';
+
+//helper for per-day key
+const getTodayStr = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 const SleepingForm = ({ navigation }) => {
   const route = useRoute();
   const { childId, name } = route.params || {};
+
+  // caregiver gating state
+  const { role } = useUserRole();
+  const uid = getAuth().currentUser?.uid;
+  const [canLog, setCanLog] = useState(role === 'parent');
+
+  //live permission watch; parents always true
+  useEffect(() => {
+    if (role === 'parent') { setCanLog(true); return; }
+    if (!childId || !uid) { setCanLog(false); return; }
+    const ref = doc(db, 'children', childId);
+    const unsub = onSnapshot(ref, (snap) => {
+      const data = snap.data() || {};
+      const v = (data.caregiverPerms || {})[uid];
+      setCanLog(data.userId === uid || v === 'on' || v === 'log');
+    });
+    return () => unsub();
+  }, [role, childId, uid]);
+
   const { darkMode } = useDarkMode();
   const currentTheme = darkMode ? appTheme.dark : appTheme.light;
 
@@ -45,6 +78,7 @@ const formatTime = (date) => {
   };
 
   const handleCompleteLog = async () => {
+    if (!canLog) { alert('Access is off. The parent has disabled access for this child.'); return; }
     if (!childId) {
       Alert.alert('Error', 'No child selected');
       return;
@@ -60,7 +94,7 @@ const formatTime = (date) => {
         childId,
         sleepType,
         endTime,
-        createdAt: serverTimestamp(),
+        createdAt: serverTimestamp()
       };
       await addDoc(collection(db, 'sleepLogs'), logData);
       Alert.alert('Success', 'Sleep log saved!');
@@ -70,6 +104,25 @@ const formatTime = (date) => {
       Alert.alert('Error', 'Failed to save log. Please try again.');
     }
   };
+
+  if (!canLog) {
+    return (
+      <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={{ flex: 1, justifyContent: 'center' }}>
+        <View style={{ margin: 20, backgroundColor: '#fff', borderRadius: 12, padding: 16 }}>
+          <Text style={{ color: '#2E3A59', marginBottom: 12 }}>
+            View-only access. Ask the parent for logging permission.
+          </Text>
+          <TouchableOpacity
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}
+            style={{ padding: 12, backgroundColor: '#CFD8DC', borderRadius: 10, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#2E3A59', fontWeight: '700' }}>Back</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+    );
+  }
+
 
   return (
     <ThemedBackground>

@@ -2,11 +2,23 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, Alert, Animated, Dimensions, Platform, StatusBar } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import {
+  getFirestore,
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
+  doc,            // for permission snapshot
+  onSnapshot,     // for permission snapshot
+} from 'firebase/firestore';
 import { Bell, ArrowLeft, Settings, Sparkles, TrendingUp, Activity } from 'lucide-react-native';
 import { app } from '../firebaseConfig';
 import { useDarkMode } from '../screens/DarkMode';
 import ThemedBackground from '../screens/ThemedBackground';
+import useUserRole from './useUserRole';       
+import { getAuth } from 'firebase/auth';       
 
 const { width } = Dimensions.get('window');
 const db = getFirestore(app);
@@ -19,11 +31,27 @@ const darkModeGradients = {
   profile: ['#ff00cc', '#333399'],
 };
 
+// helper used to scope caregiver queries to “today”
+const getTodayStr = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 export default function ChildDashboard() {
   const navigation = useNavigation();
   const route = useRoute();
   const { name, childId, image } = route.params || {};
   const { darkMode } = useDarkMode();
+
+  const { role } = useUserRole();                  
+  const isCaregiver = role === 'caregiver';        
+  const uid = getAuth().currentUser?.uid;          
+  const [canView, setCanView] = useState(true);    
+  const [isOwner, setIsOwner] = useState(false);   
+  const [canLog, setCanLog] = useState(true);      // parents true, caregivers gated
 
   const [history, setHistory] = useState([]);
 
@@ -31,32 +59,30 @@ export default function ChildDashboard() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const profileScale = useRef(new Animated.Value(0.8)).current;
-  const buttonScales = useRef([
-    new Animated.Value(1),
-    new Animated.Value(1),
-    new Animated.Value(1),
-  ]).current;
+  const buttonScales = useRef([new Animated.Value(1), new Animated.Value(1), new Animated.Value(1)]).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.spring(profileScale, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+      Animated.spring(profileScale, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }),
     ]).start();
   }, []);
+
+  useEffect(() => {
+    if (!childId || !uid) { setCanView(false); setIsOwner(false); setCanLog(false); return; }
+
+    const ref = doc(db, 'children', childId);
+    const unsub = onSnapshot(ref, (snap) => {
+      const data = snap.data() || {};
+      const owner = data?.userId === uid;
+      const val = data?.caregiverPerms?.[uid]; // 'on' | 'log' | undefined
+      setIsOwner(owner);
+      setCanView(owner || val === 'on' || val === 'log');
+      setCanLog(owner || val === 'on' || val === 'log');
+    });
+    return () => unsub();
+  }, [childId, uid]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -65,22 +91,31 @@ export default function ChildDashboard() {
         navigation.goBack();
       } else {
         fetchChildData();
+        // double-check caregiver canLog on focus (defensive)
+        if (isCaregiver && uid) {
+          (async () => {
+            try {
+              const snap = await getDocs(query(collection(db, 'children'), where('__name__', '==', childId)));
+              const d = snap.docs[0];
+              if (d) {
+                const data = d.data() || {};
+                const perms = (data.caregiverPerms || {})[uid];
+                setCanLog(perms === 'on' || perms === 'log');
+              }
+            } catch (e) {
+              console.log('perm check error', e);
+              setCanLog(false);
+            }
+          })();
+        }
       }
-    }, [childId])
+    }, [childId, isCaregiver, uid]) // include deps used above
   );
 
   const animateButton = (index) => {
     Animated.sequence([
-      Animated.spring(buttonScales[index], {
-        toValue: 0.95,
-        useNativeDriver: true,
-        duration: 100,
-      }),
-      Animated.spring(buttonScales[index], {
-        toValue: 1,
-        useNativeDriver: true,
-        duration: 100,
-      }),
+      Animated.spring(buttonScales[index], { toValue: 0.95, useNativeDriver: true, duration: 100 }),
+      Animated.spring(buttonScales[index], { toValue: 1, useNativeDriver: true, duration: 100 }),
     ]).start();
   };
 
@@ -97,61 +132,81 @@ export default function ChildDashboard() {
 
   const fetchChildData = async () => {
     try {
+      // Diaper logs
       const diaperLogsQuery = query(
         collection(db, 'diaperLogs'),
         where('childId', '==', childId),
+        ...(isCaregiver ? [where('logDate', '==', getTodayStr())] : []), // caregiver scoped to today
         orderBy('timestamp', 'desc'),
         limit(5)
       );
       const diaperSnapshot = await getDocs(diaperLogsQuery);
-      const diaperLogs = diaperSnapshot.docs.map((doc) => ({
-        id: doc.id,
+      const diaperLogs = diaperSnapshot.docs.map((d) => ({
+        id: d.id,
         type: 'Diaper Change',
-        subtype: doc.data().stoolType,
-        time: formatTime(doc.data().timestamp?.toDate()) || 'Unknown',
-        timestamp: doc.data().timestamp?.toDate() || new Date(0),
+        subtype: d.data().stoolType,
+        time: formatTime(d.data().timestamp?.toDate()) || 'Unknown',
+        timestamp: d.data().timestamp?.toDate() || new Date(0),
       }));
 
+      // Feeding logs
       const feedingLogsQuery = query(
         collection(db, 'feedLogs'),
         where('childId', '==', childId),
+        ...(isCaregiver ? [where('logDate', '==', getTodayStr())] : []),
         orderBy('timestamp', 'desc'),
         limit(5)
       );
       const feedingSnapshot = await getDocs(feedingLogsQuery);
-      const feedLogs = feedingSnapshot.docs.map((doc) => ({
-        id: doc.id,
+      const feedLogs = feedingSnapshot.docs.map((d) => ({
+        id: d.id,
         type: 'Feeding',
-        subtype: doc.data().feedType,
-        time: formatTime(doc.data().timestamp?.toDate()) || 'Unknown',
-        timestamp: doc.data().timestamp?.toDate() || new Date(0),
+        subtype: d.data().feedType,
+        time: formatTime(d.data().timestamp?.toDate()) || 'Unknown',
+        timestamp: d.data().timestamp?.toDate() || new Date(0),
       }));
 
+      // Sleep logs
       const sleepLogsQuery = query(
         collection(db, 'sleepLogs'),
         where('childId', '==', childId),
+        ...(isCaregiver ? [where('logDate', '==', getTodayStr())] : []), 
         orderBy('timestamp', 'desc'),
         limit(5)
       );
       const sleepSnapshot = await getDocs(sleepLogsQuery);
-      const sleepLogs = sleepSnapshot.docs.map((doc) => ({
-        id: doc.id,
+      const sleepLogs = sleepSnapshot.docs.map((d) => ({
+        id: d.id,
         type: 'Sleep',
-        subtype: formatDuration(doc.data().duration),
-        time: formatTime(doc.data().timestamp?.toDate()) || 'Unknown',
-        timestamp: doc.data().timestamp?.toDate() || new Date(0),
+        subtype: formatDuration(d.data().duration),
+        time: formatTime(d.data().timestamp?.toDate()) || 'Unknown',
+        timestamp: d.data().timestamp?.toDate() || new Date(0),
       }));
 
-      const combinedLogs = [...diaperLogs, ...feedLogs, ...sleepLogs].sort(
-        (a, b) => b.timestamp - a.timestamp
-      );
-
+      const combinedLogs = [...diaperLogs, ...feedLogs, ...sleepLogs].sort((a, b) => b.timestamp - a.timestamp);
       setHistory(combinedLogs.slice(0, 5));
     } catch (error) {
       console.error('Error fetching data:', error);
       Alert.alert('Error', 'Unable to fetch data.');
     }
   };
+
+  if (!canView) {
+    // early return that matches app styling, minimal/no ripple to their UI
+    return (
+      <LinearGradient colors={['#E3F2FD', '#FFFFFF']} style={{ flex: 1, justifyContent: 'center' }}>
+        <View style={{ margin: 20, backgroundColor: '#fff', borderRadius: 12, padding: 16 }}>
+          <Text style={{ color: '#2E3A59', marginBottom: 12 }}>Access is turned off by the parent.</Text>
+          <TouchableOpacity
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}
+            style={{ padding: 12, backgroundColor: '#CFD8DC', borderRadius: 10, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#2E3A59', fontWeight: '700' }}>Back</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+    );
+  }
 
   const getActivityIcon = (type) => {
     switch (type) {
@@ -201,43 +256,20 @@ export default function ChildDashboard() {
 
   return (
     <ThemedBackground>
-      <StatusBar
-        barStyle={darkMode ? 'light-content' : 'dark-content'}
-        translucent
-        backgroundColor="transparent"
-      />
-      <Animated.View
-        style={[
-          styles.innerContainer,
-          { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-        ]}
-      >
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
+      <Animated.View style={[styles.innerContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.headerButton}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={darkMode ? darkModeGradients.card : ['#fff', '#f5f5f5']}
-              style={styles.headerButtonGradient}
-            >
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton} activeOpacity={0.7}>
+            <LinearGradient colors={darkMode ? darkModeGradients.card : ['#fff', '#f5f5f5']} style={styles.headerButtonGradient}>
               <ArrowLeft size={20} color={darkMode ? '#fff' : '#2E3A59'} />
             </LinearGradient>
           </TouchableOpacity>
 
           <Image source={require('../assets/logo.png')} style={styles.logo} />
 
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Settings')}
-            style={styles.headerButton}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={darkMode ? darkModeGradients.card : ['#fff', '#f5f5f5']}
-              style={styles.headerButtonGradient}
-            >
+          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.headerButton} activeOpacity={0.7}>
+            <LinearGradient colors={darkMode ? darkModeGradients.card : ['#fff', '#f5f5f5']} style={styles.headerButtonGradient}>
               <Settings size={20} color={darkMode ? '#fff' : '#2E3A59'} />
             </LinearGradient>
           </TouchableOpacity>
@@ -245,12 +277,8 @@ export default function ChildDashboard() {
 
         {/* Profile */}
         <View style={styles.profileSection}>
-          <Text style={[styles.title, { color: darkMode ? '#fff' : '#2E3A59' }]}>
-            {name}'s Dashboard
-          </Text>
-          <Animated.View
-            style={[styles.profileContainer, { transform: [{ scale: profileScale }] }]}
-          >
+          <Text style={[styles.title, { color: darkMode ? '#fff' : '#2E3A59' }]}>{name}'s Dashboard</Text>
+          <Animated.View style={[styles.profileContainer, { transform: [{ scale: profileScale }] }]}>
             <LinearGradient
               colors={darkMode ? darkModeGradients.profile : ['#81D4FA', '#F8BBD9']}
               style={styles.profileGradient}
@@ -260,10 +288,7 @@ export default function ChildDashboard() {
               {image ? (
                 <Image source={{ uri: image }} style={styles.profileImage} />
               ) : (
-                <Image
-                  source={require('../assets/default-profile.png')}
-                  style={styles.profileImage}
-                />
+                <Image source={require('../assets/default-profile.png')} style={styles.profileImage} />
               )}
             </LinearGradient>
             <View style={styles.profileSparkle}>
@@ -271,49 +296,43 @@ export default function ChildDashboard() {
             </View>
           </Animated.View>
         </View>
-       
 
         {/* Activities */}
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.section}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View className="section" style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : '#2e3a59' }]}>
-                Log Activities
-              </Text>
+              <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : '#2e3a59' }]}>Log Activities</Text>
               <Activity size={20} color={darkMode ? '#fff' : '#2E3A59'} strokeWidth={2} />
             </View>
 
-            <View style={styles.activitiesGrid}>
-              {activityButtons.map((activity, index) => (
-                <Animated.View
-                  key={activity.title}
-                  style={{ transform: [{ scale: buttonScales[index] }] }}
-                >
-                  <TouchableOpacity
-                    style={styles.activityButton}
-                    onPress={activity.onPress}
-                    activeOpacity={0.8}
-                  >
-                    <LinearGradient
-                      colors={darkMode ? activity.dark : activity.gradient}
-                      style={styles.activityGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                    >
-                      <Image source={activity.icon} style={styles.activityIcon} />
-                      <Text style={styles.activityText}>{activity.title}</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </Animated.View>
-              ))}
-            </View>
+            {/* [CHANGED] Only show activity logging buttons if owner or caregiver with logging permission */}
+            {(isOwner || canLog) ? (
+              <View style={styles.activitiesGrid}>
+                {activityButtons.map((activity, index) => (
+                  <Animated.View key={activity.title} style={{ transform: [{ scale: buttonScales[index] }] }}>
+                    <TouchableOpacity style={styles.activityButton} onPress={activity.onPress} activeOpacity={0.8}>
+                      <LinearGradient
+                        colors={darkMode ? activity.dark : activity.gradient}
+                        style={styles.activityGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      >
+                        <Image source={activity.icon} style={styles.activityIcon} />
+                        <Text style={styles.activityText}>{activity.title}</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </Animated.View>
+                ))}
+              </View>
+            ) : (
+              // [ADDED] view-only message for caregivers without logging perms
+              <View style={{ padding: 12, backgroundColor: '#FFF9B0', borderRadius: 10, marginBottom: 10 }}>
+                <Text style={{ color: '#2E3A59' }}>View-only access. Ask the parent for logging permission.</Text>
+              </View>
+            )}
           </View>
 
-          {/* Reports + Reminders */}
+          {/* Reports + Reminders (kept as incoming UI) */}
           <View style={styles.actionButtonsContainer}>
             <TouchableOpacity
               style={styles.actionButton}
@@ -347,51 +366,44 @@ export default function ChildDashboard() {
               </LinearGradient>
             </TouchableOpacity>
           </View>
-{/* Digest Button */} 
-  <TouchableOpacity
 
-  style={styles.actionButton}
-  onPress={async () => {
-    try {
-      const NotificationService = (await import("../src/notifications/notificationService")).default;
-      const res = await NotificationService.sendDigestNotificationForChild(childId);
-      if (res) Alert.alert("Digest scheduled");
-      else Alert.alert("No digest sent (throttled or no data)");
-    } catch (e) {
-      console.error(e);
-      Alert.alert("Failed to send digest");
-    }
-  }}
-  activeOpacity={0.8}
->
-  <LinearGradient
-    colors={darkMode ? ['#ff80ab', '#ff4081'] : ['#F8BBD9', '#F48FB1']}
-    style={styles.actionButtonGradient}
-    start={{ x: 0, y: 0 }}
-    end={{ x: 1, y: 0 }}
-  >
-    <Sparkles size={12} color="#fff" strokeWidth={2} />
-    <Text style={styles.actionButtonText}>Send Digest Now</Text>
-  </LinearGradient>
-</TouchableOpacity>
+          {/* Digest Button (kept) */}
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={async () => {
+              try {
+                const NotificationService = (await import('../src/notifications/notificationService')).default;
+                const res = await NotificationService.sendDigestNotificationForChild(childId);
+                if (res) Alert.alert('Digest scheduled');
+                else Alert.alert('No digest sent (throttled or no data)');
+              } catch (e) {
+                console.error(e);
+                Alert.alert('Failed to send digest');
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={darkMode ? ['#ff80ab', '#ff4081'] : ['#F8BBD9', '#F48FB1']}
+              style={styles.actionButtonGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Sparkles size={12} color="#fff" strokeWidth={2} />
+              <Text style={styles.actionButtonText}>Send Digest Now</Text>
+            </LinearGradient>
+          </TouchableOpacity>
 
           {/* History */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : '#2E3A59' }]}>
-                Recent Activity
-              </Text>
+              <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : '#2E3A59' }]}>Recent Activity</Text>
               <View style={styles.historyBadge}>
                 <Text style={styles.historyBadgeText}>{history.length}</Text>
               </View>
             </View>
 
-            <View
-              style={[
-                styles.historyContainer,
-                { backgroundColor: darkMode ? '#1f1f1f' : '#fff' },
-              ]}
-            >
+            <View style={[styles.historyContainer, { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }]}>
               {history.length > 0 ? (
                 history.map((item, index) => (
                   <View key={index} style={styles.historyItem}>
@@ -419,9 +431,7 @@ export default function ChildDashboard() {
               ) : (
                 <View style={styles.emptyHistory}>
                   <Text style={styles.emptyHistoryText}>No activities logged yet</Text>
-                  <Text style={styles.emptyHistorySubtext}>
-                    Start tracking your baby's activities above
-                  </Text>
+                  <Text style={styles.emptyHistorySubtext}>Start tracking your baby's activities above</Text>
                 </View>
               )}
             </View>

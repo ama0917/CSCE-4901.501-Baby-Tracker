@@ -6,6 +6,8 @@ import { getFirestore, collection, query, onSnapshot, where } from 'firebase/fir
 import { getAuth } from 'firebase/auth';
 import { Settings, Edit3, UserPlus } from 'lucide-react-native';
 import { app } from '../firebaseConfig';
+import useUserRole from './useUserRole';
+
 import { useDarkMode } from '../screens/DarkMode';
 import ThemedBackground from '../screens/ThemedBackground';
 import NotificationService from '../src/notifications/notificationService';
@@ -24,6 +26,8 @@ const HomeScreen = () => {
   const [showEditButtons, setShowEditButtons] = useState(false);
   const db = getFirestore(app);
   const auth = getAuth();
+  const { role } = useUserRole(); // 'parent' | 'caregiver' | undefined
+
   const { darkMode } = useDarkMode();
 
   useFocusEffect(
@@ -33,55 +37,82 @@ const HomeScreen = () => {
   );
 
   useEffect(() => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
+  const currentUser = auth.currentUser;
+  if (!currentUser) return;
+  const uid = currentUser?.uid;
+  if (!uid) return;
 
-    const q = query(
-      collection(db, 'children'),
-      where('userId', '==', currentUser.uid)
-    );
+  // Parent sees children they own; Caregiver sees children assigned to them
+  const base = collection(db, 'children');
+  if (!role) return; // if hook can be undefined briefly
+  const qRoles =
+    role === 'parent'
+     ? query(base, where('userId', '==', uid))
+     : query(base, where('caregivers', 'array-contains', uid));
 
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const updatedProfiles = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+  const unsubscribe = onSnapshot(
+    qRoles,
+    (snapshot) => {
+      const updatedProfiles = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      if (role === 'parent') {
         setProfiles(updatedProfiles);
-      },
-      (error) => {
-        console.error('Realtime profile listener error:', error);
+      } else {
+        const uid = auth.currentUser?.uid;
+        const visible = updatedProfiles.filter(
+          c => (c.caregiverPerms?.[uid] === 'on') || (c.caregiverPerms?.[uid] === 'log') // compat
+        );
+        setProfiles(visible);
       }
-    );
+    },
+    (error) => {
+      console.error('Realtime profile listener error:', error);
+    }
+  );
 
-    return () => unsubscribe();
-  }, []);
+  return () => unsubscribe();
+}, [role]);
 
-  const toggleEditButtons = () => setShowEditButtons((prev) => !prev);
 
-  return (
-    <ThemedBackground>
-      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} translucent />
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.innerContainer}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.logoContainer}>
-              <Image source={require('../assets/NoTitleLogo.png')} style={styles.logoImageSmall} />
-            </View>
-            <Text style={[styles.headerTitle, { color: darkMode ? '#fff' : '#2E3A59' }]}>Home</Text>
-            <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>
-              <Settings size={24} color={darkMode ? '#fff' : '#7C8B9A'} strokeWidth={1.5} />
-            </TouchableOpacity>
-          </View>
+  const toggleEditButtons =() => setShowEditButtons(prev => !prev);
+    return (
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
+    <ScrollView contentContainerStyle={styles.scrollContainer}>
+      <View style={styles.container}>
+        <View style={styles.topBar}>
+          <Image source={require('../assets/logo.png')} style={styles.logo} />
+          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+            <Text style={styles.settingsIcon}>⚙️</Text>
+          </TouchableOpacity>
+        </View>
 
           {/* Title */}
           <View style={styles.titleSection}>
-            <Text style={[styles.title, { color: darkMode ? '#fff' : '#2E3A59' }]}>Welcome to Baby Tracker</Text>
-            <Text style={[styles.subtitle, { color: darkMode ? '#ccc' : '#7C8B9A' }]}>
-              Select a profile to continue
+            <Text style={[styles.title, { color: darkMode ? '#fff' : '#2E3A59' }]}>
+              Welcome to Baby Tracker
             </Text>
+            <Text style={[styles.subtitle, { color: darkMode ? '#ccc' : '#7C8B9A' }]}>
+              {role !== 'parent' ? 'Select an assigned child' : 'Select a profile to continue'}
+            </Text>
+
+            {role !== 'parent' && profiles.length === 0 && (
+              <TouchableOpacity
+                style={{
+                  marginTop: 14,
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  alignItems: 'center',
+                  backgroundColor: '#CFD8DC',
+                }}
+                onPress={() => navigation.navigate('AcceptInvite')}
+              >
+                <Text style={{ color: '#2E3A59', fontWeight: '700' }}>
+                  Enter caregiver invite code
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Profiles */}
@@ -125,7 +156,7 @@ const HomeScreen = () => {
                   </LinearGradient>
                 </TouchableOpacity>
 
-                {showEditButtons && (
+                {showEditButtons && role === 'parent' && (
                   <TouchableOpacity
                     style={styles.editButton}
                     onPress={() => navigation.navigate('EditChild', { childId: profile.id })}
@@ -161,7 +192,8 @@ const HomeScreen = () => {
             ))}
           </View>
 
-          {/* Action Buttons */}
+          {/* Action Buttons - parents only*/}
+          {role === 'parent' && (
           <View style={styles.actionButtons}>
             <TouchableOpacity style={styles.editProfilesButton} onPress={toggleEditButtons} activeOpacity={0.8}>
               <LinearGradient
@@ -193,10 +225,11 @@ const HomeScreen = () => {
               </LinearGradient>
             </TouchableOpacity>
           </View>
-        </View>
-      </ScrollView>
-    </ThemedBackground>
-  );
+      )}
+      </View>
+    </ScrollView>
+  </LinearGradient>
+);
 };
 
 const styles = StyleSheet.create({

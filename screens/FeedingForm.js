@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+
 import {
   View,
   Text,
@@ -12,23 +13,62 @@ import {
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRoute } from '@react-navigation/native';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore'; 
 import { getAuth } from 'firebase/auth';
-import { db } from '../firebaseConfig';
+import { db } from '../firebaseConfig'; 
 import { LinearGradient } from 'expo-linear-gradient';
 import { useDarkMode } from '../screens/DarkMode';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { ArrowLeft } from 'lucide-react-native';
 
+// bring in role hook for caregiver gating
+import useUserRole from './useUserRole';
+
+// helper used for per-day filtering/logging
+const getTodayStr = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 export default function FeedingForm({ navigation }) {
   const route = useRoute();
   const { childId, name } = route.params || {};
+
+  // caregiver gating state
+  const { role } = useUserRole(); // 'parent' | 'caregiver' | 'unassigned'
+  const auth = getAuth();
+  const uid = auth.currentUser?.uid;
+  const [canLog, setCanLog] = useState(role === 'parent');
+
   const { darkMode } = useDarkMode();
   const currentTheme = darkMode ? appTheme.dark : appTheme.light;
+
+  // watch caregiverPerms live; parents always true
+  useEffect(() => {
+    if (role === 'parent') {
+      setCanLog(true);
+      return;
+    }
+    if (!childId || !uid) {
+      setCanLog(false);
+      return;
+    }
+    const ref = doc(db, 'children', childId);
+    const unsub = onSnapshot(ref, (snap) => {
+      const data = snap.data() || {};
+      const v = (data.caregiverPerms || {})[uid];
+      setCanLog(data.userId === uid || v === 'on' || v === 'log');
+    });
+    return () => unsub();
+  }, [role, childId, uid]);
 
   const [selectedTime, setSelectedTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -54,6 +94,7 @@ export default function FeedingForm({ navigation }) {
   };
 
   const handleCompleteLog = async () => {
+    if (!canLog) { Alert.alert('Access is off', 'Parent has turned off access for this child.'); return; }
     const auth = getAuth();
     const user = auth.currentUser;
 
@@ -67,16 +108,76 @@ export default function FeedingForm({ navigation }) {
       return;
     }
 
+    // validation & optional confirmation for large amounts (your logic)
+    if (!childId) {
+      alert('No child selected');
+      return;
+    }
+
+    const numericAmount = parseFloat(amount);
+    const MAX_AMOUNT = 1000;
+    const WARNING_AMOUNT = 500;
+
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      alert('Please enter a valid positive number for amount');
+      return;
+    }
+
+    if (numericAmount > MAX_AMOUNT) {
+      alert(
+        `The entered amount (${numericAmount} ${amountUnit}) is too large to be valid. Please double-check.`
+      );
+      return;
+    }
+
+    if (numericAmount > WARNING_AMOUNT) {
+      Alert.alert(
+        'Large Amount Entered',
+        `You entered ${numericAmount} ${amountUnit}. Are you sure this amount is correct?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Yes, Save',
+            onPress: async () => {
+              try {
+                const logData = {
+                  timestamp: selectedTime,
+                  feedType: foodType === 'Other' ? customFoodType : foodType,
+                  amount: numericAmount, // numeric
+                  amountUnit,
+                  mealType,
+                  notes,
+                  childId,
+                  createdAt: serverTimestamp(),
+                  logDate: getTodayStr(),
+                };
+
+                await addDoc(collection(db, 'feedLogs'), logData);
+                alert('Feeding log saved successfully!');
+                navigation.goBack();
+              } catch (error) {
+                console.error('Error saving feeding log:', error);
+                alert('Failed to save feeding log. Please try again.');
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    // Normal save path (kept)
     try {
       const logData = {
         timestamp: selectedTime,
         feedType: foodType === 'Other' ? customFoodType : foodType,
-        amount,
+        amount, // string is fine for non-warning path (kept from your code)
         amountUnit,
         mealType,
         notes,
         childId,
         createdAt: serverTimestamp(),
+        logDate: getTodayStr(),
       };
 
       await addDoc(collection(db, 'feedLogs'), logData);
@@ -87,6 +188,25 @@ export default function FeedingForm({ navigation }) {
       alert('Failed to save feeding log. Please try again.');
     }
   };
+
+  if (!canLog) {
+    return (
+      <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={{ flex: 1, justifyContent: 'center' }}>
+        <View style={{ margin: 20, backgroundColor: '#fff', borderRadius: 12, padding: 16 }}>
+          <Text style={{ color: '#2E3A59', marginBottom: 12 }}>
+            Access is off. Ask the parent for logging permission.
+          </Text>
+          <TouchableOpacity
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}
+            style={{ padding: 12, backgroundColor: '#CFD8DC', borderRadius: 10, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#2E3A59', fontWeight: '700' }}>Back</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+    );
+  }
+
 
   return (
     <ThemedBackground>

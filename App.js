@@ -19,6 +19,9 @@ import DiaperChangeForm from './screens/DiaperChangeForm';
 import SleepingForm from './screens/SleepingForm';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 import EditChildScreen from './screens/EditChildScreen';
+import InviteCaregiver from './screens/InviteCaregiver';
+import AcceptInvite from './screens/AcceptInvite';
+import ManageCaregivers from './screens/ManageCaregivers';
 import RemindersScreen from './screens/RemindersScreen';
 
 const Stack = createStackNavigator();
@@ -78,6 +81,9 @@ export default function App() {
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
             <Stack.Screen name="EditChild" component={EditChildScreen} />
             <Stack.Screen name="RemindersScreen" component={RemindersScreen} />
+            <Stack.Screen name="AcceptInvite" component={AcceptInvite} options={{ title: 'Accept Invite' }} />
+            <Stack.Screen name="InviteCaregiver" component={InviteCaregiver} options={{ headerShown: true, title: 'Invite Caregiver' }} />
+            <Stack.Screen name="ManageCaregivers" component={ManageCaregivers} options={{ title: 'Manage Caregivers' }} />
           </Stack.Navigator>
         </NavigationContainer>
       </ActiveChildProvider>

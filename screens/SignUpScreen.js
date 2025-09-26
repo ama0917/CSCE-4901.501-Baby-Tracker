@@ -1,23 +1,31 @@
 import React, { useState } from 'react';
-import { 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Image, 
+import {
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
   Alert,
   View,
   Keyboard,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
   Platform,
-  ScrollView
+  ScrollView, // [MERGED here]
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+
+// [KEPT from incoming]
 import { auth, db } from '../firebaseConfig';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
+
+/* ------------------- YOUR MFA/TOTP BITS (commented out) ------------------- */
+// Keep these for later; they’re commented so they don’t impact the flow now.
+// import { startTotpEnrollment, finishTotpEnrollment } from '../auth/mfa';
+// import QRCode from 'react-native-qrcode-svg';
+/* ------------------------------------------------------------------------- */
 
 export default function SignUpScreen() {
   const navigation = useNavigation();
@@ -26,6 +34,8 @@ export default function SignUpScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  // [REMOVED from UI for now] isFocused, MFA enrollment UI/state, icons, etc.
+
   const handleSignUp = async () => {
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match!');
@@ -33,90 +43,155 @@ export default function SignUpScreen() {
     }
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      const { user } = await createUserWithEmailAndPassword(auth, email.trim(), password);
 
-      // Store user info in Firestore
+      // [KEPT minimal profile doc; MFA disabled since we’re commenting out TOTP]
       await setDoc(doc(db, 'Users', user.uid), {
-        Email: email,
-        Password: '', // Not storing plaintext password
-        MFAEnabled: false,
-        UserType: 'parent', // Default user type
-        Name: '', // You can add a name input if needed
+        Email: email.trim(),
+        Password: '',          // never store plaintext
+        MFAEnabled: false,     // [CHANGED] false for now; TOTP is commented out
+        UserType: 'parent',
+        Name: '',
       });
+
+      /* ------------------ COMMENTED OUT: optional TOTP enrollment ------------------
+      try {
+        const { otpauthUrl } = await startTotpEnrollment(user, {
+          accountName: email.trim(),
+          issuer: 'BabyTracker',
+        });
+        // Show QR and verify code UI here (kept in comments below)
+      } catch (e) {
+        // If backend TOTP not enabled, allow signup without MFA
+      }
+      ----------------------------------------------------------------------------- */
 
       navigation.navigate('Login');
     } catch (error) {
-      Alert.alert('Sign Up Error', error.message);
+      Alert.alert('Sign Up Error', error?.message || 'Could not create account.');
     }
   };
 
   return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={{ flex: 1 }}>
-    <KeyboardAvoidingView
-    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    keyboardVerticalOffset={Platform.OS === 'ios' ? 30 : 0}
-    style={{ flex: 1 }}
-    >
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={{ flex: 1 }}>
-        <ScrollView
-          contentContainerStyle={styles.scrollViewContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.innerContainer}>
-              <Image source={require('../assets/logo.png')} style={styles.logoImage} />
-              <Text style={styles.title}>SIGN UP</Text>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 30 : 0}
+        style={{ flex: 1 }}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={{ flex: 1 }}>
+            <ScrollView
+              contentContainerStyle={styles.scrollViewContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.innerContainer}>
+                <Image source={require('../assets/logo.png')} style={styles.logoImage} />
+                <Text style={styles.title}>SIGN UP</Text>
 
-              <TextInput
-                style={styles.input}
-                placeholder="Enter Email"
-                placeholderTextColor="#aaa"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-
-              <TouchableOpacity style={styles.passwordContainer}>
+                {/* Email */}
                 <TextInput
-                  style={styles.passwordInput}
-                  placeholder="Enter Password"
+                  style={styles.input}
+                  placeholder="Enter Email"
                   placeholderTextColor="#aaa"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
                 />
-                <Text style={styles.showText} onPress={() => setShowPassword(!showPassword)}>
-                  {showPassword ? 'Hide' : 'Show'}
-                </Text>
-              </TouchableOpacity>
 
-              <TextInput
-                style={styles.input}
-                placeholder="Confirm Password"
-                placeholderTextColor="#aaa"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-              />
+                {/* Password + Show/Hide (text-based, matches incoming style) */}
+                <TouchableOpacity style={styles.passwordContainer} activeOpacity={1}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    placeholder="Enter Password"
+                    placeholderTextColor="#aaa"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                  />
+                  <Text style={styles.showText} onPress={() => setShowPassword(!showPassword)}>
+                    {showPassword ? 'Hide' : 'Show'}
+                  </Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity style={styles.signupButton} onPress={handleSignUp}>
-                <Text style={styles.signupText}>Sign-up</Text>
-              </TouchableOpacity>
+                {/* Confirm Password */}
+                <TextInput
+                  style={styles.input}
+                  placeholder="Confirm Password"
+                  placeholderTextColor="#aaa"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry
+                />
 
-              <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-                <Text style={styles.loginText}>Already have an account? Login.</Text>
-              </TouchableOpacity>
+                {/* Submit */}
+                <TouchableOpacity style={styles.signupButton} onPress={handleSignUp}>
+                  <Text style={styles.signupText}>Sign-up</Text>
+                </TouchableOpacity>
+
+                {/* Go to Login */}
+                <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+                  <Text style={styles.loginText}>Already have an account? Login.</Text>
+                </TouchableOpacity>
+
+                {/* ---------------- COMMENTED OUT: TOTP UI block ----------------
+                {enrollingMfa && (
+                  <View style={{ marginTop: 24, width: '100%' }}>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#2E3A59', marginBottom: 8 }}>
+                      Set up Authenticator (TOTP)
+                    </Text>
+                    <Text style={{ color: '#7C8B9A', marginBottom: 8 }}>
+                      Copy this into your authenticator app (Google Authenticator, Authy), or scan as a QR:
+                    </Text>
+                    {mfaUri ? (
+                      <View style={{ marginBottom: 12, alignItems: 'center' }}>
+                        <QRCode value={mfaUri} size={180} />
+                      </View>
+                    ) : null}
+                    <Text selectable style={{ color: '#2E3A59', fontSize: 12, marginBottom: 12 }}>
+                      {mfaUri}
+                    </Text>
+
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter 6-digit code"
+                      placeholderTextColor="#B0BEC5"
+                      keyboardType="number-pad"
+                      maxLength={6}
+                      value={mfaCode}
+                      onChangeText={setMfaCode}
+                    />
+
+                    <TouchableOpacity style={styles.signupButton} onPress={async () => {
+                      try {
+                        if (!mfaCode || mfaCode.length !== 6) {
+                          Alert.alert('MFA', 'Enter the 6-digit code from your authenticator app');
+                          return;
+                        }
+                        await finishTotpEnrollment(auth.currentUser, mfaCode);
+                        Alert.alert('Success', 'Two-factor authentication enabled.');
+                        navigation.navigate('Login');
+                      } catch (e) {
+                        Alert.alert('MFA Error', e.message);
+                      }
+                    }}>
+                      <Text style={styles.signupText}>Verify & Enable MFA</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                --------------------------------------------------------------- */}
               </View>
-        </ScrollView>
-      </View>
-    </TouchableWithoutFeedback>
-  </KeyboardAvoidingView>
-  </LinearGradient>
+            </ScrollView>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </LinearGradient>
   );
 }
+
+/* styles are in your existing file; not modified */
 
 const styles = StyleSheet.create({
   container: {

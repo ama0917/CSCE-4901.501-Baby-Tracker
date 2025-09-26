@@ -1,22 +1,54 @@
+// [KEPT from incoming]
 import React, { useState } from 'react';
-import { 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Image, 
+import {
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
   Alert,
   View,
   Keyboard,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
   Platform,
+  ScrollView, // [MERGED] import here instead of separate line
 } from 'react-native';
-import { ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
-import '../firebaseConfig'; // Ensure this file properly initializes Firebase
+
+// [KEPT from incoming] – simple password login
+import { getAuth, signInWithEmailAndPassword /* , isSignInWithEmailLink, sendSignInLinkToEmail, signInWithEmailLink */ } from 'firebase/auth';
+import '../firebaseConfig'; // must initialize Firebase
+
+/* ------------------- YOUR ADVANCED BITS (commented out) ------------------- */
+// Keep these for future MFA / Email-link work, but COMMENTED so they don't affect build now.
+// import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+// import * as Linking from 'expo-linking';
+// import * as Crypto from 'expo-crypto';
+// import AsyncStorage from '@react-native-async-storage/async-storage';
+// import { signInOrThrowMfa, isTotpChallenge, resolveTotpSignIn } from '../auth/mfa';
+
+// const actionCodeSettings = {
+//   url: 'https://babytracker-ab1ed.web.app/finishSignIn/',
+//   handleCodeInApp: true,
+// };
+
+// const hashEmail = async (e) =>
+//   Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, (e || '').toLowerCase().trim());
+
+// const getLoginModeFor = async (email) => {
+//   try {
+//     const db = getFirestore();
+//     const h = await hashEmail(email);
+//     const snap = await getDoc(doc(db, 'loginPrefs', h));
+//     return snap.exists() ? (snap.data().mode || 'password') : 'password';
+//   } catch {
+//     return 'password';
+//   }
+// };
+
+/* ------------------------------------------------------------------------- */
 
 export default function LoginScreen() {
   const navigation = useNavigation();
@@ -24,14 +56,32 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  // [ADDED SAFELY] basic loading state (just UX; doesn’t change flow)
+  const [isLoading, setIsLoading] = useState(false);
+
+  // [REMOVED from UI/flow] WelcomeScreen + MFA UI + deep link listeners (kept commented above)
+
   const handleLogin = async () => {
-    const auth = getAuth();
+    // [FOLLOW THEIRS] simple password sign-in; your advanced paths are commented above
+    if (!email.trim()) {
+      Alert.alert('Error', 'Please enter your email');
+      return;
+    }
+    setIsLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      navigation.navigate('Home'); // Navigate only after successful login
+      const auth = getAuth();
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+      // Roles/permissions are applied AFTER login in Home/ChildDashboard (no role logic needed here)
+      navigation.navigate('Home');
     } catch (error) {
-      console.error(error);
-      Alert.alert('Login Failed', error.message);
+      // [KEPT] friendly error messages
+      let errorMessage = 'Login failed. Please try again.';
+      if (error?.code === 'auth/user-not-found') errorMessage = 'No account found with this email.';
+      else if (error?.code === 'auth/wrong-password') errorMessage = 'Incorrect password.';
+      else if (error?.code === 'auth/invalid-email') errorMessage = 'Invalid email address.';
+      Alert.alert('Login Failed', errorMessage);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -56,6 +106,7 @@ export default function LoginScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
+
               <TouchableOpacity style={styles.passwordContainer}>
                 <TextInput
                   style={styles.passwordInput}
@@ -74,10 +125,17 @@ export default function LoginScreen() {
                 <Text style={styles.forgotText}>Forgot Password?</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-                <Text style={styles.loginText}>Login</Text>
+              {/* [FOLLOW THEIRS] Simple login button */}
+              <TouchableOpacity
+                style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+                onPress={handleLogin}
+                disabled={isLoading}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.loginText}>{isLoading ? 'Signing In...' : 'Login'}</Text>
               </TouchableOpacity>
 
+              {/* [FOLLOW THEIRS] Single Sign Up link */}
               <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
                 <Text style={styles.signupText}>Not a member? Sign up.</Text>
               </TouchableOpacity>

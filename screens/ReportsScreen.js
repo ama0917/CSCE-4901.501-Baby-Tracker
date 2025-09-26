@@ -23,12 +23,23 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { FontAwesome5 } from '@expo/vector-icons';
 import StackedBarChart from './StackedBarChart';
+import useUserRole from './useUserRole';
 import WeeklySummaryCard from '../src/components/WeeklySummaryCard';
 
 const { width } = Dimensions.get('window');
 const adjustedWidth = width - 40;
 
 const ReportPage = () => {
+  const { role } = useUserRole();
+  if (role !== 'parent') {
+    return (
+      <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ fontSize: 16, color: '#2E3A59', padding: 16, textAlign: 'center' }}>
+          Reports are only available to parents.
+        </Text>
+      </LinearGradient>
+    );
+  }
   const route = useRoute();
   const navigation = useNavigation();
   const { childId, name } = route.params || {};

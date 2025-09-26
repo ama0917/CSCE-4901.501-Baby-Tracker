@@ -2,8 +2,16 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
-import { LinearGradient} from 'expo-linear-gradient';
-import { getFirestore, collection, addDoc } from 'firebase/firestore';
+import { LinearGradient } from 'expo-linear-gradient';
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
 import { app } from '../firebaseConfig';
 import { getAuth } from 'firebase/auth';
 
@@ -11,11 +19,11 @@ const AddChildScreen = () => {
   const navigation = useNavigation();
 
   const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [gender, setGender] = useState('');
+  const [lastName, setLastName]   = useState('');
+  const [gender, setGender]       = useState('');
   const [birthDate, setBirthDate] = useState({ month: '', day: '', year: '' });
-  const [notes, setNotes] = useState('');
-  const [image, setImage] = useState(null);
+  const [notes, setNotes]         = useState('');
+  const [image, setImage]         = useState(null);
 
   const db = getFirestore(app); // Firestore reference
 
@@ -51,7 +59,6 @@ const AddChildScreen = () => {
       return;
     }
 
-    // calculating child age to 5 years within current date
     const ageDiffMs = today - birth;
     const ageDate = new Date(ageDiffMs);
     const ageYears = Math.abs(ageDate.getUTCFullYear() - 1970);
@@ -64,7 +71,7 @@ const AddChildScreen = () => {
     try {
       const auth = getAuth();
       const currentUser = auth.currentUser;
-      
+
       if (!currentUser) {
         Alert.alert('Authentication Error', 'You must be logged in to add a child.');
         return;
@@ -77,16 +84,27 @@ const AddChildScreen = () => {
         notes,
         image,
         userId: currentUser.uid, // Link child to the current user
-        createdAt: new Date()
+        createdAt: new Date(),
       };
 
       // Save the new child profile to Firestore
       const docRef = await addDoc(collection(db, 'children'), newProfile);
-      console.log('Document written with ID: ', docRef.id);
+
+      // Ensure role recorded for this user, without breaking older data
+      try {
+        const userRef = doc(db, 'Users', currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
+          await setDoc(userRef, { UserType: 'parent' }, { merge: true });
+        } else if (!userSnap.data()?.UserType) {
+          await updateDoc(userRef, { UserType: 'parent' });
+        }
+      } catch (_) {
+        // intentionally silent; role tagging shouldn't block add-child flow
+      }
 
       // Navigate back to HomeScreen with the new profile
       navigation.navigate('Home', { newProfile: { id: docRef.id, ...newProfile } });
-
     } catch (e) {
       console.error('Error adding child profile: ', e);
       Alert.alert('Error', 'Something went wrong while saving the profile.');
@@ -95,101 +113,99 @@ const AddChildScreen = () => {
 
   return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
-    <ScrollView contentContainerStyle={styles.container}>
-      <TouchableOpacity onPress={() => navigation.goBack()}>
-        <Text style={styles.backButton}>← Home</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={pickImage} style={styles.imageWrapper}>
-        {image ? (
-          <Image source={{ uri: image }} style={styles.profilePic} />
-        ) : (
-          <Text style={styles.imagePlaceholder}>Add Photo</Text>
-        )}
-      </TouchableOpacity>
-
-      <Text style={styles.header}>Add Child</Text>
-
-      <Text style={styles.label}>Name</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Enter First Name"
-        value={firstName}
-        onChangeText={setFirstName}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Enter Last Name"
-        value={lastName}
-        onChangeText={setLastName}
-      />
-
-      <Text style={styles.label}>Gender</Text>
-      <View style={styles.genderRow}>
-        <TouchableOpacity
-          style={[styles.genderBtn, gender === 'Male' && styles.genderSelected]}
-          onPress={() => setGender('Male')}
-        >
-          <Text>Male</Text>
+      <ScrollView contentContainerStyle={styles.container}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.backButton}>← Home</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.genderBtn, gender === 'Female' && styles.genderSelected]}
-          onPress={() => setGender('Female')}
-        >
-          <Text>Female</Text>
+
+        <TouchableOpacity onPress={pickImage} style={styles.imageWrapper}>
+          {image ? (
+            <Image source={{ uri: image }} style={styles.profilePic} />
+          ) : (
+            <Text style={styles.imagePlaceholder}>Add Photo</Text>
+          )}
         </TouchableOpacity>
-      </View>
 
-      <Text style={styles.label}>Birth Date</Text>
-      <View style={styles.birthRow}>
+        <Text style={styles.header}>Add Child</Text>
+
+        <Text style={styles.label}>Name</Text>
         <TextInput
-          style={styles.birthInput}
-          placeholder="MM"
-          maxLength={2}
-          keyboardType="numeric"
-          value={birthDate.month}
-          onChangeText={(text) => setBirthDate({ ...birthDate, month: text })}
+          style={styles.input}
+          placeholder="Enter First Name"
+          value={firstName}
+          onChangeText={setFirstName}
         />
         <TextInput
-          style={styles.birthInput}
-          placeholder="DD"
-          maxLength={2}
-          keyboardType="numeric"
-          value={birthDate.day}
-          onChangeText={(text) => setBirthDate({ ...birthDate, day: text })}
+          style={styles.input}
+          placeholder="Enter Last Name"
+          value={lastName}
+          onChangeText={setLastName}
         />
+
+        <Text style={styles.label}>Gender</Text>
+        <View style={styles.genderRow}>
+          <TouchableOpacity
+            style={[styles.genderBtn, gender === 'Male' && styles.genderSelected]}
+            onPress={() => setGender('Male')}
+          >
+            <Text>Male</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.genderBtn, gender === 'Female' && styles.genderSelected]}
+            onPress={() => setGender('Female')}
+          >
+            <Text>Female</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.label}>Birth Date</Text>
+        <View style={styles.birthRow}>
+          <TextInput
+            style={styles.birthInput}
+            placeholder="MM"
+            maxLength={2}
+            keyboardType="numeric"
+            value={birthDate.month}
+            onChangeText={(text) => setBirthDate({ ...birthDate, month: text })}
+          />
+          <TextInput
+            style={styles.birthInput}
+            placeholder="DD"
+            maxLength={2}
+            keyboardType="numeric"
+            value={birthDate.day}
+            onChangeText={(text) => setBirthDate({ ...birthDate, day: text })}
+          />
+          <TextInput
+            style={styles.birthInput}
+            placeholder="YYYY"
+            maxLength={4}
+            keyboardType="numeric"
+            value={birthDate.year}
+            onChangeText={(text) => setBirthDate({ ...birthDate, year: text })}
+          />
+        </View>
+
+        <Text style={styles.label}>Notes</Text>
         <TextInput
-          style={styles.birthInput}
-          placeholder="YYYY"
-          maxLength={4}
-          keyboardType="numeric"
-          value={birthDate.year}
-          onChangeText={(text) => setBirthDate({ ...birthDate, year: text })}
+          style={styles.notesInput}
+          placeholder="Add any health notes or preferences..."
+          multiline
+          numberOfLines={3}
+          value={notes}
+          onChangeText={setNotes}
         />
-      </View>
 
-      <Text style={styles.label}>Notes</Text>
-      <TextInput
-        style={styles.notesInput}
-        placeholder="Add any health notes or preferences..."
-        multiline
-        numberOfLines={3}
-        value={notes}
-        onChangeText={setNotes}
-      />
-
-      <TouchableOpacity style={styles.addButton} onPress={handleSave}>
-        <Text style={styles.buttonText}>Add Child</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <TouchableOpacity style={styles.addButton} onPress={handleSave}>
+          <Text style={styles.buttonText}>Add Child</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
+  gradient: { flex: 1 },
   container: {
     paddingTop: 50,
     paddingHorizontal: 20,
@@ -292,8 +308,3 @@ const styles = StyleSheet.create({
 });
 
 export default AddChildScreen;
-
-
-  
-   
-    

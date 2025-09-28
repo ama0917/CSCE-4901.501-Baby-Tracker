@@ -34,5 +34,9 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
-backend/firebase-service-account.json
+# venv and service accounts
 .venv_test/
+
+# Service account keys (never commit)
+backend/firebase-service-account.json
+backend/firebase-service-account.backup.json

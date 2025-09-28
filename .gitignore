@@ -34,3 +34,5 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+backend/firebase-service-account.json
+.venv_test/

@@ -18,7 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 // [KEPT from incoming]
 import { auth, db } from '../firebaseConfig';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 
 /* ------------------- YOUR MFA/TOTP BITS (commented out) ------------------- */
@@ -54,17 +54,17 @@ export default function SignUpScreen() {
         Name: '',
       });
 
-      /* ------------------ COMMENTED OUT: optional TOTP enrollment ------------------
+      // Send verification email
       try {
-        const { otpauthUrl } = await startTotpEnrollment(user, {
-          accountName: email.trim(),
-          issuer: 'BabyTracker',
-        });
-        // Show QR and verify code UI here (kept in comments below)
+        await sendEmailVerification(user);
+        Alert.alert(
+          'Verify your email',
+          'We sent a verification link to your inbox. Please verify your email, then log in.'
+        );
       } catch (e) {
-        // If backend TOTP not enabled, allow signup without MFA
+        // Not fatal for signup; user can verify later from Settings
+        console.warn('sendEmailVerification failed:', e);
       }
-      ----------------------------------------------------------------------------- */
 
       navigation.navigate('Login');
     } catch (error) {

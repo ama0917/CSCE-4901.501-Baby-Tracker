@@ -93,7 +93,21 @@ exports.verifyOtp = functions.https.onCall(async (data, context) => {
   return { ok: true };
 });
 
-// Example HTTP function (kept commented; safe for lint)
-// exports.helloWorld = functions.https.onRequest((req, res) => {
-//   res.send("Hello from Firebase!");
-// });
+// Remove all TOTP factors for the signed-in caller
+exports.authUnenrollAllTotp = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Sign in required');
+  }
+  const uid = context.auth.uid;
+  try {
+    const before = (await admin.auth().getUser(uid)).multiFactor?.enrolledFactors ?? [];
+    await admin.auth().updateUser(uid, { multiFactor: { enrolledFactors: [] } });
+    const after = (await admin.auth().getUser(uid)).multiFactor?.enrolledFactors ?? [];
+    return {
+      before: before.map((f) => ({ uid: f.uid, factorId: f.factorId })),
+      after: after.map((f) => ({ uid: f.uid, factorId: f.factorId })),
+    };
+  } catch (e) {
+    throw new functions.https.HttpsError('internal', e?.message ?? String(e));
+  }
+});

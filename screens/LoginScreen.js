@@ -20,8 +20,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 // [KEPT from incoming] – simple password login
 import { getAuth, signInWithEmailAndPassword /* , isSignInWithEmailLink, sendSignInLinkToEmail, signInWithEmailLink */ } from 'firebase/auth';
 import '../firebaseConfig'; // must initialize Firebase
+import { isTotpChallenge } from '../auth/mfa';
 
-/* ------------------- YOUR ADVANCED BITS (commented out) ------------------- */
+
+/* ------------------- (commented out) ------------------- */
 // Keep these for future MFA / Email-link work, but COMMENTED so they don't affect build now.
 // import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 // import * as Linking from 'expo-linking';
@@ -62,19 +64,35 @@ export default function LoginScreen() {
   // [REMOVED from UI/flow] WelcomeScreen + MFA UI + deep link listeners (kept commented above)
 
   const handleLogin = async () => {
-    // [FOLLOW THEIRS] simple password sign-in; your advanced paths are commented above
+    // simple password sign-in; your advanced paths are commented above
     if (!email.trim()) {
       Alert.alert('Error', 'Please enter your email');
       return;
     }
     setIsLoading(true);
     try {
-      const auth = getAuth();
-      await signInWithEmailAndPassword(auth, email.trim(), password);
-      // Roles/permissions are applied AFTER login in Home/ChildDashboard (no role logic needed here)
-      navigation.navigate('Home');
-    } catch (error) {
-      // [KEPT] friendly error messages
+    const auth = getAuth();
+    await signInWithEmailAndPassword(auth, email.trim(), password);
+
+    // FOR TESTING REMOVE LATER:
+    await auth.currentUser.reload();
+    const f = (getAuth().currentUser?.multiFactor?.enrolledFactors || []).length;
+    console.log('[MFA] factors after sign-in =', f);
+    await getAuth().currentUser.getIdToken(true); // force refresh claims
+    await getAuth().currentUser.reload();
+    console.log('[MFA] factors after token refresh =', (getAuth().currentUser?.multiFactor?.enrolledFactors || []).length);
+    // END OF TESTING BLOCK
+
+    // Success (no MFA required)
+    navigation.navigate('Home');
+  } catch (error) {
+    // MFA challenge path
+    if (isTotpChallenge(error)) {
+      navigation.navigate('MfaEnterCode', { mfaError: error });
+      return;
+    }
+
+      // friendly error messages
       let errorMessage = 'Login failed. Please try again.';
       if (error?.code === 'auth/user-not-found') errorMessage = 'No account found with this email.';
       else if (error?.code === 'auth/wrong-password') errorMessage = 'Incorrect password.';

@@ -23,6 +23,7 @@ import InviteCaregiver from './screens/InviteCaregiver';
 import AcceptInvite from './screens/AcceptInvite';
 import ManageCaregivers from './screens/ManageCaregivers';
 import RemindersScreen from './screens/RemindersScreen';
+import MfaEnterCode from './screens/MfaEnterCode';
 
 const Stack = createStackNavigator();
 
@@ -68,7 +69,7 @@ export default function App() {
             {/* Auth screens */}
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="SignUp" component={SignUpScreen} />
-
+            <Stack.Screen name="MfaEnterCode" component={MfaEnterCode} />
             {/* Main app screens */}
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="ChildDashboard" component={ChildDashboard} />

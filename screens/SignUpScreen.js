@@ -186,7 +186,6 @@ export default function SignUpScreen() {
   );
 }
 
-/* styles are in your existing file; not modified */
 
 const styles = StyleSheet.create({
   container: {

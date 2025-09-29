@@ -1,4 +1,4 @@
-// [KEPT from incoming]
+// screens/LoginScreen.js
 import React, { useState } from 'react';
 import {
   Text,
@@ -17,7 +17,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// [KEPT from incoming] – simple password login
+// simple password login
 import { getAuth, signInWithEmailAndPassword /* , isSignInWithEmailLink, sendSignInLinkToEmail, signInWithEmailLink */ } from 'firebase/auth';
 import '../firebaseConfig'; // must initialize Firebase
 import { isTotpChallenge } from '../auth/mfa';

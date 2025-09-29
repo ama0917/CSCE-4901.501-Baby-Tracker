@@ -255,10 +255,10 @@ const handleFinishTotp = async () => {
 
 
 
-  // [ADDED] role to show caregiver actions
+  // role to show caregiver actions
   const { role } = useUserRole();
 
-  // [KEPT incoming load for weekly digest preference]
+  // load weeklyDigest setting
   useEffect(() => {
     const load = async () => {
       const currentUser = auth.currentUser;
@@ -277,7 +277,7 @@ const handleFinishTotp = async () => {
     load();
   }, []);
 
-  // [ADDED] load MFA flag (simple boolean) — deeper MFA logic is intentionally NOT wired
+  // load MFA flag (simple boolean) — deeper MFA logic is intentionally NOT wired
   useEffect(() => {
     const loadMfa = async () => {
       const currentUser = auth.currentUser;
@@ -311,7 +311,7 @@ const handleFinishTotp = async () => {
   }, [navigation, mfaEnrollOpen, mfaBusy]);
 
 
-  // [KEPT incoming active child access]
+  // incoming active child access
   const { activeChildId, activeChildName } = (() => {
     try {
       return useActiveChild();
@@ -320,7 +320,7 @@ const handleFinishTotp = async () => {
     }
   })();
 
-  // [KEPT incoming notification helpers]
+  // incoming notification helpers
   const sendTestNotification = async () => {
     const granted = await NotificationService.requestNotificationPermission();
     if (!granted) {

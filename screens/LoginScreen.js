@@ -12,7 +12,7 @@ import {
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
   Platform,
-  ScrollView, // [MERGED] import here instead of separate line
+  ScrollView, 
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -58,13 +58,13 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // [ADDED SAFELY] basic loading state (just UX; doesn’t change flow)
+  // basic loading state (just UX; doesn’t change flow)
   const [isLoading, setIsLoading] = useState(false);
 
-  // [REMOVED from UI/flow] WelcomeScreen + MFA UI + deep link listeners (kept commented above)
+  // WelcomeScreen + MFA UI + deep link listeners (kept commented above)
 
   const handleLogin = async () => {
-    // simple password sign-in; your advanced paths are commented above
+    // simple password sign-in
     if (!email.trim()) {
       Alert.alert('Error', 'Please enter your email');
       return;
@@ -143,7 +143,7 @@ export default function LoginScreen() {
                 <Text style={styles.forgotText}>Forgot Password?</Text>
               </TouchableOpacity>
 
-              {/* [FOLLOW THEIRS] Simple login button */}
+              {/* Simple login button */}
               <TouchableOpacity
                 style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
                 onPress={handleLogin}
@@ -153,7 +153,7 @@ export default function LoginScreen() {
                 <Text style={styles.loginText}>{isLoading ? 'Signing In...' : 'Login'}</Text>
               </TouchableOpacity>
 
-              {/* [FOLLOW THEIRS] Single Sign Up link */}
+              {/* Single Sign Up link */}
               <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
                 <Text style={styles.signupText}>Not a member? Sign up.</Text>
               </TouchableOpacity>

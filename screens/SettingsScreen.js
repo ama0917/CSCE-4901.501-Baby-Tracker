@@ -17,6 +17,7 @@ import { startTotpEnrollment, finishTotpEnrollment } from '../auth/mfa';
 import { getAuth, sendEmailVerification, multiFactor } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import useUserRole from './useUserRole';
+import * as Clipboard from 'expo-clipboard';
 
  
 const neonGradients = {
@@ -106,9 +107,9 @@ const handleStartTotp = async () => {
     setMfaEnrollOpen(true);
   } catch (err) {
     if (err?.code === 'auth/requires-recent-login') {
-      Alert.alert('Re-authentication needed', 'Sign out and sign back in, then try again.');
+      Alert.alert('Please sign in again', 'For your security, sign out and back in, then try again.');
     } else {
-      Alert.alert('Could not start MFA', err?.message ?? 'Unknown error');
+      Alert.alert('Couldn’t start two-step verification', 'Please try again. If this keeps happening, sign out and back in.');
     }
   } finally {
     setMfaBusy(false);
@@ -154,11 +155,11 @@ const handleFinishTotp = async () => {
     // (3) If server didn’t show a factor yet, let us know (keeps UI logic intact)
     if (enrolledCount === 0) { // <-- ADDED
       Alert.alert(
-        'Heads up',
-        'Enrollment call returned, but no factor is visible yet. Try confirming again or re-open Settings.'
+        'Two-step verification is on',
+        'Your code was accepted.'
       );
     } else {
-      Alert.alert('MFA enabled', 'Two-step verification is now active on your account.');
+      Alert.alert('Two-step verification is on', 'Your authenticator app is now linked to your account.');
     }
 
     // Reset local UI
@@ -167,7 +168,7 @@ const handleFinishTotp = async () => {
     setMfaEnrollOpen(false);
   } catch (err) {
     console.warn('finishTotpEnrollment error:', err); // <-- ADDED
-    Alert.alert('Verification failed', err?.message ?? 'Please check the 6-digit code and try again.');
+    Alert.alert('That code didn’t work', 'Open your authenticator app and enter the current 6-digit code, then try again.');
   } finally {
     setMfaBusy(false);
   }
@@ -242,9 +243,9 @@ const handleFinishTotp = async () => {
         console.warn('[MFA] disableTotp error', e?.code, e?.message);  // <— add this line first
 
         if (e?.code === 'auth/requires-recent-login') {
-          Alert.alert('Re-authentication needed', 'Sign out and sign back in, then try again.');
+          Alert.alert('Please sign in again', 'For your security, sign out and back in to make this change.');
         } else {
-          Alert.alert('Could not disable MFA', e?.message ?? 'Unknown error');
+          Alert.alert('Couldn’t turn off two-step verification', 'Please try again in a moment.');
         }
         setMfa(true); // revert toggle on failure
       } finally {
@@ -455,33 +456,36 @@ const handleFinishTotp = async () => {
         </LinearGradient>
 
         {/* --- MFA (TOTP) Enrollment Section --- */}
-        <View style={{ marginTop: 8, padding: 16, borderRadius: 12, backgroundColor: '#111827' }}>
-          <Text style={{ color: 'white', fontSize: 16, fontWeight: '700', marginBottom: 8 }}>
-            Two-Step Verification (Authenticator App)
-          </Text>
+        <LinearGradient
+            colors={darkMode ? neonGradients.card : ['#fbd687ee', '#f9f9ff']}
+            style={{ marginTop: 8, padding: 16, borderRadius: 12 }}
+          >
 
           {!mfaEnrollOpen ? (
-            <TouchableOpacity
-              onPress={handleStartTotp}
-              disabled={mfaBusy}
+            <LinearGradient
+              colors={darkMode ? neonGradients.button : ['#81D4FA', '#62A8E5']}
               style={{
                 marginTop: 8,
-                backgroundColor: '#3a86ff',
                 borderRadius: 10,
-                paddingVertical: 12,
-                alignItems: 'center',
                 opacity: mfaBusy ? 0.6 : 1,
               }}
             >
-              {mfaBusy ? (
-                <ActivityIndicator />
-              ) : (
-                <Text style={{ color: 'white', fontWeight: '700' }}>Set up Authenticator (TOTP)</Text>
-              )}
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleStartTotp}
+                disabled={mfaBusy}
+                style={{ paddingVertical: 12, alignItems: 'center' }}
+                activeOpacity={0.85}
+              >
+                {mfaBusy ? (
+                  <ActivityIndicator />
+                ) : (
+                  <Text style={{ color: currentTheme.textPrimary, fontWeight: '700' }}>Set up Authenticator (TOTP)</Text>
+                )}
+              </TouchableOpacity>
+            </LinearGradient>
           ) : (
             <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: '#cbd5e1', textAlign: 'center', marginBottom: 12 }}>
+              <Text style={{ color: currentTheme.textSecondary, textAlign: 'center', marginBottom: 12 }}>
                 Scan this QR code with your authenticator app (Google Authenticator, Microsoft
                 Authenticator, Authy, 1Password, Bitwarden, etc.). Then enter the 6-digit code below.
               </Text>
@@ -491,42 +495,80 @@ const handleFinishTotp = async () => {
                   <QRCode value={otpauthUrl} size={180} />
                 </View>
               ) : (
-                <Text style={{ color: '#cbd5e1', marginBottom: 12 }}>Generating QR…</Text>
+                <Text style={{ color: currentTheme.textSecondary, marginBottom: 12 }}>Generating QR…</Text>
               )}
 
               {/* Manual key fallback (for users without QR scanning) */}
               {manualKey ? (
-                <View style={{ marginTop: 4, backgroundColor: '#1c2541', padding: 8, borderRadius: 8 }}>
-                  <Text style={{ color: '#cbd5e1', textAlign: 'center', fontSize: 14 }}>
+                <View 
+                    style={{
+                    marginTop: 8,
+                    backgroundColor: '#fff',
+                    borderWidth: 1,
+                    borderColor: '#ECEFF1',
+                    padding: 10,
+                    borderRadius: 10,
+                  }}
+                >
+                  <Text style={{ color: currentTheme.textSecondary, textAlign: 'center', fontSize: 14 }}>
                     Manual key (enter in your authenticator):
                   </Text>
                   <Text
                     selectable
-                    style={{ color: 'white', textAlign: 'center', fontSize: 18, marginTop: 4, letterSpacing: 2 }}
+                    style={{
+                      color: currentTheme.textPrimary,
+                      textAlign: 'center',
+                      fontSize: 18,
+                      marginTop: 6,
+                      letterSpacing: 2,
+                    }}
                   >
                     {manualKey}
                   </Text>
+                      <TouchableOpacity
+                        onPress={async () => {
+                          try {
+                            await Clipboard.setStringAsync(manualKey);
+                            Alert.alert('Copied', 'Setup key copied to clipboard.');
+                          } catch (e) {
+                            Alert.alert('Copy failed', e?.message || 'Please try again.');
+                          }
+                        }}
+                        style={{
+                          marginTop: 8,
+                          alignSelf: 'center',
+                          backgroundColor: '#81D4FA',
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          borderRadius: 8,
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={{ color: currentTheme.textSecondary, fontWeight: '700' }}>Copy setup key</Text>
+                      </TouchableOpacity>
                 </View>
               ) : null}
 
 
               <TextInput
                 placeholder="123456"
-                placeholderTextColor="#9aa0a6"
+                placeholderTextColor={currentTheme.textSecondary}
                 keyboardType="number-pad"
                 maxLength={6}
                 value={totpCode}
                 onChangeText={(t) => setTotpCode(t.replace(/\D/g, ''))}
                 style={{
                   width: '100%',
-                  backgroundColor: '#0b132b',
-                  color: 'white',
+                  backgroundColor: '#f8d6f8ff',
+                  color: 'black',
                   borderRadius: 10,
                   paddingVertical: 12,
                   textAlign: 'center',
                   fontSize: 20,
                   letterSpacing: 4,
                   marginBottom: 8,
+                  borderWidth: 1,
+                  borderColor: '#ebbdebff',   // outline for visibility (fits your blue accents)
                 }}
               />
 
@@ -536,14 +578,14 @@ const handleFinishTotp = async () => {
                   disabled={mfaBusy || !/^\d{6}$/.test(totpCode)}
                   style={{
                     flex: 1,
-                    backgroundColor: '#22c55e',
+                    backgroundColor: '#FFD1FF',
                     borderRadius: 10,
                     paddingVertical: 12,
                     alignItems: 'center',
                     opacity: mfaBusy || !/^\d{6}$/.test(totpCode) ? 0.6 : 1,
                   }}
                 >
-                  {mfaBusy ? <ActivityIndicator /> : <Text style={{ color: 'white', fontWeight: '700' }}>Confirm</Text>}
+                  {mfaBusy ? <ActivityIndicator /> : <Text style={{ color: currentTheme.textPrimary, fontWeight: '700' }}>Confirm</Text>}
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -555,19 +597,19 @@ const handleFinishTotp = async () => {
                   disabled={mfaBusy}
                   style={{
                     flex: 1,
-                    backgroundColor: '#374151',
+                    backgroundColor: '#81D4FA',
                     borderRadius: 10,
                     paddingVertical: 12,
                     alignItems: 'center',
                     opacity: mfaBusy ? 0.6 : 1,
                   }}
                 >
-                  <Text style={{ color: 'white', fontWeight: '700' }}>Cancel</Text>
+                  <Text style={{ color: currentTheme.textPrimary, fontWeight: '700' }}>Cancel</Text>
                 </TouchableOpacity>
               </View>
             </View>
           )}
-        </View>
+        </LinearGradient>
 
 
         {/* Weekly Digest (incoming) */}

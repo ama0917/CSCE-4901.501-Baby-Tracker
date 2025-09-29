@@ -146,6 +146,19 @@ export default function InviteCaregiver() {
         status: 'pending',
         createdAt: serverTimestamp(),
       });
+      // Record explicit parental consent at the moment of disclosure (invite creation)
+      try {
+        await addDoc(collection(db, 'users', user.uid, 'consents'), {
+          type: 'caregiver_share',
+          version: 'v1',
+          consentedAt: serverTimestamp(),
+          inviteId: docRef.id,
+          childIds: selectedIds,
+        });
+      } catch (e) {
+        // Non-blocking: the invite still exists; surface a gentle note if needed
+        console.warn('consent write failed:', e);
+      }
       setInviteCode(docRef.id);
       Alert.alert('Invite created', 'Share this code with your caregiver to accept.');
     } catch (e) {
@@ -167,6 +180,16 @@ export default function InviteCaregiver() {
         <Text style={{ fontSize: 22, fontWeight: '800', color: '#2E3A59', marginBottom: 12 }}>
           Invite Caregiver
         </Text>
+
+        {/* COPPA-style disclaimer (consent is given when sending the invite) */}
+        <View style={{ backgroundColor: '#FFFDE7', borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: '#FFF59D' }}>
+          <Text style={{ color: '#5D4037', fontWeight: '700', marginBottom: 4 }}>Before you continue</Text>
+          <Text style={{ color: '#5D4037' }}>
+            By inviting a caregiver, you consent to share your child’s information (e.g., name
+            and activity you choose to share). You can change or revoke access anytime in “Manage Caregivers.”
+          </Text>
+        </View>
+
 
         {/* Selected children chips */}
         <Text style={{ color: '#7C8B9A', marginBottom: 6 }}>Selected Children</Text>
@@ -250,7 +273,9 @@ export default function InviteCaregiver() {
           }}
           activeOpacity={0.85}
         >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Create Invite</Text>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>
+            {isSubmitting ? 'Sending…' : 'I consent and send invite'}
+          </Text>
         </TouchableOpacity>
 
         {/* Result */}

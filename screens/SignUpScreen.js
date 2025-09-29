@@ -11,21 +11,17 @@ import {
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
   Platform,
-  ScrollView, // [MERGED here]
+  ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// [KEPT from incoming]
+
 import { auth, db } from '../firebaseConfig';
 import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 
-/* ------------------- YOUR MFA/TOTP BITS (commented out) ------------------- */
-// Keep these for later; they’re commented so they don’t impact the flow now.
-// import { startTotpEnrollment, finishTotpEnrollment } from '../auth/mfa';
-// import QRCode from 'react-native-qrcode-svg';
-/* ------------------------------------------------------------------------- */
+
 
 export default function SignUpScreen() {
   const navigation = useNavigation();
@@ -34,7 +30,7 @@ export default function SignUpScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // [REMOVED from UI for now] isFocused, MFA enrollment UI/state, icons, etc.
+  // isFocused, MFA enrollment UI/state, icons, etc.
 
   const handleSignUp = async () => {
     if (password !== confirmPassword) {
@@ -45,11 +41,10 @@ export default function SignUpScreen() {
     try {
       const { user } = await createUserWithEmailAndPassword(auth, email.trim(), password);
 
-      // [KEPT minimal profile doc; MFA disabled since we’re commenting out TOTP]
       await setDoc(doc(db, 'Users', user.uid), {
         Email: email.trim(),
         Password: '',          // never store plaintext
-        MFAEnabled: false,     // [CHANGED] false for now; TOTP is commented out
+        MFAEnabled: false,     // false for now; TOTP is commented out
         UserType: 'parent',
         Name: '',
       });

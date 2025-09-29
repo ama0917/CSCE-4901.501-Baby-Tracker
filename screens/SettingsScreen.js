@@ -294,6 +294,22 @@ const handleFinishTotp = async () => {
     loadMfa();
   }, []);
 
+  // Block leaving Settings while TOTP enrollment is open & busy (prevents losing finalize step)
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e) => {
+      // Only block when the enrollment modal is open AND we’re mid-operation
+      if (mfaEnrollOpen && mfaBusy) {
+        e.preventDefault();
+        Alert.alert(
+          'Please wait',
+          'Finishing two-step verification. This will only take a moment.'
+        );
+      }
+    });
+    return unsub;
+  }, [navigation, mfaEnrollOpen, mfaBusy]);
+
+
   // [KEPT incoming active child access]
   const { activeChildId, activeChildName } = (() => {
     try {

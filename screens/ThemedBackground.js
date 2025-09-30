@@ -43,7 +43,7 @@ export default function ThemedBackground({ children, style }) {
   const currentTheme = darkMode ? appTheme.dark : appTheme.light;
 
 
-  const gradientColors = Array.isArray(currentTheme.backgroundGradient)
+  const gradientColors = (currentTheme && Array.isArray(currentTheme.backgroundGradient))
     ? currentTheme.backgroundGradient
     : ['#000', '#111']; // safe fallback
 

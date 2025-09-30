@@ -78,15 +78,20 @@ const HomeScreen = () => {
 
   const toggleEditButtons =() => setShowEditButtons(prev => !prev);
     return (
-    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
-    <ScrollView contentContainerStyle={styles.scrollContainer}>
-      <View style={styles.container}>
-        <View style={styles.topBar}>
-          <Image source={require('../assets/logo.png')} style={styles.logo} />
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
-            <Text style={styles.settingsIcon}>⚙️</Text>
-          </TouchableOpacity>
-        </View>
+    <ThemedBackground>
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} translucent />
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        <View style={styles.innerContainer}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.logoContainer}>
+              <Image source={require('../assets/NoTitleLogo.png')} style={styles.logoImageSmall} />
+            </View>
+            <Text style={[styles.headerTitle, { color: darkMode ? '#fff' : '#2E3A59' }]}>Home</Text>
+            <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>
+              <Settings size={24} color={darkMode ? '#fff' : '#7C8B9A'} strokeWidth={1.5} />
+            </TouchableOpacity>
+          </View>
 
           {/* Title */}
           <View style={styles.titleSection}>
@@ -228,7 +233,7 @@ const HomeScreen = () => {
       )}
       </View>
     </ScrollView>
-  </LinearGradient>
+  </ThemedBackground>
 );
 };
 

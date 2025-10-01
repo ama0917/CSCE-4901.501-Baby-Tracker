@@ -24,6 +24,7 @@ import {
 } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import { app } from '../firebaseConfig';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, Trash2 } from 'lucide-react-native';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
@@ -38,6 +39,7 @@ const EditChildScreen = () => {
   const currentTheme = darkMode ? appTheme.dark : appTheme.light;
 
   const db = getFirestore(app);
+  const storage = getStorage(app);
 
   const [childData, setChildData] = useState({
     firstName: '',
@@ -56,13 +58,13 @@ const EditChildScreen = () => {
     if (childId) loadChildData();
   }, []);
 
-  // Live listener for caregiver list & perms 
+  // Live listener for caregiver list & permissions
   useEffect(() => {
     if (!childId) return;
-    const ref = doc(db, 'children', childId);
-    const unsub = onSnapshot(ref, (snap) => {
+    const refDoc = doc(db, 'children', childId);
+    const unsub = onSnapshot(refDoc, (snap) => {
       const data = snap.data() || {};
-      setCgList(Array.isArray(data.caregivers) ? data.caregivers : []); 
+      setCgList(Array.isArray(data.caregivers) ? data.caregivers : []);
       setCgPerms(data.caregiverPerms || {});
     });
     return () => unsub();
@@ -101,7 +103,23 @@ const EditChildScreen = () => {
     });
 
     if (!result.canceled) {
-      setChildData((prev) => ({ ...prev, image: result.assets[0].uri }));
+      const localUri = result.assets[0].uri;
+      const filename = `${childId}_${Date.now()}`; // unique filename
+      const storageRef = ref(storage, `childProfiles/${filename}`);
+
+      try {
+        // Convert image to blob
+        const response = await fetch(localUri);
+        const blob = await response.blob();
+
+        await uploadBytes(storageRef, blob);
+        const downloadURL = await getDownloadURL(storageRef);
+
+        setChildData((prev) => ({ ...prev, image: downloadURL }));
+      } catch (error) {
+        console.error('Upload failed:', error);
+        Alert.alert('Error', 'Failed to upload image.');
+      }
     }
   };
 
@@ -125,13 +143,13 @@ const EditChildScreen = () => {
     }
   };
 
-  const setPerm = async (uid, perm) => {                                   // [ADDED]
+  const setPerm = async (uid, perm) => {
     await updateDoc(doc(db, 'children', childId), {
       [`caregiverPerms.${uid}`]: perm,
     });
   };
 
-  const removeCaregiver = async (uid) => {                                  // [ADDED]
+  const removeCaregiver = async (uid) => {
     await updateDoc(doc(db, 'children', childId), {
       caregivers: arrayRemove(uid),
       [`caregiverPerms.${uid}`]: deleteField(),
@@ -164,7 +182,7 @@ const EditChildScreen = () => {
 
   return (
     <ThemedBackground>
-      <SafeAreaView style={styles.container}>{/* [FIX] prop should be 'style' not 'Style' */}
+      <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
@@ -189,6 +207,7 @@ const EditChildScreen = () => {
             )}
           </TouchableOpacity>
 
+          {/* First & Last Name Inputs */}
           <LinearGradient
             colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']}
             style={styles.inputCard}
@@ -215,6 +234,7 @@ const EditChildScreen = () => {
             />
           </LinearGradient>
 
+          {/* Gender */}
           <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Gender</Text>
           <View style={styles.genderRow}>
             {['Male', 'Female'].map((g) => (
@@ -233,6 +253,7 @@ const EditChildScreen = () => {
             ))}
           </View>
 
+          {/* Birth Date */}
           <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Birth Date</Text>
           <View style={styles.birthRow}>
             {['MM', 'DD', 'YYYY'].map((ph, i) => (
@@ -268,6 +289,7 @@ const EditChildScreen = () => {
             ))}
           </View>
 
+          {/* Notes */}
           <LinearGradient
             colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']}
             style={styles.inputCard}
@@ -282,12 +304,11 @@ const EditChildScreen = () => {
             />
           </LinearGradient>
 
-          {/* ------- Manage Caregivers section (from your branch) ------- */}
+          {/* Manage Caregivers */}
           <View style={{ marginTop: 20, padding: 12, backgroundColor: '#F5F7FA', borderRadius: 12 }}>
             <Text style={{ fontWeight: '700', fontSize: 16, color: '#2E3A59', marginBottom: 10 }}>
-              Manage Caregivers {/* [ADDED] */}
+              Manage Caregivers
             </Text>
-
             {cgList.length === 0 ? (
               <Text style={{ color: '#7C8B9A' }}>No caregivers assigned yet.</Text>
             ) : (
@@ -341,7 +362,6 @@ const EditChildScreen = () => {
               })
             )}
           </View>
-          {/* ----------------------------------------------------------- */}
 
           {/* Save */}
           <TouchableOpacity onPress={handleUpdate} style={{ marginTop: 20 }}>
@@ -368,93 +388,22 @@ const EditChildScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  headerButton: {
-    borderRadius: 16,
-  },
-  headerButtonGradient: {
-    width: 44,
-    height: 44,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logo: {
-    width: 50,
-    height: 50,
-    resizeMode: 'contain',
-  },
-  title: {
-    fontSize: 26,
-    fontweight: '700',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  imageWrapper: {
-    alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 60,
-    width: 100,
-    height: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  headerButton: { borderRadius: 16 },
+  headerButtonGradient: { width: 44, height: 44, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  logo: { width: 50, height: 50, resizeMode: 'contain' },
+  title: { fontSize: 26, fontWeight: '700', textAlign: 'center', marginBottom: 20 },
+  imageWrapper: { alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 60, width: 100, height: 100, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   profilePic: { width: 100, height: 100, borderRadius: 60 },
-  imagePlaceholder: { fontSize: 14, color: '#666' },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 5,
-    marginTop: 15,
-  },
-  inputCard: {
-    borderRadius: 16,
-    padding: 4,
-    marginBottom: 10,
-  },
-  input: {
-    padding: 12,
-    fontSize: 16,
-  },
-  genderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  genderBtn: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 12,
-    marginRight: 10,
-    alignItems: 'center',
-  },
-  birthRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 20,
-    paddingVertical: 16,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
-  },
+  label: { fontSize: 16, fontWeight: '600', marginBottom: 5, marginTop: 15 },
+  inputCard: { borderRadius: 16, padding: 4, marginBottom: 10 },
+  input: { padding: 12, fontSize: 16 },
+  genderRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  genderBtn: { flex: 1, padding: 14, borderRadius: 12, marginRight: 10, alignItems: 'center' },
+  birthRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  actionButton: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', borderRadius: 20, paddingVertical: 16 },
+  buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });
 
 export default EditChildScreen;

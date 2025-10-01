@@ -1,5 +1,18 @@
-Flask>=2.0
-firebase-admin>=6.0
+# Web framework
+Flask>=2.2,<3.0
 
-# If you need other libs, add them here
-# e.g., google-cloud-storage>=2.0
+# Firebase Admin SDK (includes Firestore support)
+firebase-admin>=6.2.0,<7.0
+
+# Google Cloud dependencies (used internally by firebase-admin)
+google-cloud-firestore>=2.15.0,<3.0
+google-api-core>=2.11.0
+
+# Database (SQLite is built into Python, no package needed)
+
+# Utilities
+requests>=2.28.0
+python-dotenv>=0.21.0
+
+# Testing
+pytest>=7.0

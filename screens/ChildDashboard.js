@@ -18,10 +18,13 @@ import { app } from '../firebaseConfig';
 import { useDarkMode } from '../screens/DarkMode';
 import ThemedBackground from '../screens/ThemedBackground';
 import useUserRole from './useUserRole';       
-import { getAuth } from 'firebase/auth';       
+import { getAuth } from 'firebase/auth'; 
+import { Info } from 'lucide-react-native';
+import { Modal } from 'react-native';      
 
 const { width } = Dimensions.get('window');
 const db = getFirestore(app);
+
 
 const darkModeGradients = {
   feeding: ['#00c6ff', '#0072ff'],
@@ -54,6 +57,8 @@ export default function ChildDashboard() {
   const [canLog, setCanLog] = useState(true);      // parents true, caregivers gated
 
   const [history, setHistory] = useState([]);
+  const [childInfo, setChildInfo] = useState(null);
+  const [infoVisible, setInfoVisible] = useState(false);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -74,7 +79,11 @@ export default function ChildDashboard() {
 
     const ref = doc(db, 'children', childId);
     const unsub = onSnapshot(ref, (snap) => {
-      const data = snap.data() || {};
+      const data = snap.data();
+      setChildInfo({
+        name: data.firstName ? `${data.firstName} ${data.lastName || ''}`.trim() : name,
+        birthDate: data.birthDate || null,
+        notes: data.notes || '',});
       const owner = data?.userId === uid;
       const val = data?.caregiverPerms?.[uid]; // 'on' | 'log' | undefined
       setIsOwner(owner);
@@ -295,7 +304,67 @@ export default function ChildDashboard() {
               <Sparkles size={16} color={darkMode ? '#ff80ff' : '#F8BBD9'} />
             </View>
           </Animated.View>
+       {/* Info Button */}
+          <TouchableOpacity
+            style={styles.infoButton}
+            onPress={() => setInfoVisible(true)}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={darkMode ? ['#2a2a2a', '#444'] : ['#e0f7fa', '#b2ebf2']}
+              style={styles.infoButtonGradient}
+            >
+              <Info size={18} color={darkMode ? '#fff' : '#2E3A59'} />
+            </LinearGradient>
+          </TouchableOpacity>
+
+            <Modal
+          visible={infoVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setInfoVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContainer, { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }]}>
+              <Text style={[styles.modalTitle, { color: darkMode ? '#fff' : '#2E3A59' }]}>
+                {childInfo?.name || name}
+              </Text>
+
+                {childInfo?.birthDate && (
+                <Text style={[styles.modalText, { color: darkMode ? '#ccc' : '#555' }]}>
+                  Birthday:{' '}
+                  {(() => {
+                    const b = childInfo.birthDate;
+                    if (!b) return 'Unknown';
+
+                    if (b.toDate) return b.toDate().toLocaleDateString(); // Firestore Timestamp
+                    const parsed = new Date(b);
+                    return isNaN(parsed) ? 'Unknown' : parsed.toLocaleDateString();
+                  })()}
+                </Text>
+              )}
+
+              <Text style={[styles.modalText, { color: darkMode ? '#ccc' : '#555' }]}>
+                Notes: {childInfo?.notes ? childInfo.notes : 'No notes available.'}
+              </Text>
+
+              <TouchableOpacity
+                onPress={() => setInfoVisible(false)}
+                style={styles.modalCloseBtn}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={darkMode ? ['#444', '#666'] : ['#81D4FA', '#B39DDB']}
+                  style={styles.modalCloseGradient}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>Close</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
         </View>
+
 
         {/* Activities */}
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -397,13 +466,13 @@ export default function ChildDashboard() {
           {/* History */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : '#2E3A59' }]}>Recent Activity</Text>
+              <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : '#617195ff' }]}>Recent Activity</Text>
               <View style={styles.historyBadge}>
                 <Text style={styles.historyBadgeText}>{history.length}</Text>
               </View>
             </View>
 
-            <View style={[styles.historyContainer, { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }]}>
+            <View style={[styles.historyContainer, { backgroundColor: darkMode ? '#262525ff' : '#fff' }]}>
               {history.length > 0 ? (
                 history.map((item, index) => (
                   <View key={index} style={styles.historyItem}>
@@ -465,10 +534,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  logo: { width: 50, height: 50, resizeMode: 'contain' },
-  profileSection: { alignItems: 'center', marginBottom: 30 },
-  title: { fontSize: 28, fontWeight: '700', marginBottom: 20, textAlign: 'center' },
-  profileContainer: { position: 'relative' },
+  logo: 
+  { width: 50, 
+    height: 50, 
+    resizeMode: 'contain' 
+  },
+  profileSection:
+   { 
+    alignItems: 
+    'center', 
+    marginBottom: 30 
+  },
+  title: 
+  { fontSize: 28,
+     fontWeight: '700',
+      marginBottom: 20, 
+      textAlign: 'center'
+     },
+  profileContainer: 
+  { 
+    position: 'relative'
+   },
   profileGradient: {
     width: 120,
     height: 120,
@@ -533,13 +619,15 @@ const styles = StyleSheet.create({
   },
   activityGradient: 
   {
-     width: (width - 80) / 3, height: 100, 
+     width: (width - 80) / 3,
+      height: 100, 
      borderRadius: 24,
       alignItems: 'center', 
       justifyContent: 'center' 
     },
   activityIcon:
-   { width: 36, 
+   { 
+    width: 36, 
     height: 36, 
     marginBottom: 8, 
     tintColor: '#fff'
@@ -613,12 +701,14 @@ const styles = StyleSheet.create({
   historyText: 
   { 
     fontSize: 16,
+    color: '#526475ff',
      fontWeight: '600' 
     },
   historyTime:
    { 
     fontSize: 13,
-     color: '#7C8B9A', fontWeight: '500' 
+     color: '#7C8B9A', 
+     fontWeight: '500' 
     },
   historySubtext: 
   { 
@@ -643,4 +733,52 @@ const styles = StyleSheet.create({
     color: '#A0A0A0', 
     textAlign: 'center' 
   },
+infoButton: {
+  position: 'absolute',
+  bottom: 8,
+  right: 8,
+  borderRadius: 20,
+  overflow: 'hidden',
+  elevation: 4,
+},
+infoButtonGradient: {
+  padding: 10,
+  borderRadius: 20,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
+modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.5)',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+modalContainer: {
+  width: '85%',
+  borderRadius: 16,
+  padding: 20,
+  elevation: 10,
+},
+modalTitle: {
+  fontSize: 22,
+  fontWeight: '700',
+  marginBottom: 10,
+  textAlign: 'center',
+},
+modalText: {
+  fontSize: 16,
+  marginVertical: 6,
+  lineHeight: 22,
+},
+modalCloseBtn: {
+  marginTop: 20,
+  borderRadius: 12,
+  overflow: 'hidden',
+},
+modalCloseGradient: {
+  paddingVertical: 12,
+  borderRadius: 12,
+  alignItems: 'center',
+},
 });

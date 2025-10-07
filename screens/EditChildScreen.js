@@ -29,6 +29,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, Trash2 } from 'lucide-react-native';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { useDarkMode } from '../screens/DarkMode';
+import { Timestamp } from 'firebase/firestore';
 
 const EditChildScreen = () => {
   const navigation = useNavigation();
@@ -71,28 +72,50 @@ const EditChildScreen = () => {
   }, [childId]);
 
   const loadChildData = async () => {
-    try {
-      const docRef = doc(db, 'children', childId);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        const [firstName = '', ...lastParts] = (data.name || '').split(' ');
-        const lastName = lastParts.join(' ');
-        setChildData({
-          ...data,
-          firstName,
-          lastName,
-        });
-      } else {
-        Alert.alert('Error', 'Child profile not found.');
-        navigation.goBack();
+  try {
+    const docRef = doc(db, 'children', childId);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+
+      // Split name into first and last
+      const [firstName = '', ...lastParts] = (data.name || '').split(' ');
+      const lastName = lastParts.join(' ');
+
+      // Format birthDate safely
+      let formattedBirthDate = { month: '', day: '', year: '' };
+      if (data.birthDate) {
+        let dateObj = data.birthDate.toDate
+          ? data.birthDate.toDate() // Firestore Timestamp
+          : new Date(data.birthDate); // fallback if it's a string
+
+        if (!isNaN(dateObj)) {
+          formattedBirthDate = {
+            month: String(dateObj.getMonth() + 1).padStart(2, '0'),
+            day: String(dateObj.getDate()).padStart(2, '0'),
+            year: String(dateObj.getFullYear()),
+          };
+        }
       }
-    } catch (error) {
-      console.error('Failed to load child data:', error);
-    } finally {
-      setLoading(false);
+
+      // Set state
+      setChildData({
+        ...data,
+        firstName,
+        lastName,
+        birthDate: formattedBirthDate,
+      });
+    } else {
+      Alert.alert('Error', 'Child profile not found.');
+      navigation.goBack();
     }
-  };
+      } catch (error) {
+        console.error('Failed to load child data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -126,11 +149,22 @@ const EditChildScreen = () => {
   const handleUpdate = async () => {
     try {
       const docRef = doc(db, 'children', childId);
+      const { birthDate } = childData;
+      let birthDateValue = null;
+ // Only save if all parts are provided
+      if (birthDate?.month && birthDate?.day && birthDate?.year) {
+        const isoString = `${birthDate.year}-${birthDate.month.padStart(2, '0')}-${birthDate.day.padStart(2, '0')}`;
+        const dateObj = new Date(isoString);
+        if (!isNaN(dateObj)) {
+          birthDateValue = Timestamp.fromDate(dateObj);
+        }
+      }
+
       const updatedData = {
         ...childData,
         name: `${childData.firstName} ${childData.lastName}`.trim(),
+        birthDate: birthDateValue, // always a Firestore Timestamp
       };
-
       delete updatedData.firstName;
       delete updatedData.lastName;
 

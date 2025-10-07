@@ -25,7 +25,7 @@ export const appTheme = {
     textPrimary: '#EAEAEA',
     textSecondary: '#9E9E9E',
     card: ['#1f1f1f', '#2c2c2c'],
-    input: ['#333', '#444'],
+    input: ['#3f3e3eff', '#444'],
 
     // new global gradients
     feeding: ['#00c6ff', '#0072ff'],

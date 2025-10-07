@@ -17,6 +17,7 @@ import { getAuth } from 'firebase/auth';
 import { ArrowLeft } from 'lucide-react-native';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { useDarkMode } from '../screens/DarkMode';
+import { Timestamp } from 'firebase/firestore';
 
 const AddChildScreen = () => {
   const navigation = useNavigation();
@@ -45,75 +46,74 @@ const AddChildScreen = () => {
     }
   };
 
-  const handleSave = async () => {
-    if (!firstName || !birthDate.month || !birthDate.day || !birthDate.year) {
-      Alert.alert('Missing Info', 'Please fill out required fields.');
-      return;
-    }
-
-    // Validate age cap (max 5 years)
-    const birth = new Date(
-      parseInt(birthDate.year),
-      parseInt(birthDate.month) - 1,
-      parseInt(birthDate.day)
-    );
-    const today = new Date();
-
-    if (isNaN(birth.getTime())) {
-      Alert.alert('Invalid Date', 'Please enter a valid birth date.');
-      return;
-    }
-
-    const ageDiffMs = today - birth;
-    const ageDate = new Date(ageDiffMs);
-    const ageYears = Math.abs(ageDate.getUTCFullYear() - 1970);
-
-    if (ageYears >= 5) {
-      Alert.alert('Age Limit', 'Child must be under 5 years old to be added.');
-      return;
-    }
-
-    try {
-      const auth = getAuth();
-      const currentUser = auth.currentUser;
-
-      if (!currentUser) {
-        Alert.alert('Authentication Error', 'You must be logged in to add a child.');
+    const handleSave = async () => {
+      if (!firstName || !birthDate.month || !birthDate.day || !birthDate.year) {
+        Alert.alert('Missing Info', 'Please fill out required fields.');
         return;
       }
 
-      const newProfile = {
-        name: `${firstName} ${lastName}`.trim(),
-        gender,
-        birthDate,
-        notes,
-        image,
-        userId: currentUser.uid,
-        createdAt: new Date(),
-      };
+      // Convert input into a real Date
+      const isoString = `${birthDate.year}-${birthDate.month.padStart(2, '0')}-${birthDate.day.padStart(2, '0')}`;
+      const parsedDate = new Date(isoString);
 
-      const docRef = await addDoc(collection(db, 'children'), newProfile);
-
-      // Ensure user role is tagged
-      try {
-        const userRef = doc(db, 'Users', currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
-          await setDoc(userRef, { UserType: 'parent' }, { merge: true });
-        } else if (!userSnap.data()?.UserType) {
-          await updateDoc(userRef, { UserType: 'parent' });
-        }
-      } catch (_) {
-        // don’t block if this fails
+      if (isNaN(parsedDate.getTime())) {
+        Alert.alert('Invalid Date', 'Please enter a valid birth date.');
+        return;
       }
 
-      navigation.navigate('Home', { newProfile: { id: docRef.id, ...newProfile } });
-    } catch (e) {
-      console.error('Error adding child profile: ', e);
-      Alert.alert('Error', 'Something went wrong while saving the profile.');
-    }
-  };
+      // Validate age cap (max 5 years)
+      const today = new Date();
+      const ageDiffMs = today - parsedDate;
+      const ageDate = new Date(ageDiffMs);
+      const ageYears = Math.abs(ageDate.getUTCFullYear() - 1970);
 
+      if (ageYears >= 5) {
+        Alert.alert('Age Limit', 'Child must be under 5 years old to be added.');
+        return;
+      }
+
+      try {
+        const auth = getAuth();
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+          Alert.alert('Authentication Error', 'You must be logged in to add a child.');
+          return;
+        }
+
+        const db = getFirestore(app);
+
+        const newProfile = {
+          name: `${firstName} ${lastName}`.trim(),
+          gender,
+          birthDate: Timestamp.fromDate(parsedDate),
+          notes,
+          image,
+          userId: currentUser.uid,
+          createdAt: Timestamp.fromDate(new Date()),
+        };
+
+        const docRef = await addDoc(collection(db, 'children'), newProfile);
+
+        // Ensure user role is tagged as parent
+        try {
+          const userRef = doc(db, 'Users', currentUser.uid);
+          const userSnap = await getDoc(userRef);
+          if (!userSnap.exists()) {
+            await setDoc(userRef, { UserType: 'parent' }, { merge: true });
+          } else if (!userSnap.data()?.UserType) {
+            await updateDoc(userRef, { UserType: 'parent' });
+          }
+        } catch (_) {
+          // not critical
+        }
+
+        navigation.navigate('Home', { newProfile: { id: docRef.id, ...newProfile } });
+      } catch (e) {
+        console.error('Error adding child profile: ', e);
+        Alert.alert('Error', 'Something went wrong while saving the profile.');
+      }
+    };
   return (
     <ThemedBackground>
       <SafeAreaView style={styles.container}>
@@ -375,3 +375,5 @@ const styles = StyleSheet.create({
 });
 
 export default AddChildScreen;
+
+

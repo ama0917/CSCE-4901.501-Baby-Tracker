@@ -5,11 +5,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Bell, Clock, Bot, User, Pill, Utensils, Baby, Moon, ChevronRight, Settings, Toilet } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
+import { useDarkMode } from '../screens/DarkMode';
 
 export default function RemindersScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const { childId, name } = route.params || {};
+
+  const { darkMode } = useDarkMode();
+  const currentTheme = darkMode ? appTheme.dark : appTheme.light;
 
   const [reminders, setReminders] = useState({
     feeding: {
@@ -112,15 +117,16 @@ export default function RemindersScreen() {
     const IconComponent = reminder.icon;
     
     return (
-      <View style={styles.reminderCard}>
+      <View style={[styles.reminderCard, {backgroundColor: darkMode ? '#1f1f1f' : '#fff'}
+      ]}>
         <View style={styles.reminderHeader}>
           <View style={styles.reminderTitleRow}>
             <View style={[styles.iconContainer, { backgroundColor: reminder.color + '20' }]}>
               <IconComponent size={24} color={reminder.color} />
             </View>
             <View style={styles.reminderInfo}>
-              <Text style={styles.reminderTitle}>{reminder.title}</Text>
-              <Text style={styles.reminderDescription}>{reminder.description}</Text>
+              <Text style={[styles.reminderTitle, { color: currentTheme.textPrimary }]}>{reminder.title}</Text>
+              <Text style={[styles.reminderDescription, { color: currentTheme.textSecondary }]}>{reminder.description}</Text>
             </View>
             <Switch
               value={reminders[type].enabled}
@@ -130,13 +136,13 @@ export default function RemindersScreen() {
             />
           </View>
         </View>
-
+        
         {reminders[type].enabled && (
           <View style={styles.reminderSettings}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <User size={20} color="#666" />
-                <Text style={styles.settingLabel}>Manual Time Setting</Text>
+                <User size={20} color={currentTheme.textSecondary}/> 
+                <Text style={[styles.settingLabel, { color: currentTheme.textPrimary}]}>Manual Time Setting</Text>
               </View>
               <Switch
                 value={!reminders[type].useAI}
@@ -147,19 +153,19 @@ export default function RemindersScreen() {
             </View>
 
             {!reminders[type].useAI && (
-              <View style={styles.timeContainer}>
-                <Clock size={16} color="#666" />
-                <Text style={styles.timeText}>Time: {reminders[type].customTime}</Text>
+              <View style={[styles.timeContainer, {backgroundColor: darkMode ? '#2c2c2c' : '#f8f8f8'}]}>
+                <Clock size={16} color={currentTheme.textSecondary} />
+                <Text style={[styles.timeText, { color: currentTheme.textPrimary}]}>Time: {reminders[type].customTime}</Text>
                 <TouchableOpacity style={styles.editButton}>
-                  <ChevronRight size={16} color="#666" />
+                  <ChevronRight size={16} color={currentTheme.textSecondary} />
                 </TouchableOpacity>
               </View>
             )}
 
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <Bot size={20} color="#666" />
-                <Text style={styles.settingLabel}>AI Pattern Recognition</Text>
+                <Bot size={20} color={currentTheme.textSecondary} />
+                <Text style={[styles.settingLabel, {color: currentTheme.textPrimary}]}>AI Pattern Recognition</Text>
               </View>
               <Switch
                 value={reminders[type].useAI}
@@ -183,7 +189,7 @@ export default function RemindersScreen() {
   };
 
   return (
-    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
+    <ThemedBackground>
       <View style={styles.container}>
         <View style={styles.header}>
             <TouchableOpacity 
@@ -191,28 +197,28 @@ export default function RemindersScreen() {
                 onPress={() => navigation.goBack()}
                 activeOpacity={0.7}
             >
-                <BlurView intensity={20} tint="light" style={styles.backButtonBlur}>
-                    <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
+                <BlurView intensity={20} tint={darkMode ? 'dark' : 'light'} style={styles.backButtonBlur}>
+                    <MaterialCommunityIcons name="arrow-left" size={24} color={ darkMode ? '#fff' : "#333"} />
                 </BlurView>
             </TouchableOpacity>
           <TouchableOpacity onPress={saveReminders}>
-            <Text style={styles.saveButton}>Save</Text>
+            <Text style={[styles.saveButton, { color: darkMode ? '#81D4FA' : '#007AFF'}]}>Save</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.title}>{name}'s Reminders</Text>
+        <Text style={[styles.title, { color: currentTheme.textPrimary}]}>{name}'s Reminders</Text>
 
         <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-          <View style={styles.aiConsentContainer}>
+          <View style={[styles.aiConsentContainer, { backgroundColor: darkMode ? '#1f1f1f' : '#fff'}]}>
             <View style={styles.consentHeader}>
               <Bot size={24} color="#FF9800" />
-              <Text style={styles.consentTitle}>AI Pattern Recognition</Text>
+              <Text style={[styles.consentTitle, { color: currentTheme.textPrimary}]}>AI Pattern Recognition</Text>
             </View>
-            <Text style={styles.consentDescription}>
+            <Text style={[styles.consentDescription, { color: currentTheme.textSecondary}]}>
               Allow AI to analyze your child's patterns and suggest optimal reminder times based on historical data.
             </Text>
             <View style={styles.consentRow}>
-              <Text style={styles.consentLabel}>I consent to AI analysis</Text>
+              <Text style={[styles.consentLabel, { color: currentTheme.textPrimary}]}>I consent to AI analysis</Text>
               <Switch
                 value={aiConsent}
                 onValueChange={handleAiConsentToggle}
@@ -233,7 +239,7 @@ export default function RemindersScreen() {
           <View style={styles.bottomPadding} />
         </ScrollView>
       </View>
-    </LinearGradient>
+    </ThemedBackground>
   );
 }
 
@@ -324,7 +330,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   reminderCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#1454ddff',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,

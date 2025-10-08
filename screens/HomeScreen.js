@@ -26,7 +26,6 @@ const HomeScreen = () => {
   const [showEditButtons, setShowEditButtons] = useState(false);
   const db = getFirestore(app);
   const auth = getAuth();
-  const { role } = useUserRole(); // 'parent' | 'caregiver' | undefined
 
   const { darkMode } = useDarkMode();
 
@@ -37,43 +36,67 @@ const HomeScreen = () => {
   );
 
   useEffect(() => {
-  const currentUser = auth.currentUser;
-  if (!currentUser) return;
-  const uid = currentUser?.uid;
-  if (!uid) return;
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    const uid = currentUser.uid;
 
-  // Parent sees children they own; Caregiver sees children assigned to them
-  const base = collection(db, 'children');
-  if (!role) return; // if hook can be undefined briefly
-  const qRoles =
-    role === 'parent'
-     ? query(base, where('userId', '==', uid))
-     : query(base, where('caregivers', 'array-contains', uid));
+    // Query children owned by user
+    const ownedQuery = query(
+      collection(db, 'children'),
+      where('userId', '==', uid)
+    );
 
-  const unsubscribe = onSnapshot(
-    qRoles,
-    (snapshot) => {
-      const updatedProfiles = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      if (role === 'parent') {
-        setProfiles(updatedProfiles);
-      } else {
-        const uid = auth.currentUser?.uid;
-        const visible = updatedProfiles.filter(
-          c => (c.caregiverPerms?.[uid] === 'on') || (c.caregiverPerms?.[uid] === 'log') // compat
-        );
-        setProfiles(visible);
-      }
-    },
-    (error) => {
-      console.error('Realtime profile listener error:', error);
-    }
-  );
+    // Query children where user is a caregiver
+    const caregiverQuery = query(
+      collection(db, 'children'),
+      where('caregivers', 'array-contains', uid)
+    );
 
-  return () => unsubscribe();
-}, [role]);
+    const unsubscribes = [];
+
+    // Listen to owned children
+    unsubscribes.push(
+      onSnapshot(ownedQuery, (snapshot) => {
+        const ownedProfiles = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          isOwner: true,
+          ...doc.data(),
+        }));
+        
+        setProfiles((prev) => {
+          const caregiverProfiles = prev.filter(p => !p.isOwner);
+          return [...ownedProfiles, ...caregiverProfiles];
+        });
+      }, (error) => {
+        console.error('Owned profiles listener error:', error);
+      })
+    );
+
+    // Listen to caregiver assignments
+    unsubscribes.push(
+      onSnapshot(caregiverQuery, (snapshot) => {
+        const assignedProfiles = snapshot.docs
+          .map((doc) => ({
+            id: doc.id,
+            isOwner: false,
+            ...doc.data(),
+          }))
+          .filter((child) => {
+            const perm = child.caregiverPerms?.[uid];
+            return perm === 'on' || perm === 'log';
+          });
+        
+        setProfiles((prev) => {
+          const ownedProfiles = prev.filter(p => p.isOwner);
+          return [...ownedProfiles, ...assignedProfiles];
+        });
+      }, (error) => {
+        console.error('Caregiver profiles listener error:', error);
+      })
+    );
+
+    return () => unsubscribes.forEach(unsub => unsub());
+  }, []);
 
 
   const toggleEditButtons =() => setShowEditButtons(prev => !prev);
@@ -99,143 +122,165 @@ const HomeScreen = () => {
               Welcome to Baby Tracker
             </Text>
             <Text style={[styles.subtitle, { color: darkMode ? '#ccc' : '#7C8B9A' }]}>
-              {role !== 'parent' ? 'Select an assigned child' : 'Select a profile to continue'}
+              Select a profile to continue
             </Text>
-
-            {role !== 'parent' && profiles.length === 0 && (
-              <TouchableOpacity
-                style={{
-                  marginTop: 14,
-                  paddingVertical: 12,
-                  borderRadius: 10,
-                  alignItems: 'center',
-                  backgroundColor: '#CFD8DC',
-                }}
-                onPress={() => navigation.navigate('AcceptInvite')}
-              >
-                <Text style={{ color: '#2E3A59', fontWeight: '700' }}>
-                  Enter caregiver invite code
-                </Text>
-              </TouchableOpacity>
-            )}
           </View>
 
           {/* Profiles */}
           <View style={styles.profilesContainer}>
-            {profiles.map((profile) => (
-              <View key={profile.id} style={styles.profileCard}>
-                <TouchableOpacity
-                  style={styles.profileButton}
-                  onPress={() =>
-                    navigation.navigate('ChildDashboard', {
-                      name: profile.name?.split(' ')[0],
-                      childId: profile.id,
-                      image: profile.image,
-                    })
-                  }
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient
-                    colors={
-                      darkMode ? neonGradients.profile : ['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.85)']
-                    }
-                    style={styles.profileGradient}
-                  >
-                    <View style={styles.avatarContainer}>
-                      {profile.image ? (
-                        <Image source={{ uri: profile.image }} style={styles.avatarImage} />
-                      ) : (
-                        <View style={styles.defaultAvatar}>
-                          <LinearGradient
-                            colors={darkMode ? neonGradients.button1 : ['#81D4FA', '#F8BBD9']}
-                            style={styles.defaultAvatarGradient}
-                          >
-                            <Text style={styles.avatarInitial}>
-                              {profile.name?.charAt(0)?.toUpperCase() || '?'}
-                            </Text>
-                          </LinearGradient>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={[styles.profileName, { color: darkMode ? '#fff' : '#2E3A59' }]}>{profile.name}</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                {showEditButtons && role === 'parent' && (
+            {profiles.length > 0 ? (
+              profiles.map((profile) => (
+                <View key={profile.id} style={styles.profileCard}>
                   <TouchableOpacity
-                    style={styles.editButton}
-                    onPress={() => navigation.navigate('EditChild', { childId: profile.id })}
+                    style={styles.profileButton}
+                    onPress={() => 
+                      navigation.navigate('ChildDashboard', {
+                        childId: profile.id,
+                        name: profile.name?.split(' ')[0] || profile.firstName || 'Child',
+                        image: profile.image || profile.photoURL, // supporting both field names
+                      })
+                    }
                     activeOpacity={0.8}
                   >
                     <LinearGradient
-                      colors={darkMode ? neonGradients.edit : ['#FFE0B2', '#FFCC80']}
-                      style={styles.editGradient}
+                      colors={darkMode ? neonGradients.profile : ['#E3F2FD', '#F3E5F5']}
+                      style={styles.profileGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
                     >
-                      <Edit3 size={16} color={darkMode ? '#fff' : '#E65100'} strokeWidth={2} />
-                      <Text style={[styles.editText, { color: darkMode ? '#fff' : '#E65100' }]}>Edit</Text>
+                      <View style={styles.avatarContainer}>
+                        {(profile.image || profile.photoURL) ? (
+                          <Image
+                            source={{ uri: profile.image || profile.photoURL }}
+                            style={[
+                              styles.avatarImage,
+                              { borderColor: darkMode ? '#fff' : '#2E3A59' }
+                            ]}
+                            onError={(e) => console.log('Image load error:', e.nativeEvent.error)}
+                          />
+                        ) : (
+                          <View style={styles.defaultAvatar}>
+                            <LinearGradient
+                              colors={['#FF6B9D', '#C06C84']}
+                              style={styles.defaultAvatarGradient}
+                            >
+                              <Text style={styles.avatarInitial}>
+                                {profile.name?.charAt(0).toUpperCase() || '?'}
+                              </Text>
+                            </LinearGradient>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={[styles.profileName, { color: darkMode ? '#fff' : '#2E3A59' }]}>
+                        {profile.name}
+                        {!profile.isOwner && ' 👥'}
+                      </Text>
                     </LinearGradient>
                   </TouchableOpacity>
-                )}
 
-                {/* Digest Notification */}
-                <TouchableOpacity
-                  style={[styles.individualEditButton, { marginTop: 8 }]}
-                  onPress={async () => {
-                    try {
-                      const res = await NotificationService.sendDigestNotificationForChild(profile.id);
-                      if (res) alert('Notification scheduled');
-                      else alert('No notification sent (throttled or no data)');
-                    } catch (e) {
-                      console.error(e);
-                      alert('Failed to send notification');
-                    }
-                  }}
-                >
-                  <Text style={{ fontSize: 14 }}>Send Digest</Text>
-                </TouchableOpacity>
+                  {showEditButtons && profile.isOwner && (
+                    <TouchableOpacity
+                      style={styles.editButton}
+                      onPress={() => navigation.navigate('EditChild', { childId: profile.id })}
+                      activeOpacity={0.8}
+                    >
+                      <LinearGradient
+                        colors={darkMode ? neonGradients.edit : ['#FFE0B2', '#FFCCBC']}
+                        style={styles.editGradient}
+                      >
+                        <Edit3 size={16} color={darkMode ? '#fff' : '#E65100'} strokeWidth={2} />
+                        <Text style={[styles.editText, { color: darkMode ? '#fff' : '#E65100' }]}>
+                          Edit Profile
+                        </Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))
+            ) : (
+              <Text
+                style={{
+                  color: darkMode ? '#ccc' : '#7C8B9A',
+                  marginBottom: 20,
+                  textAlign: 'center',
+                }}
+              >
+                No children added yet.
+              </Text>
+            )}
+          </View>
+
+        {/* Action buttons */}
+                <View style={[styles.actionButtons, { marginTop: 20 }]}>
+                  {/* Only show Edit Profiles button if user owns at least one child */}
+                  {profiles.some(p => p.isOwner) && (
+                    <TouchableOpacity 
+                      style={styles.editProfilesButton} 
+                      onPress={toggleEditButtons} 
+                      activeOpacity={0.8}
+                    >
+                      <LinearGradient
+                        colors={darkMode ? neonGradients.button1 : ['#FAD0C4', '#FFD1FF']}
+                        style={styles.buttonGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                      >
+                        <Edit3 size={20} color={darkMode ? '#fff' : '#E65100'} strokeWidth={2} />
+                        <Text style={[styles.buttonText, { color: darkMode ? '#fff' : '#E65100' }]}>
+                          {showEditButtons ? 'Done Editing' : 'Edit Profiles'}
+                        </Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Always show Add Child button */}
+                  <TouchableOpacity
+                    style={styles.addChildButton}
+                    onPress={() => navigation.navigate('AddChild')}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={darkMode ? neonGradients.button2 : ['#D0F0C0', '#B2DFDB']}
+                      style={styles.buttonGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    >
+                      <UserPlus size={20} color={darkMode ? '#fff' : '#33691E'} strokeWidth={2} />
+                      <Text style={[styles.buttonText, { color: darkMode ? '#fff' : '#33691E' }]}>
+                        Add Child
+                      </Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+
+        {/* Invite code button - always show */}
+        <TouchableOpacity
+          style={[
+            styles.inviteButton,
+            { 
+              marginTop: 20,
+              backgroundColor: darkMode ? '#333' : '#ECEFF1',
+              borderWidth: 1,
+              borderColor: darkMode ? '#555' : '#CFD8DC'
+            }
+          ]}
+          onPress={() => navigation.navigate('AcceptInvite')}
+          activeOpacity={0.8}
+        >
+          <Text style={{ 
+            color: darkMode ? '#aaa' : '#546E7A', 
+            fontWeight: '600',
+            fontSize: 14
+          }}>
+            Enter Caregiver Invite Code
+          </Text>
+        </TouchableOpacity>
+
               </View>
-            ))}
-          </View>
-
-          {/* Action Buttons - parents only*/}
-          {role === 'parent' && (
-          <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.editProfilesButton} onPress={toggleEditButtons} activeOpacity={0.8}>
-              <LinearGradient
-                colors={darkMode ? neonGradients.button1 : ['#FAD0C4', '#FFD1FF']}
-                style={styles.buttonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Edit3 size={20} color={darkMode ? '#fff' : '#E65100'} strokeWidth={2} />
-                <Text style={[styles.buttonText, { color: darkMode ? '#fff' : '#E65100' }]}>
-                  {showEditButtons ? 'Done Editing' : 'Edit Profiles'}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.addChildButton}
-              onPress={() => navigation.navigate('AddChild')}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={darkMode ? neonGradients.button2 : ['#D0F0C0', '#B2DFDB']}
-                style={styles.buttonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <UserPlus size={20} color={darkMode ? '#fff' : '#33691E'} strokeWidth={2} />
-                <Text style={[styles.buttonText, { color: darkMode ? '#fff' : '#33691E' }]}>Add Child</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-      )}
-      </View>
-    </ScrollView>
-  </ThemedBackground>
-);
-};
+            </ScrollView>
+          </ThemedBackground>
+        );
+        };
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -251,7 +296,8 @@ const styles = StyleSheet.create({
    { 
     flexDirection: 'row',
      justifyContent: 'space-between', 
-     alignItems: 'center', marginBottom: 30 
+     alignItems: 'center',
+     marginBottom: 30 
     },
   headerTitle: 
   {
@@ -319,7 +365,8 @@ const styles = StyleSheet.create({
      width: 80,
       height: 80, 
       borderRadius: 40, 
-      borderWidth: 3 
+      borderWidth: 3,
+      backgroundColor: '#f0f0f0',
     },
   defaultAvatar: 
   { 
@@ -391,6 +438,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
      fontWeight: '600' 
     },
+    inviteButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
 });
 
 export default HomeScreen;

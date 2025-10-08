@@ -70,6 +70,7 @@ export default function App() {
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="SignUp" component={SignUpScreen} />
             <Stack.Screen name="MfaEnterCode" component={MfaEnterCode} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
             {/* Main app screens */}
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="ChildDashboard" component={ChildDashboard} />
@@ -79,7 +80,6 @@ export default function App() {
             <Stack.Screen name="FeedingForm" component={FeedingForm} />
             <Stack.Screen name="DiaperChangeForm" component={DiaperChangeForm} />
             <Stack.Screen name="SleepingForm" component={SleepingForm} />
-            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
             <Stack.Screen name="EditChild" component={EditChildScreen} />
             <Stack.Screen name="RemindersScreen" component={RemindersScreen} />
             <Stack.Screen name="AcceptInvite" component={AcceptInvite} options={{ title: 'Accept Invite' }} />

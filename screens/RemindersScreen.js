@@ -1,35 +1,56 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Switch } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Alert,
+  Switch,
+} from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Bell, Clock, Bot, User, Pill, Utensils, Baby, Moon, ChevronRight, Settings, Toilet } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import {
+  Clock,
+  Bot,
+  User,
+  Moon,
+  ChevronRight,
+  Utensils,
+  Toilet,
+} from 'lucide-react-native';
+
+import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
+import { useDarkMode } from '../screens/DarkMode';
 
 export default function RemindersScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const { childId, name } = route.params || {};
 
+  const { darkMode } = useDarkMode();
+  const currentTheme = darkMode ? appTheme.dark : appTheme.light;
+
   const [reminders, setReminders] = useState({
     feeding: {
       enabled: false,
       useAI: false,
       customTime: '12:00',
-      aiPattern: 'Every 3-4 hours'
+      aiPattern: 'Every 3–4 hours',
     },
     diaper: {
       enabled: false,
       useAI: false,
       customTime: '10:00',
-      aiPattern: 'Every 2-3 hours'
+      aiPattern: 'Every 2–3 hours',
     },
     nap: {
       enabled: false,
       useAI: false,
       customTime: '14:00',
-      aiPattern: 'Based on sleep patterns'
-    }
+      aiPattern: 'Based on sleep patterns',
+    },
   });
 
   const [aiConsent, setAiConsent] = useState(false);
@@ -40,31 +61,31 @@ export default function RemindersScreen() {
       title: 'Feeding',
       icon: Utensils,
       color: '#4ECDC4',
-      description: 'Never miss feeding time'
+      description: 'Never miss feeding time',
     },
     {
       key: 'diaper',
       title: 'Diaper Change',
       icon: Toilet,
       color: '#45B7D1',
-      description: 'Stay on top of diaper changes'
+      description: 'Stay on top of diaper changes',
     },
     {
       key: 'nap',
       title: 'Nap Time',
       icon: Moon,
       color: '#96CEB4',
-      description: 'Maintain healthy sleep schedules'
-    }
+      description: 'Maintain healthy sleep schedules',
+    },
   ];
 
   const toggleReminder = (type) => {
-    setReminders(prev => ({
+    setReminders((prev) => ({
       ...prev,
       [type]: {
         ...prev[type],
-        enabled: !prev[type].enabled
-      }
+        enabled: !prev[type].enabled,
+      },
     }));
   };
 
@@ -78,21 +99,21 @@ export default function RemindersScreen() {
       return;
     }
 
-    setReminders(prev => ({
+    setReminders((prev) => ({
       ...prev,
       [type]: {
         ...prev[type],
-        useAI: !prev[type].useAI
-      }
+        useAI: !prev[type].useAI,
+      },
     }));
   };
 
   const handleAiConsentToggle = (value) => {
     if (!value) {
-      // If disabling AI consent, disable AI for all reminders
-      setReminders(prev => {
+      // Disable AI for all reminders when consent is off
+      setReminders((prev) => {
         const updated = { ...prev };
-        Object.keys(updated).forEach(key => {
+        Object.keys(updated).forEach((key) => {
           updated[key].useAI = false;
         });
         return updated;
@@ -102,25 +123,45 @@ export default function RemindersScreen() {
   };
 
   const saveReminders = () => {
-    // Here is where to save to Firebase!!
     Alert.alert('Success', 'Reminder preferences saved!', [
-      { text: 'OK', onPress: () => navigation.goBack() }
+      { text: 'OK', onPress: () => navigation.goBack() },
     ]);
   };
 
   const ReminderCard = ({ reminder, type }) => {
     const IconComponent = reminder.icon;
-    
+
     return (
-      <View style={styles.reminderCard}>
+      <View
+        style={[
+          styles.reminderCard,
+          {
+            backgroundColor: darkMode ? '#1f1f1f' : '#fff',
+            shadowOpacity: darkMode ? 0.25 : 0.1,
+          },
+        ]}
+      >
         <View style={styles.reminderHeader}>
           <View style={styles.reminderTitleRow}>
-            <View style={[styles.iconContainer, { backgroundColor: reminder.color + '20' }]}>
+            <View
+              style={[styles.iconContainer, { backgroundColor: reminder.color + '20' }]}
+            >
               <IconComponent size={24} color={reminder.color} />
             </View>
             <View style={styles.reminderInfo}>
-              <Text style={styles.reminderTitle}>{reminder.title}</Text>
-              <Text style={styles.reminderDescription}>{reminder.description}</Text>
+              <Text
+                style={[styles.reminderTitle, { color: currentTheme.textPrimary }]}
+              >
+                {reminder.title}
+              </Text>
+              <Text
+                style={[
+                  styles.reminderDescription,
+                  { color: currentTheme.textSecondary },
+                ]}
+              >
+                {reminder.description}
+              </Text>
             </View>
             <Switch
               value={reminders[type].enabled}
@@ -135,8 +176,12 @@ export default function RemindersScreen() {
           <View style={styles.reminderSettings}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <User size={20} color="#666" />
-                <Text style={styles.settingLabel}>Manual Time Setting</Text>
+                <User size={20} color={currentTheme.textSecondary} />
+                <Text
+                  style={[styles.settingLabel, { color: currentTheme.textPrimary }]}
+                >
+                  Manual Time Setting
+                </Text>
               </View>
               <Switch
                 value={!reminders[type].useAI}
@@ -147,19 +192,30 @@ export default function RemindersScreen() {
             </View>
 
             {!reminders[type].useAI && (
-              <View style={styles.timeContainer}>
-                <Clock size={16} color="#666" />
-                <Text style={styles.timeText}>Time: {reminders[type].customTime}</Text>
+              <View
+                style={[
+                  styles.timeContainer,
+                  { backgroundColor: darkMode ? '#2c2c2c' : '#f8f8f8' },
+                ]}
+              >
+                <Clock size={16} color={currentTheme.textSecondary} />
+                <Text style={[styles.timeText, { color: currentTheme.textPrimary }]}>
+                  Time: {reminders[type].customTime}
+                </Text>
                 <TouchableOpacity style={styles.editButton}>
-                  <ChevronRight size={16} color="#666" />
+                  <ChevronRight size={16} color={currentTheme.textSecondary} />
                 </TouchableOpacity>
               </View>
             )}
 
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <Bot size={20} color="#666" />
-                <Text style={styles.settingLabel}>AI Pattern Recognition</Text>
+                <Bot size={20} color={currentTheme.textSecondary} />
+                <Text
+                  style={[styles.settingLabel, { color: currentTheme.textPrimary }]}
+                >
+                  AI Pattern Recognition
+                </Text>
               </View>
               <Switch
                 value={reminders[type].useAI}
@@ -173,7 +229,9 @@ export default function RemindersScreen() {
             {reminders[type].useAI && aiConsent && (
               <View style={styles.aiPatternContainer}>
                 <Bot size={16} color="#FF9800" />
-                <Text style={styles.aiPatternText}>{reminders[type].aiPattern}</Text>
+                <Text style={styles.aiPatternText}>
+                  {reminders[type].aiPattern}
+                </Text>
               </View>
             )}
           </View>
@@ -183,36 +241,67 @@ export default function RemindersScreen() {
   };
 
   return (
-    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
+    <ThemedBackground>
       <View style={styles.container}>
         <View style={styles.header}>
-            <TouchableOpacity 
-                style={styles.backButton} 
-                onPress={() => navigation.goBack()}
-                activeOpacity={0.7}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.7}
+          >
+            <BlurView
+              intensity={20}
+              tint={darkMode ? 'dark' : 'light'}
+              style={styles.backButtonBlur}
             >
-                <BlurView intensity={20} tint="light" style={styles.backButtonBlur}>
-                    <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
-                </BlurView>
-            </TouchableOpacity>
+              <MaterialCommunityIcons
+                name="arrow-left"
+                size={24}
+                color={darkMode ? '#fff' : '#333'}
+              />
+            </BlurView>
+          </TouchableOpacity>
+
           <TouchableOpacity onPress={saveReminders}>
-            <Text style={styles.saveButton}>Save</Text>
+            <Text
+              style={[styles.saveButton, { color: darkMode ? '#81D4FA' : '#007AFF' }]}
+            >
+              Save
+            </Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.title}>{name}'s Reminders</Text>
+        <Text style={[styles.title, { color: currentTheme.textPrimary }]}>
+          {name}'s Reminders
+        </Text>
 
         <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-          <View style={styles.aiConsentContainer}>
+          <View
+            style={[
+              styles.aiConsentContainer,
+              { backgroundColor: darkMode ? '#1f1f1f' : '#fff' },
+            ]}
+          >
             <View style={styles.consentHeader}>
               <Bot size={24} color="#FF9800" />
-              <Text style={styles.consentTitle}>AI Pattern Recognition</Text>
+              <Text
+                style={[styles.consentTitle, { color: currentTheme.textPrimary }]}
+              >
+                AI Pattern Recognition
+              </Text>
             </View>
-            <Text style={styles.consentDescription}>
-              Allow AI to analyze your child's patterns and suggest optimal reminder times based on historical data.
+            <Text
+              style={[styles.consentDescription, { color: currentTheme.textSecondary }]}
+            >
+              Allow AI to analyze your child's patterns and suggest optimal reminder
+              times based on historical data.
             </Text>
             <View style={styles.consentRow}>
-              <Text style={styles.consentLabel}>I consent to AI analysis</Text>
+              <Text
+                style={[styles.consentLabel, { color: currentTheme.textPrimary }]}
+              >
+                I consent to AI analysis
+              </Text>
               <Switch
                 value={aiConsent}
                 onValueChange={handleAiConsentToggle}
@@ -233,14 +322,11 @@ export default function RemindersScreen() {
           <View style={styles.bottomPadding} />
         </ScrollView>
       </View>
-    </LinearGradient>
+    </ThemedBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
   container: {
     flex: 1,
     paddingTop: 50,
@@ -264,14 +350,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
   saveButton: {
     fontSize: 16,
-    color: '#007AFF',
     fontWeight: '600',
   },
   title: {
@@ -279,14 +359,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 20,
-    color: '#333',
   },
   scrollContainer: {
     flex: 1,
     paddingHorizontal: 20,
   },
   aiConsentContainer: {
-    backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 20,
     marginBottom: 20,
@@ -305,11 +383,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginLeft: 10,
-    color: '#333',
   },
   consentDescription: {
     fontSize: 14,
-    color: '#666',
     lineHeight: 20,
     marginBottom: 15,
   },
@@ -320,17 +396,14 @@ const styles = StyleSheet.create({
   },
   consentLabel: {
     fontSize: 16,
-    color: '#333',
     fontWeight: '500',
   },
   reminderCard: {
-    backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     elevation: 3,
     shadowColor: '#000',
-    shadowOpacity: 0.1,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
   },
@@ -355,11 +428,9 @@ const styles = StyleSheet.create({
   reminderTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
   },
   reminderDescription: {
     fontSize: 14,
-    color: '#666',
     marginTop: 2,
   },
   reminderSettings: {
@@ -381,20 +452,17 @@ const styles = StyleSheet.create({
   },
   settingLabel: {
     fontSize: 16,
-    color: '#333',
     marginLeft: 8,
   },
   timeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8F8F8',
     padding: 12,
     borderRadius: 8,
     marginBottom: 12,
   },
   timeText: {
     fontSize: 16,
-    color: '#333',
     marginLeft: 8,
     flex: 1,
   },

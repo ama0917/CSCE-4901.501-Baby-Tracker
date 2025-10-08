@@ -1,87 +1,99 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
-  Image,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  SafeAreaView,
+  View, Text, TextInput, TouchableOpacity,
+  StyleSheet, Image, Alert, ScrollView, Platform, Keyboard,
+  Dimensions, StatusBar, ActivityIndicator
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  updateDoc,
-  deleteDoc,
-  arrayRemove,
-  deleteField,
-  onSnapshot,
-} from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
-import { app } from '../firebaseConfig';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Trash2 } from 'lucide-react-native';
-import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
-import { useDarkMode } from '../screens/DarkMode';
+import { getFirestore, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { app } from '../firebaseConfig';
+import { KeyboardAvoidingView } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
+import { InputAccessoryView } from 'react-native';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const EditChildScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const { childId } = route.params || {};
 
-  const { darkMode } = useDarkMode();
-  const currentTheme = darkMode ? appTheme.dark : appTheme.light;
-
-  const db = getFirestore(app);
-  const storage = getStorage(app);
-
-  const [childData, setChildData] = useState({
+  const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
-    gender: '',
-    birthDate: { month: '', day: '', year: '' },
+    sex: '',
+    birthDate: new Date(),
+    weight: '',
+    height: '',
+    weightUnit: 'lbs',
+    heightUnit: 'in',
     notes: '',
     image: null,
   });
-  const [loading, setLoading] = useState(true);
 
-  const [cgList, setCgList] = useState([]);
-  const [cgPerms, setCgPerms] = useState({});
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+
+  const db = getFirestore(app);
+
+  const AGE_WARNING_YEARS = 18;
+  const WEIGHT_WARNING_LBS = 200;
+  const WEIGHT_WARNING_KG = 90;
+  const HEIGHT_WARNING_IN = 80;
+  const HEIGHT_WARNING_CM = 203;
+
+  const sexOptions = [
+    { label: 'Male', icon: 'gender-male', color: '#A5D8FF' },
+    { label: 'Female', icon: 'gender-female', color: '#FFCCD5' },
+    { label: 'Other', icon: 'account', color: '#D7BCE8' },
+  ];
 
   useEffect(() => {
-    if (childId) loadChildData();
-  }, []);
-
-  // Live listener for caregiver list & permissions
-  useEffect(() => {
-    if (!childId) return;
-    const refDoc = doc(db, 'children', childId);
-    const unsub = onSnapshot(refDoc, (snap) => {
-      const data = snap.data() || {};
-      setCgList(Array.isArray(data.caregivers) ? data.caregivers : []);
-      setCgPerms(data.caregiverPerms || {});
-    });
-    return () => unsub();
+    if (childId) {
+      loadChildData();
+    }
   }, [childId]);
 
   const loadChildData = async () => {
     try {
       const docRef = doc(db, 'children', childId);
       const docSnap = await getDoc(docRef);
+      
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const [firstName = '', ...lastParts] = (data.name || '').split(' ');
-        const lastName = lastParts.join(' ');
-        setChildData({
-          ...data,
-          firstName,
-          lastName,
+        
+        let birthDate = new Date();
+        if (data.birthDate) {
+          if (typeof data.birthDate === 'string') {
+            birthDate = new Date(data.birthDate);
+          } else if (data.birthDate.seconds) {
+            birthDate = new Date(data.birthDate.seconds * 1000);
+          }
+        }
+
+        const sexMapping = {
+          'Male': 'Male',
+          'Female': 'Female',
+          'Other': 'Other'
+        };
+
+        setFormData({
+          firstName: data.firstName || '',
+          lastName: data.lastName || '',
+          sex: sexMapping[data.gender] || data.sex || '',
+          birthDate,
+          notes: data.notes || '',
+          image: data.image || null,
+          weight: data.weight ? String(data.weight) : '',
+          weightUnit: data.weightUnit || 'lbs',
+          height: data.height ? String(data.height) : '',
+          heightUnit: data.heightUnit || 'in',
         });
       } else {
         Alert.alert('Error', 'Child profile not found.');
@@ -89,321 +101,867 @@ const EditChildScreen = () => {
       }
     } catch (error) {
       console.error('Failed to load child data:', error);
+      Alert.alert('Error', 'Failed to load child data.');
+      navigation.goBack();
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
   };
+
+  const updateFormData = useCallback((field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  }, []);
+
+  const handleWeightUnitChange = useCallback((newUnit) => {
+    if (formData.weight && !isNaN(parseFloat(formData.weight))) {
+      let converted = parseFloat(formData.weight);
+      if (formData.weightUnit === 'lbs' && newUnit === 'kg') {
+        converted = (converted * 0.453592).toFixed(1);
+      } else if (formData.weightUnit === 'kg' && newUnit === 'lbs') {
+        converted = (converted / 0.453592).toFixed(1);
+      }
+      setFormData(prev => ({
+        ...prev,
+        weight: String(converted),
+        weightUnit: newUnit
+      }));
+    } else {
+      updateFormData('weightUnit', newUnit);
+    }
+  }, [formData.weight, formData.weightUnit, updateFormData]);
+
+  const handleHeightUnitChange = useCallback((newUnit) => {
+    if (formData.height && !isNaN(parseFloat(formData.height))) {
+      let converted = parseFloat(formData.height);
+      if (formData.heightUnit === 'in' && newUnit === 'cm') {
+        converted = (converted * 2.54).toFixed(1);
+      } else if (formData.heightUnit === 'cm' && newUnit === 'in') {
+        converted = (converted / 2.54).toFixed(1);
+      }
+      setFormData(prev => ({
+        ...prev,
+        height: String(converted),
+        heightUnit: newUnit
+      }));
+    } else {
+      updateFormData('heightUnit', newUnit);
+    }
+  }, [formData.height, formData.heightUnit, updateFormData]);
 
   const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-
-    if (!result.canceled) {
-      const localUri = result.assets[0].uri;
-      const filename = `${childId}_${Date.now()}`; // unique filename
-      const storageRef = ref(storage, `childProfiles/${filename}`);
-
-      try {
-        // Convert image to blob
-        const response = await fetch(localUri);
-        const blob = await response.blob();
-
-        await uploadBytes(storageRef, blob);
-        const downloadURL = await getDownloadURL(storageRef);
-
-        setChildData((prev) => ({ ...prev, image: downloadURL }));
-      } catch (error) {
-        console.error('Upload failed:', error);
-        Alert.alert('Error', 'Failed to upload image.');
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Please grant camera roll permissions to add a photo.');
+        return;
       }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        allowsMultipleSelection: false,
+      });
+
+      if (!result.canceled) {
+        updateFormData('image', result.assets[0].uri);
+        if (Platform.OS === 'ios') {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
     }
   };
 
-  const handleUpdate = async () => {
+  const calculateAge = () => {
+    const today = new Date();
+    const birth = new Date(formData.birthDate);
+    
+    let years = today.getFullYear() - birth.getFullYear();
+    let months = today.getMonth() - birth.getMonth();
+    let days = today.getDate() - birth.getDate();
+    
+    if (days < 0) {
+      months -= 1;
+      days += new Date(today.getFullYear(), today.getMonth(), 0).getDate();
+    }
+    if (months < 0) {
+      years -= 1;
+      months += 12;
+    }
+    if (years < 0) return 'Invalid date';
+    
+    if (years === 0 && months === 0) return `${days} day${days !== 1 ? 's' : ''}`;
+    if (years === 0) return `${months} month${months !== 1 ? 's' : ''} ${days} day${days !== 1 ? 's' : ''}`;
+    return `${years} year${years !== 1 ? 's' : ''} ${months} month${months !== 1 ? 's' : ''}`;
+  };
+
+  const validateForm = useCallback(() => {
+    if (!formData.firstName.trim()) {
+      return 'First name is required';
+    }
+    if (!formData.sex) {
+      return 'Please select a sex';
+    }
+    if (formData.birthDate > new Date()) {
+      return 'Birth date cannot be in the future';
+    }
+    if (formData.weight && (isNaN(parseFloat(formData.weight)) || parseFloat(formData.weight) <= 0)) {
+      return 'Please enter a valid weight';
+    }
+    if (formData.height && (isNaN(parseFloat(formData.height)) || parseFloat(formData.height) <= 0)) {
+      return 'Please enter a valid height';
+    }
+    return null;
+  }, [formData]);
+
+  const [isDeleting, setIsDeleting] = useState(false);
+
+
+  const saveProfile = async () => {
     try {
-      const docRef = doc(db, 'children', childId);
-      const updatedData = {
-        ...childData,
-        name: `${childData.firstName} ${childData.lastName}`.trim(),
+      setIsLoading(true);
+      
+      const updatedProfile = {
+        name: `${formData.firstName} ${formData.lastName}`.trim(),
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        sex: formData.sex,
+        gender: formData.sex,
+        birthDate: formData.birthDate.toISOString(),
+        weight: formData.weight ? parseFloat(formData.weight) : null,
+        weightUnit: formData.weightUnit,
+        height: formData.height ? parseFloat(formData.height) : null,
+        heightUnit: formData.heightUnit,
+        notes: formData.notes.trim(),
+        image: formData.image,
+        updatedAt: new Date().toISOString(),
       };
 
-      delete updatedData.firstName;
-      delete updatedData.lastName;
-
-      await updateDoc(docRef, updatedData);
-      Alert.alert('Success', 'Profile updated!');
+      await updateDoc(doc(db, 'children', childId), updatedProfile);
+      
+      if (Platform.OS === 'ios') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      
+      Alert.alert('Success', 'Profile updated successfully!');
       navigation.goBack();
     } catch (error) {
-      console.error('Update error:', error);
-      Alert.alert('Error', 'Failed to update profile.');
+      console.error('Error updating child profile:', error);
+      Alert.alert('Error', 'Failed to update profile. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const setPerm = async (uid, perm) => {
-    await updateDoc(doc(db, 'children', childId), {
-      [`caregiverPerms.${uid}`]: perm,
-    });
-  };
+  const handleSave = useCallback(() => {
+    const validationError = validateForm();
+    if (validationError) {
+      Alert.alert('Validation Error', validationError);
+      return;
+    }
+  
+    const today = new Date();
+    const birth = new Date(formData.birthDate);
+    let ageYears = today.getFullYear() - birth.getFullYear();
+    if (
+      today.getMonth() < birth.getMonth() ||
+      (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())
+    ) {
+      ageYears--;
+    }
 
-  const removeCaregiver = async (uid) => {
-    await updateDoc(doc(db, 'children', childId), {
-      caregivers: arrayRemove(uid),
-      [`caregiverPerms.${uid}`]: deleteField(),
-    });
-  };
+    let weightLbs = parseFloat(formData.weight) || 0;
+    if (formData.weightUnit === 'kg') weightLbs = weightLbs / 0.453592;
+  
+    let heightIn = parseFloat(formData.height) || 0;
+    if (formData.heightUnit === 'cm') heightIn = heightIn / 2.54;
+  
+    if (
+      ageYears > AGE_WARNING_YEARS ||
+      weightLbs > WEIGHT_WARNING_LBS ||
+      heightIn > HEIGHT_WARNING_IN
+    ) {
+      Alert.alert(
+        'Confirm Large Values',
+        `You have entered large values for your child:\n\n` +
+        `${ageYears > AGE_WARNING_YEARS ? `Age: ${ageYears} years\n` : ''}` +
+        `${weightLbs > WEIGHT_WARNING_LBS ? `Weight: ${formData.weight} ${formData.weightUnit}\n` : ''}` +
+        `${heightIn > HEIGHT_WARNING_IN ? `Height: ${formData.height} ${formData.heightUnit}\n` : ''}` +
+        `Are you sure you want to continue?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Yes, continue', onPress: saveProfile }
+        ]
+      );
+    } else {
+      saveProfile();
+    }
+  }, [formData, validateForm, saveProfile]);
 
-  const handleDelete = async () => {
-    Alert.alert('Confirm Delete', 'Delete this profile?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        onPress: async () => {
-          try {
-            await deleteDoc(doc(db, 'children', childId));
-            Alert.alert('Deleted', 'Profile removed.');
-            navigation.navigate('Home', { deleted: true });
-          } catch (error) {
-            console.error('Delete error:', error);
-            Alert.alert('Error', 'Failed to delete profile.');
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Profile',
+      'Are you sure you want to delete this child profile? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsDeleting(true);
+              await deleteDoc(doc(db, 'children', childId));
+              
+              if (Platform.OS === 'ios') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              }
+
+              navigation.navigate('Home', { deleted: true });
+            } catch (error) {
+              console.error('Delete error:', error);
+              Alert.alert('Error', 'Failed to delete profile.');
+            } finally {
+              setIsDeleting(false);
+            }
           }
-        },
-        style: 'destructive',
-      },
-    ]);
+        }
+      ]
+    );
   };
 
-  if (loading) {
-    return <ActivityIndicator size="large" style={{ flex: 1 }} />;
+  const handleDateChange = useCallback((event, selectedDate) => {
+    if (selectedDate) {
+      updateFormData('birthDate', selectedDate);
+    }
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+  
+      if (selectedDate && selectedDate > new Date()) {
+        Alert.alert("Invalid Date", "Birth date cannot be in the future.");
+        updateFormData('birthDate', formData.birthDate);
+      }
+    }
+  }, [updateFormData, formData.birthDate]);
+
+  const handleDatePickerDone = () => {
+    if (formData.birthDate > new Date()) {
+      Alert.alert("Invalid Date", "Birth date cannot be in the future.");
+      updateFormData('birthDate', new Date());
+    }
+    setShowDatePicker(false);
+  };
+
+  if (initialLoading) {
+    return (
+      <LinearGradient 
+        colors={['#B2EBF2', '#B2EBF2']} 
+        style={styles.gradient}
+      >
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#667eea" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </LinearGradient>
+    );
   }
 
   return (
-    <ThemedBackground>
-      <SafeAreaView style={styles.container}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-              <LinearGradient
-                colors={darkMode ? currentTheme.card : ['#fff', '#f5f5f5']}
-                style={styles.headerButtonGradient}
-              >
-                <ArrowLeft size={20} color={darkMode ? '#fff' : '#2E3A59'} />
-              </LinearGradient>
-            </TouchableOpacity>
-            <Image source={require('../assets/logo.png')} style={styles.logo} />
-            <View style={{ width: 44 }} />
-          </View>
-
-          <Text style={[styles.title, { color: currentTheme.textPrimary }]}>Edit Child</Text>
-
-          <TouchableOpacity onPress={pickImage} style={styles.imageWrapper}>
-            {childData.image ? (
-              <Image source={{ uri: childData.image }} style={styles.profilePic} />
-            ) : (
-              <Text style={{ color: currentTheme.textSecondary }}>Edit Photo</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* First & Last Name Inputs */}
-          <LinearGradient
-            colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']}
-            style={styles.inputCard}
+    <>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <LinearGradient 
+        colors={['#B2EBF2', '#FCE4EC', '#F3E5F5']} 
+        start={{ x: 0, y: 0.5 }} 
+        end={{ x: 1, y: 0.5 }}
+        style={styles.gradient}
+      >
+        <KeyboardAvoidingView 
+          style={{ flex: 1 }} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+          <ScrollView 
+            contentContainerStyle={styles.scrollContainer}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
-            <TextInput
-              style={[styles.input, { color: currentTheme.textPrimary }]}
-              placeholder="First Name"
-              placeholderTextColor={currentTheme.textSecondary}
-              value={childData.firstName}
-              onChangeText={(text) => setChildData({ ...childData, firstName: text })}
-            />
-          </LinearGradient>
-
-          <LinearGradient
-            colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']}
-            style={styles.inputCard}
-          >
-            <TextInput
-              style={[styles.input, { color: currentTheme.textPrimary }]}
-              placeholder="Last Name"
-              placeholderTextColor={currentTheme.textSecondary}
-              value={childData.lastName}
-              onChangeText={(text) => setChildData({ ...childData, lastName: text })}
-            />
-          </LinearGradient>
-
-          {/* Gender */}
-          <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Gender</Text>
-          <View style={styles.genderRow}>
-            {['Male', 'Female'].map((g) => (
-              <TouchableOpacity
-                key={g}
-                style={[
-                  styles.genderBtn,
-                  childData.gender === g && { backgroundColor: darkMode ? '#6C63FF' : '#b2ebf2' },
-                ]}
-                onPress={() => setChildData({ ...childData, gender: g })}
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity 
+                style={styles.backButton} 
+                onPress={() => navigation.goBack()}
+                activeOpacity={0.7}
               >
-                <Text style={{ color: childData.gender === g ? '#fff' : currentTheme.textPrimary }}>
-                  {g}
-                </Text>
+                <BlurView intensity={20} tint="light" style={styles.backButtonBlur}>
+                  <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
+                </BlurView>
               </TouchableOpacity>
-            ))}
-          </View>
+              
+              <Text style={styles.headerTitle}>Edit Child Profile</Text>
+              <View style={{ width: 40 }} />
+            </View>
 
-          {/* Birth Date */}
-          <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Birth Date</Text>
-          <View style={styles.birthRow}>
-            {['MM', 'DD', 'YYYY'].map((ph, i) => (
-              <LinearGradient
-                key={ph}
-                colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']}
-                style={[styles.inputCard, { flex: 1, marginRight: i < 2 ? 8 : 0 }]}
-              >
-                <TextInput
-                  style={[styles.input, { textAlign: 'center', color: currentTheme.textPrimary }]}
-                  placeholder={ph}
-                  placeholderTextColor={currentTheme.textSecondary}
-                  keyboardType="numeric"
-                  maxLength={ph === 'YYYY' ? 4 : 2}
-                  value={
-                    ph === 'MM'
-                      ? childData.birthDate?.month
-                      : ph === 'DD'
-                      ? childData.birthDate?.day
-                      : childData.birthDate?.year
-                  }
-                  onChangeText={(val) =>
-                    setChildData({
-                      ...childData,
-                      birthDate: {
-                        ...childData.birthDate,
-                        ...(ph === 'MM' ? { month: val } : ph === 'DD' ? { day: val } : { year: val }),
-                      },
-                    })
-                  }
-                />
-              </LinearGradient>
-            ))}
-          </View>
+            {/* Content Card */}
+            <View style={styles.contentCard}>
+              {/* Profile Image */}
+              <TouchableOpacity onPress={pickImage} style={styles.imageContainer} activeOpacity={0.8}>
+                <View style={styles.imageWrapper}>
+                  {formData.image ? (
+                    <Image source={{ uri: formData.image }} style={styles.profileImage} />
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <MaterialCommunityIcons name="camera-plus" size={32} color="#999" />
+                      <Text style={styles.imagePlaceholderText}>Add Photo</Text>
+                    </View>
+                  )}
+                  <View style={styles.imageOverlay}>
+                    <MaterialCommunityIcons name="camera" size={20} color="#fff" />
+                  </View>
+                </View>
+              </TouchableOpacity>
 
-          {/* Notes */}
-          <LinearGradient
-            colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']}
-            style={styles.inputCard}
-          >
-            <TextInput
-              style={[styles.input, { height: 100, textAlignVertical: 'top', color: currentTheme.textPrimary }]}
-              placeholder="Notes (optional)"
-              placeholderTextColor={currentTheme.textSecondary}
-              value={childData.notes}
-              onChangeText={(text) => setChildData({ ...childData, notes: text })}
-              multiline
-            />
-          </LinearGradient>
+              {/* Name Section */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Personal Information</Text>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>First Name *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter first name"
+                    value={formData.firstName}
+                    onChangeText={(value) => updateFormData('firstName', value)}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
+                </View>
 
-          {/* Manage Caregivers */}
-          <View style={{ marginTop: 20, padding: 12, backgroundColor: '#F5F7FA', borderRadius: 12 }}>
-            <Text style={{ fontWeight: '700', fontSize: 16, color: '#2E3A59', marginBottom: 10 }}>
-              Manage Caregivers
-            </Text>
-            {cgList.length === 0 ? (
-              <Text style={{ color: '#7C8B9A' }}>No caregivers assigned yet.</Text>
-            ) : (
-              cgList.map((uid) => {
-                const perm = cgPerms?.[uid] || 'view';
-                const isView = perm === 'view';
-                const isLog = perm === 'log';
-                return (
-                  <View key={uid} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#ECEFF1' }}>
-                    <Text style={{ color: '#2E3A59', marginBottom: 8 }}>{uid}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Last Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter last name"
+                    value={formData.lastName}
+                    onChangeText={(value) => updateFormData('lastName', value)}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
+                </View>
+
+                {/* Sex Selection */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Sex *</Text>
+                  <View style={styles.sexContainer}>
+                    {sexOptions.map((option) => (
                       <TouchableOpacity
-                        onPress={() => setPerm(uid, 'view')}
-                        style={{
-                          paddingVertical: 8,
-                          paddingHorizontal: 12,
-                          borderRadius: 8,
-                          backgroundColor: isView ? '#CFD8DC' : '#ECEFF1',
-                          marginRight: 8,
-                        }}
+                        key={option.label}
+                        style={[
+                          styles.sexOption,
+                          formData.sex === option.label && {
+                            backgroundColor: option.color,
+                            borderColor: option.color,
+                          }
+                        ]}
+                        onPress={() => updateFormData('sex', option.label)}
+                        activeOpacity={0.7}
                       >
-                        <Text style={{ color: '#2E3A59', fontWeight: '600' }}>View</Text>
+                        <MaterialCommunityIcons
+                          name={option.icon}
+                          size={24}
+                          color={formData.sex === option.label ? '#fff' : '#999'}
+                        />
+                        <Text
+                          style={[
+                            styles.sexLabel,
+                            formData.sex === option.label && { color: '#fff', fontWeight: '600' }
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
                       </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Birth Date */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Birth Date *</Text>
+                  <TouchableOpacity 
+                    onPress={() => setShowDatePicker(true)} 
+                    style={styles.dateSelector}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialCommunityIcons name="calendar" size={20} color="#667eea" />
+                    <Text style={styles.dateText}>
+                      {formData.birthDate.toLocaleDateString('en-US', { 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      })}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={styles.ageText}>Age: {calculateAge()}</Text>
+                </View>
+
+                {showDatePicker && (
+                  <View style={styles.datePickerContainer}>
+                    <DateTimePicker
+                      value={formData.birthDate}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={handleDateChange}
+                    />
+                    {Platform.OS === 'ios' && (
                       <TouchableOpacity
-                        onPress={() => setPerm(uid, 'log')}
-                        style={{
-                          paddingVertical: 8,
-                          paddingHorizontal: 12,
-                          borderRadius: 8,
-                          backgroundColor: isLog ? '#81D4FA' : '#ECEFF1',
-                          marginRight: 8,
-                        }}
+                        style={styles.dateConfirmButton}
+                        onPress={handleDatePickerDone}
                       >
-                        <Text style={{ color: isLog ? '#fff' : '#2E3A59', fontWeight: '600' }}>Log</Text>
+                        <Text style={styles.dateConfirmText}>Done</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => removeCaregiver(uid)}
-                        style={{
-                          marginLeft: 'auto',
-                          paddingVertical: 8,
-                          paddingHorizontal: 12,
-                          borderRadius: 8,
-                          backgroundColor: '#FFCDD2',
-                        }}
-                      >
-                        <Text style={{ color: '#B71C1C', fontWeight: '700' }}>Remove</Text>
-                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* Physical Information */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Physical Information</Text>
+
+                {/* Row for Weight + Height */}
+                <View style={styles.measurementRow}>
+                  {/* Weight */}
+                  <View style={[styles.inputGroup, styles.halfInput]}>
+                    <Text style={styles.inputLabel}>Weight</Text>
+                    <View style={styles.measurementRow}>
+                      <TextInput
+                        style={[styles.input, styles.measurementInput]}
+                        placeholder="0"
+                        keyboardType="decimal-pad"
+                        value={formData.weight}
+                        onChangeText={(value) => updateFormData('weight', value)}
+                        inputAccessoryViewID="doneBar"
+                      />
+                      <View style={styles.unitSelector}>
+                        {['lbs', 'kg'].map((unit) => (
+                          <TouchableOpacity
+                            key={unit}
+                            style={[
+                              styles.unitButton,
+                              formData.weightUnit === unit && styles.unitButtonSelected,
+                            ]}
+                            onPress={() => handleWeightUnitChange(unit)}
+                          >
+                            <Text
+                              style={[
+                                styles.unitText,
+                                formData.weightUnit === unit && styles.unitTextSelected,
+                              ]}
+                            >
+                              {unit}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
                   </View>
-                );
-              })
-            )}
-          </View>
 
-          {/* Save */}
-          <TouchableOpacity onPress={handleUpdate} style={{ marginTop: 20 }}>
-            <LinearGradient
-              colors={darkMode ? ['#00c6ff', '#0072ff'] : ['#90CAF9', '#81D4FA']}
-              style={styles.actionButton}
-            >
-              <Text style={styles.buttonText}>Save Changes</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+                  {/* Height */}
+                  <View style={[styles.inputGroup, styles.halfInput]}>
+                    <Text style={styles.inputLabel}>Height</Text>
+                    <View style={styles.measurementRow}>
+                      <TextInput
+                        style={[styles.input, styles.measurementInput]}
+                        placeholder="0"
+                        keyboardType="decimal-pad"
+                        value={formData.height}
+                        onChangeText={(value) => updateFormData('height', value)}
+                        inputAccessoryViewID="heightDoneBar"
+                      />
+                      <View style={styles.unitSelector}>
+                        {['in', 'cm'].map((unit) => (
+                          <TouchableOpacity
+                            key={unit}
+                            style={[
+                              styles.unitButton,
+                              formData.heightUnit === unit && styles.unitButtonSelected,
+                            ]}
+                            onPress={() => handleHeightUnitChange(unit)}
+                          >
+                            <Text
+                              style={[
+                                styles.unitText,
+                                formData.heightUnit === unit && styles.unitTextSelected,
+                              ]}
+                            >
+                              {unit}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
 
-          {/* Delete */}
-          <TouchableOpacity onPress={handleDelete} style={{ marginTop: 10 }}>
-            <LinearGradient colors={['#ff6a00', '#ee0979']} style={styles.actionButton}>
-              <Trash2 size={18} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.buttonText}>Delete Profile</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedBackground>
+              {/* Notes */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Additional Notes</Text>
+                <View style={styles.inputGroup}>
+                  <TextInput
+                    style={styles.notesInput}
+                    placeholder="Add any additional notes about your child..."
+                    multiline
+                    numberOfLines={4}
+                    value={formData.notes}
+                    onChangeText={(value) => updateFormData('notes', value)}
+                    textAlignVertical="top"
+                  />
+                </View>
+              </View>
+
+              {/* Action Buttons */}
+              <TouchableOpacity 
+                style={[styles.saveButton, isLoading && styles.saveButtonDisabled]} 
+                onPress={handleSave}
+                disabled={isLoading}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={isLoading ? ['#667eea', '#667eea'] : ['#667eea', '#667eea']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.saveButtonGradient}
+                >
+                  {isLoading ? (
+                    <Text style={styles.saveButtonText}>Saving...</Text>
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons name="content-save" size={20} color="#fff" />
+                      <Text style={styles.saveButtonText}>Save Changes</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.deleteButton} 
+                onPress={handleDelete}
+                disabled={isDeleting || isLoading}
+                activeOpacity={0.8}
+              >
+                {isDeleting ? (
+                  <Text style={styles.deleteButtonText}>Deleting...</Text>
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="delete-outline" size={20} color="#fff" />
+                    <Text style={styles.deleteButtonText}>Delete Profile</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </LinearGradient>
+      {Platform.OS === 'ios' && (
+        <>
+          <InputAccessoryView nativeID="doneBar">
+            <View style={styles.accessory}>
+              <TouchableOpacity onPress={Keyboard.dismiss} style={styles.accessoryButton}>
+                <Text style={styles.accessoryButtonText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </InputAccessoryView>
+          <InputAccessoryView nativeID="heightDoneBar">
+            <View style={styles.accessory}>
+              <TouchableOpacity onPress={Keyboard.dismiss} style={styles.accessoryButton}>
+                <Text style={styles.accessoryButtonText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </InputAccessoryView>
+        </>
+      )}
+    </>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 40 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  headerButton: { borderRadius: 16 },
-  headerButtonGradient: { width: 44, height: 44, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  logo: { width: 50, height: 50, resizeMode: 'contain' },
-  title: { fontSize: 26, fontWeight: '700', textAlign: 'center', marginBottom: 20 },
-  imageWrapper: { alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 60, width: 100, height: 100, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  profilePic: { width: 100, height: 100, borderRadius: 60 },
-  label: { fontSize: 16, fontWeight: '600', marginBottom: 5, marginTop: 15 },
-  inputCard: { borderRadius: 16, padding: 4, marginBottom: 10 },
-  input: { padding: 12, fontSize: 16 },
-  genderRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  genderBtn: { flex: 1, padding: 14, borderRadius: 12, marginRight: 10, alignItems: 'center' },
-  birthRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  actionButton: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', borderRadius: 20, paddingVertical: 16 },
-  buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  gradient: {
+    flex: 1,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    paddingTop: StatusBar.currentHeight || 44,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#667eea',
+    fontWeight: '500',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+  },
+  backButtonBlur: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#444',
+    textAlign: 'center',
+  },
+  contentCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingTop: 30,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    marginTop: 10,
+  },
+  imageContainer: {
+    alignSelf: 'center',
+    marginBottom: 30,
+  },
+  imageWrapper: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    position: 'relative',
+  },
+  profileImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  imagePlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 2,
+    borderColor: '#e9ecef',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imagePlaceholderText: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  imageOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#667eea',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  section: {
+    marginBottom: 30,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 20,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#555',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  sexContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  sexOption: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 2,
+    borderColor: '#e9ecef',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },  
+  sexOptionSelected: {
+    backgroundColor: '#fff',
+    borderWidth: 2,
+  },
+  sexLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#666',
+    marginTop: 6,
+  },
+  dateSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  dateText: {
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 12,
+    flex: 1,
+  },
+  ageText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#777',
+    fontWeight: '500',
+  },
+  measurementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  halfInput: {
+    flex: 1,
+    marginRight: 8,
+  },
+  measurementInput: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  unitSelector: {
+    flexDirection: 'row',
+    marginLeft: 8,
+    backgroundColor: '#f1f3f5',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  unitButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  unitButtonSelected: {
+    backgroundColor: '#667eea',
+  },
+  unitText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+  },
+  unitTextSelected: {
+    color: '#fff',
+  },
+  notesInput: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    minHeight: 100,
+    color: '#333',
+  },
+  saveButton: {
+    marginTop: 20,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonGradient: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  deleteButton: {
+    marginTop: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ff5252',
+    backgroundColor: '#ff5252',
+  },
+  deleteButtonText: {
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  accessory: {
+    backgroundColor: '#f1f3f5',
+    padding: 8,
+    alignItems: 'flex-end',
+    borderTopWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  accessoryButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    backgroundColor: '#667eea',
+    borderRadius: 8,
+  },
+  accessoryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
 
 export default EditChildScreen;

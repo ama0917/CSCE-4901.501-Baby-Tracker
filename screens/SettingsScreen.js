@@ -23,6 +23,14 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+const neonGradients = {
+  card: ['#6491ebff', '#7676dbff'],
+  button: ['#5aececff', '#62a8e5ff'],
+  button2: ['#000001ff', '#000004ff'],
+  warn: ['#faaa72ff', '#f68dc0ff'],
+  input: ['#fad0c43f', '#ffd1ff4a'],
+};
+
 const gradients = {
   cardLight: ['#f9fbff', '#ffffff'],
   cardDark: ['#2b2e34', '#1f2126'],
@@ -52,6 +60,7 @@ export default function SettingsScreen() {
   const [totpCode, setTotpCode] = useState('');
   const [mfaBusy, setMfaBusy] = useState(false);
   const [manualKey, setManualKey] = useState(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
 
   const [digestOpen, setDigestOpen] = useState(false);
 
@@ -312,6 +321,33 @@ export default function SettingsScreen() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setDigestOpen(v => !v);
   };
+  
+    // --- Restore Backup Handler ---
+  const handleRestoreBackup = async () => {
+  setRestoreLoading(true);
+  try {
+    const response = await fetch('http://10.73.180.149:5001/restore-backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: "test_user" }) // send a user_id to match Flask route
+    });
+
+    if (!response.ok) {
+      throw new Error('Backup restore failed.');
+    }
+
+    const data = await response.json();
+    if (data.success) {
+      Alert.alert('Backup restored', data.message || 'Your local data has been restored.');
+    } else {
+      throw new Error(data.error || 'Backup restore failed.');
+    }
+  } catch (e) {
+    Alert.alert('Error', e.message || 'Could not restore backup.');
+  } finally {
+    setRestoreLoading(false);
+  }
+};
 
   return (
     <ThemedBackground>
@@ -585,6 +621,22 @@ export default function SettingsScreen() {
           )}
         </Card>
 
+		{/* ---------- 0) Restore Backup ---------- */}
+			  <LinearGradient colors={neonGradients.card} style={styles.settingCard}>
+				<Text style={[styles.settingTitle, { color: currentTheme.text }]}>Restore Backup</Text>
+				<TouchableOpacity
+				  style={[styles.button, restoreLoading && { opacity: 0.6 }]}
+				  onPress={handleRestoreBackup}
+				  disabled={restoreLoading}
+				>
+				  {restoreLoading ? (
+					<ActivityIndicator color="#fff" />
+				  ) : (
+					<Text style={styles.buttonText}>Restore Backup</Text>
+				  )}
+				</TouchableOpacity>
+			  </LinearGradient>
+
         {/* ---------- 6) Change Password ---------- */}
         <SectionTitle icon={<Fingerprint size={18} color={currentTheme.textPrimary} />} text="Change Password" />
         <Card>
@@ -611,6 +663,9 @@ export default function SettingsScreen() {
         </Card>
       </ScrollView>
     </ThemedBackground>
+	
+      
+
   );
 }
 

@@ -143,6 +143,62 @@ def start_automatic_backup():
         time.sleep(3600)
 
 
+# 🔹 New restore function
+def restore_backup(user_id):
+    """Restore backup for a specific user_id."""
+    try:
+        if not os.path.isfile(backup_db_encrypted_path):
+            print(f"[Restore] Encrypted backup not found at {backup_db_encrypted_path}")
+            return
+
+        # 🔹 Decrypt backup temporarily
+        with open(backup_db_encrypted_path, "rb") as f:
+            encrypted_data = f.read()
+        decrypted_data = cipher.decrypt(encrypted_data)
+
+        temp_db_path = backup_db_path  # reuse same path temporarily
+        with open(temp_db_path, "wb") as f:
+            f.write(decrypted_data)
+
+        conn = sqlite3.connect(temp_db_path)
+        cursor = conn.cursor()
+
+        # 🔹 Restore children belonging to the user
+        cursor.execute('SELECT id, data FROM "children"')
+        children_rows = cursor.fetchall()
+        user_children_ids = []
+
+        for child_id, child_data_json in children_rows:
+            child_data = json.loads(child_data_json)
+            if child_data.get("userId") == user_id:
+                user_children_ids.append(child_id)
+                # Update or create child in Firebase
+                db.collection("children").document(child_id).set(child_data)
+
+        print(f"[Restore] Restored {len(user_children_ids)} children for user {user_id}")
+
+        # 🔹 Restore associated logs
+        log_collections = ["diaperLogs", "feedLogs", "sleepLogs"]
+        for collection_name in log_collections:
+            cursor.execute(f'SELECT id, data FROM "{collection_name}"')
+            rows = cursor.fetchall()
+            restored_count = 0
+            for doc_id, doc_data_json in rows:
+                doc_data = json.loads(doc_data_json)
+                if doc_data.get("childId") in user_children_ids:
+                    db.collection(collection_name).document(doc_id).set(doc_data)
+                    restored_count += 1
+            print(f"[Restore] Restored {restored_count} documents in {collection_name}")
+
+        conn.close()
+
+        # 🔹 Remove temporary decrypted file
+        os.remove(temp_db_path)
+        print(f"[Restore] Temporary decrypted file removed.")
+
+    except Exception as e:
+        print(f"[Restore] Error during restore: {e}")
+
+
 if __name__ == "__main__":
     backup_data()
-

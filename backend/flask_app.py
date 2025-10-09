@@ -2,7 +2,7 @@ from flask import Flask, jsonify, send_file, request
 from threading import Thread
 import os
 from cryptography.fernet import Fernet
-from backup_service import start_automatic_backup
+from backup_service import start_automatic_backup, restore_backup
 
 app = Flask(__name__)
 
@@ -24,6 +24,8 @@ if not KEY:
     raise ValueError("Environment variable BACKUP_KEY not set!")
 cipher = Fernet(KEY.encode())
 
+# --- Routes ---
+
 @app.route('/')
 def index():
     return jsonify({"status": "ok", "message": "Backup service available"}), 200
@@ -38,42 +40,43 @@ def download_backup():
 
 # 🔹 Route to restore from the encrypted backup
 @app.route('/restore-backup', methods=['POST'])
-def restore_backup():
+def restore_backup_route():
     try:
-        backup_path = os.path.join("backend", "backup_data_encrypted.db")
-        if not os.path.exists(backup_path):
-            return jsonify({"success": False, "error": "No backup found"}), 404
+        data = request.get_json(silent=True)
+        if not data or "user_id" not in data:
+            # Allow fallback for testing if user_id not sent
+            user_id = "default_user"
+            print("[Warning] No user_id provided, using default_user")
+        else:
+            user_id = data["user_id"]
 
-        # Decrypt backup in memory
-        with open(backup_path, "rb") as f:
-            encrypted_data = f.read()
-        decrypted_data = cipher.decrypt(encrypted_data)
-
-        # Write temporarily for restoring
-        temp_path = os.path.join("backend", "temp_restored.db")
-        with open(temp_path, "wb") as f:
-            f.write(decrypted_data)
-
-        # 🔹 Call your existing Firebase restore logic here
-        # from backup_service import restore_to_firebase
-        # restore_to_firebase(temp_path)
-
-        # Remove temporary unencrypted file
-        os.remove(temp_path)
-
-        return jsonify({"success": True})
+        3print(f"[Flask] Restore backup requested for user_id: {user_id}")
+        print(f"[Flask] Restore backup requested.")
+        restore_backup(user_id)
+        #print(f"[Flask] Backup restored successfully for user_id: {user_id}")
+        print(f"[Flask] Backup restored successfully!")
+        
+        return jsonify({"success": True, "message": f"Backup restored for user {user_id}"})
     except Exception as e:
+        # 🔹 Print full error to terminal for debugging
+        print("[Error] Exception during restore-backup:", e, flush=True)
         return jsonify({"success": False, "error": str(e)}), 500
+
+# --- Background Tasks ---
 
 def start_background_tasks():
     try:
         backup_thread = Thread(target=start_automatic_backup)
         backup_thread.daemon = True
         backup_thread.start()
+        print("[Flask] Automatic backup thread started")
     except Exception as e:
         print(f"[Flask] Failed to start backup thread: {e}")
 
+# --- Run App ---
+
 if __name__ == "__main__":
     start_background_tasks()
-    # Disable reloader to avoid environment variable issues in child process
-    app.run(debug=True, host='127.0.0.1', port=5001, use_reloader=False)
+    # Use 0.0.0.0 if you want LAN access from phone, or 127.0.0.1 for localhost only
+    app.run(debug=True, host='0.0.0.0', port=5001, use_reloader=False)
+

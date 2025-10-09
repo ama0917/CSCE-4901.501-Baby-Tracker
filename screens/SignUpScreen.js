@@ -1,27 +1,27 @@
 import React, { useState } from 'react';
-import {
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Image,
+import { 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  Image, 
   Alert,
   View,
   Keyboard,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
+  ScrollView
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-
-
 import { auth, db } from '../firebaseConfig';
 import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
-
-
+import { Eye, EyeOff, Mail, Lock } from 'lucide-react-native';
+import { StatusBar } from 'react-native';
+import { Sparkles } from 'lucide-react-native';
+import LogoImage from '../assets/logo.png';
 
 export default function SignUpScreen() {
   const navigation = useNavigation();
@@ -29,22 +29,27 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-
-  // isFocused, MFA enrollment UI/state, icons, etc.
+  const [isFocused, setIsFocused] = useState({ email: false, password: false, confirm: false });
 
   const handleSignUp = async () => {
+    if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
+      Alert.alert('Input Required', 'Please fill in all fields.');
+      return;
+    }
+
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match!');
       return;
     }
 
     try {
-      const { user } = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
 
       await setDoc(doc(db, 'Users', user.uid), {
-        Email: email.trim(),
+        Email: email,
         Password: '',          // never store plaintext
-        MFAEnabled: false,     // false for now; TOTP is commented out
+        MFAEnabled: false,     
         UserType: 'parent',
         Name: '',
       });
@@ -63,129 +68,122 @@ export default function SignUpScreen() {
 
       navigation.navigate('Login');
     } catch (error) {
-      Alert.alert('Sign Up Error', error?.message || 'Could not create account.');
+      Alert.alert('Sign Up Error', error.message);
     }
   };
-
+    
   return (
-    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={{ flex: 1 }}>
+    <LinearGradient colors={['#B2EBF2', '#FCE4EC', '#F3E5F5']} style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 30 : 0}
-        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoid}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={{ flex: 1 }}>
-            <ScrollView
-              contentContainerStyle={styles.scrollViewContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.innerContainer}>
-                <Image source={require('../assets/logo.png')} style={styles.logoImage} />
-                <Text style={styles.title}>SIGN UP</Text>
+          <ScrollView
+            contentContainerStyle={styles.scrollViewContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.innerContainer}>
+              {/* Circular Logo */}
+              <View style={styles.logoContainer}>
+                <LinearGradient
+                  colors={['#81D4FA', '#F8BBD9']}
+                  style={styles.logoGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Image source={LogoImage} style={styles.logoImage} resizeMode="contain" />
+                </LinearGradient>
+                <View style={styles.logoSparkle}>
+                  <Sparkles size={20} color="#F8BBD9" />
+                </View>
+              </View>
 
-                {/* Email */}
+              <Text style={styles.title}>Create Account</Text>
+              <Text style={styles.subtitle}>Join us and start your journey</Text>
+
+              {/* Email */}
+              <View style={[styles.inputContainer, isFocused.email && styles.inputContainerFocused]}>
+                <Mail size={20} color={isFocused.email ? '#81D4FA' : '#B0BEC5'} strokeWidth={1.5} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter Email"
-                  placeholderTextColor="#aaa"
+                  placeholder="Email"
+                  placeholderTextColor="#B0BEC5"
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  autoCorrect={false}
+                  onFocus={() => setIsFocused({ ...isFocused, email: true })}
+                  onBlur={() => setIsFocused({ ...isFocused, email: false })}
                 />
+              </View>
 
-                {/* Password + Show/Hide (text-based, matches incoming style) */}
-                <TouchableOpacity style={styles.passwordContainer} activeOpacity={1}>
-                  <TextInput
-                    style={styles.passwordInput}
-                    placeholder="Enter Password"
-                    placeholderTextColor="#aaa"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                  />
-                  <Text style={styles.showText} onPress={() => setShowPassword(!showPassword)}>
-                    {showPassword ? 'Hide' : 'Show'}
-                  </Text>
+              {/* Password */}
+              <View style={[styles.inputContainer, isFocused.password && styles.inputContainerFocused]}>
+                <Lock size={20} color={isFocused.password ? '#81D4FA' : '#B0BEC5'} strokeWidth={1.5} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor="#B0BEC5"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCorrect={false}
+                  onFocus={() => setIsFocused({ ...isFocused, password: true })}
+                  onBlur={() => setIsFocused({ ...isFocused, password: false })}
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.showButton}>
+                  {showPassword ? (
+                    <EyeOff size={20} color="#81D4FA" strokeWidth={1.5} />
+                  ) : (
+                    <Eye size={20} color="#B0BEC5" strokeWidth={1.5} />
+                  )}
                 </TouchableOpacity>
+              </View>
 
-                {/* Confirm Password */}
+              {/* Confirm Password */}
+              <View style={[styles.inputContainer, isFocused.confirm && styles.inputContainerFocused]}>
+                <Lock size={20} color={isFocused.confirm ? '#81D4FA' : '#B0BEC5'} strokeWidth={1.5} />
                 <TextInput
                   style={styles.input}
                   placeholder="Confirm Password"
-                  placeholderTextColor="#aaa"
+                  placeholderTextColor="#B0BEC5"
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   secureTextEntry
+                  onFocus={() => setIsFocused({ ...isFocused, confirm: true })}
+                  onBlur={() => setIsFocused({ ...isFocused, confirm: false })}
                 />
-
-                {/* Submit */}
-                <TouchableOpacity style={styles.signupButton} onPress={handleSignUp}>
-                  <Text style={styles.signupText}>Sign-up</Text>
-                </TouchableOpacity>
-
-                {/* Go to Login */}
-                <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-                  <Text style={styles.loginText}>Already have an account? Login.</Text>
-                </TouchableOpacity>
-
-                {/* ---------------- COMMENTED OUT: TOTP UI block ----------------
-                {enrollingMfa && (
-                  <View style={{ marginTop: 24, width: '100%' }}>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#2E3A59', marginBottom: 8 }}>
-                      Set up Authenticator (TOTP)
-                    </Text>
-                    <Text style={{ color: '#7C8B9A', marginBottom: 8 }}>
-                      Copy this into your authenticator app (Google Authenticator, Authy), or scan as a QR:
-                    </Text>
-                    {mfaUri ? (
-                      <View style={{ marginBottom: 12, alignItems: 'center' }}>
-                        <QRCode value={mfaUri} size={180} />
-                      </View>
-                    ) : null}
-                    <Text selectable style={{ color: '#2E3A59', fontSize: 12, marginBottom: 12 }}>
-                      {mfaUri}
-                    </Text>
-
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter 6-digit code"
-                      placeholderTextColor="#B0BEC5"
-                      keyboardType="number-pad"
-                      maxLength={6}
-                      value={mfaCode}
-                      onChangeText={setMfaCode}
-                    />
-
-                    <TouchableOpacity style={styles.signupButton} onPress={async () => {
-                      try {
-                        if (!mfaCode || mfaCode.length !== 6) {
-                          Alert.alert('MFA', 'Enter the 6-digit code from your authenticator app');
-                          return;
-                        }
-                        await finishTotpEnrollment(auth.currentUser, mfaCode);
-                        Alert.alert('Success', 'Two-factor authentication enabled.');
-                        navigation.navigate('Login');
-                      } catch (e) {
-                        Alert.alert('MFA Error', e.message);
-                      }
-                    }}>
-                      <Text style={styles.signupText}>Verify & Enable MFA</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-                --------------------------------------------------------------- */}
               </View>
-            </ScrollView>
-          </View>
+
+              {/* Sign Up Button */}
+              <TouchableOpacity style={styles.signupButton} onPress={handleSignUp} activeOpacity={0.85}>
+                <LinearGradient
+                  colors={['#81D4FA', '#81D4FA']}
+                  style={styles.signupGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <Text style={styles.signupButtonText}>Sign Up</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Go to Login */}
+              <TouchableOpacity onPress={() => navigation.navigate('Login')} style={{ marginTop: 20 }}>
+                <Text style={styles.loginText}>
+                  Already have an account? <Text style={styles.loginLink}>Log In</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </LinearGradient>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {
@@ -197,60 +195,108 @@ const styles = StyleSheet.create({
   scrollViewContent: {
     flexGrow: 1,
     justifyContent: 'center',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   innerContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: 30,
+  },
+  logoContainer: {
+    position: 'relative',
+    marginBottom: 40,
+  },
+  logoGradient: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.15,
+    shadowRadius: 30,
+    elevation: 15,
   },
   logoImage: {
-    width: 90,
-    height: 90,
-    resizeMode: 'contain',
-    marginBottom: 60,
+    width: 60,
+    height: 60,
+  },
+  logoSparkle: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
   },
   title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 20,
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#2E3A59',
+    marginBottom: 10,
+    textAlign: 'center',
   },
-  input: {
-    width: '80%',
-    height: 40,
-    backgroundColor: 'white',
-    marginBottom: 15,
-    paddingHorizontal: 10,
-    borderRadius: 5,
+  subtitle: {
+    fontSize: 16,
+    color: '#7C8B9A',
+    marginBottom: 40,
+    textAlign: 'center',
   },
-  passwordContainer: {
+  inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: '80%',
-    backgroundColor: 'white',
-    borderRadius: 5,
-    marginBottom: 15,
-    paddingHorizontal: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 16,
+    marginBottom: 20,
+    paddingHorizontal: 20,
+    height: 56,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 15,
+    elevation: 5,
+    borderWidth: 1.5,
+    borderColor: 'rgba(129, 212, 250, 0.1)',
   },
-  passwordInput: {
+  inputContainerFocused: {
+    borderColor: '#81D4FA',
+    shadowOpacity: 0.08,
+    backgroundColor: '#FFFFFF',
+  },
+  input: {
     flex: 1,
-    height: 40,
+    height: 50,
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#333',
   },
-  showText: {
-    color: '#007AFF',
-    fontWeight: '600',
+  showButton: {
+    paddingLeft: 10,
   },
   signupButton: {
-    backgroundColor: '#FFD700',
-    paddingVertical: 10,
-    paddingHorizontal: 30,
-    borderRadius: 5,
-    marginTop: 20,
+    width: '100%',
+    marginTop: 10,
   },
-  signupText: {
+  signupGradient: {
+    borderRadius: 16,
+    paddingVertical: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  signupButtonText: {
+    color: '#fff',
     fontSize: 18,
+    fontWeight: '600',
   },
   loginText: {
-    marginTop: 20,
-    color: '#007AFF',
+    fontSize: 14,
+    color: '#7C8B9A',
+  },
+  loginLink: {
+    color: '#81D4FA',
+    fontWeight: '600',
   },
 });

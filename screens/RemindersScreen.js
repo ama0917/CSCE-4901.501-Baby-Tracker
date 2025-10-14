@@ -35,11 +35,6 @@ import OpenAI from 'openai';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { useDarkMode } from '../screens/DarkMode';
 
-const OPENAI_API_KEY = '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';
-const openai = new OpenAI({
-  apiKey: OPENAI_API_KEY,
-});
-
 const formatTime12Hour = (time24) => {
   const [hours, minutes] = time24.split(':').map(Number);
   const period = hours >= 12 ? 'PM' : 'AM';
@@ -81,13 +76,13 @@ const getConfidenceColor = (confidence) => {
   }
 };
 
-const ReminderCard = ({ reminder, type, reminders, setReminders, toggleReminder, toggleAI, sendImmediateReminder, openTimePicker, aiConsent, aiLoading, reminderTypes }) => {
+const ReminderCard = ({ reminder, type, reminders, setReminders, toggleReminder, toggleAI, sendImmediateReminder, openTimePicker, aiConsent, aiLoading, reminderTypes, darkMode, theme }) => {
   const currentReminder = reminders[type];
   const [showInsights, setShowInsights] = useState(false);
   
   return (
-    <View style={styles.reminderCard}>
-      <View style={styles.reminderHeader}>
+    <View style={[styles.reminderCard, { backgroundColor: darkMode ? '#2c2c2c' : '#fff' }]}>
+      <View style={[styles.reminderHeader, { borderTopColor: darkMode ? '#444' : '#F0F0F0' }]}>
         <View style={styles.reminderTitleRow}>
           <View style={[styles.iconContainer, { backgroundColor: reminder.color + '20' }]}>
             <MaterialCommunityIcons name={reminder.icon} size={24} color={reminder.color} />
@@ -320,7 +315,7 @@ const ReminderCard = ({ reminder, type, reminders, setReminders, toggleReminder,
 
 export default function RemindersScreen() {
   const { darkMode } = useDarkMode();
-  const currentTheme = darkMode ? appTheme.dark : appTheme.light;
+  const theme = darkMode ? appTheme.dark : appTheme.light;
   const navigation = useNavigation();
   const route = useRoute();
   const { childId, name } = route.params || {};
@@ -467,7 +462,6 @@ const loadSavedReminders = async () => {
   }
 
   // Fetch child's historical data for AI analysis
-// Replace the getChildHistoricalData function with this improved version:
 const getChildHistoricalData = async (reminderType) => {
   try {
     const reminderConfig = reminderTypes.find(r => r.key === reminderType);
@@ -494,39 +488,56 @@ const getChildHistoricalData = async (reminderType) => {
       const data = doc.data();
       const timestampField = data[reminderConfig.timestampField];
       
-      if (!timestampField) {
+      if (timestampField === null || timestampField === undefined) {
         console.warn(`Missing timestamp field ${reminderConfig.timestampField} in document:`, doc.id);
         return;
       }
 
-      let timestamp;
+      let timestamp = null;
 
       try {
-        if (typeof timestampField.toDate === 'function') {
-          // Firestore Timestamp object
+        // Handle Firestore Timestamp objects (most common)
+        if (timestampField && typeof timestampField === 'object' && typeof timestampField.toDate === 'function') {
           timestamp = timestampField.toDate();
-        } else if (
+          console.log(`Successfully converted Firestore Timestamp to Date for doc ${doc.id}`);
+        }
+        // Handle plain objects with seconds property
+        else if (
           timestampField &&
           typeof timestampField === 'object' &&
           typeof timestampField.seconds === 'number'
         ) {
-          // Plain object from Firestore with seconds
           timestamp = new Date(timestampField.seconds * 1000);
-        } else if (timestampField instanceof Date) {
+          console.log(`Successfully converted seconds object to Date for doc ${doc.id}`);
+        }
+        // Handle Date objects
+        else if (timestampField instanceof Date) {
           timestamp = timestampField;
-        } else if (typeof timestampField === 'string') {
+          console.log(`Already a Date object for doc ${doc.id}`);
+        }
+        // Handle ISO strings
+        else if (typeof timestampField === 'string') {
           timestamp = new Date(timestampField);
-        } else if (typeof timestampField === 'number') {
-          // Unix timestamp
-          timestamp = new Date(timestampField);
-        } else {
-          console.warn('Unrecognized timestamp format:', timestampField);
+          console.log(`Successfully converted ISO string to Date for doc ${doc.id}`);
+        }
+        // Handle Unix timestamps (milliseconds)
+        else if (typeof timestampField === 'number') {
+          // Check if it's likely milliseconds (13 digits) or seconds (10 digits)
+          if (timestampField > 1e10) {
+            timestamp = new Date(timestampField);
+          } else {
+            timestamp = new Date(timestampField * 1000);
+          }
+          console.log(`Successfully converted number to Date for doc ${doc.id}`);
+        }
+        else {
+          console.warn(`Unrecognized timestamp format for doc ${doc.id}:`, typeof timestampField, timestampField);
           return;
         }
 
         // Validate the resulting timestamp
         if (!timestamp || isNaN(timestamp.getTime())) {
-          console.warn('Invalid timestamp created from:', timestampField);
+          console.warn(`Invalid timestamp created from:`, timestampField, `for doc ${doc.id}`);
           return;
         }
         
@@ -535,15 +546,31 @@ const getChildHistoricalData = async (reminderType) => {
           timestamp,
           ...data
         });
+        
+        console.log(`✓ Added ${reminderType} log from doc ${doc.id} with timestamp:`, timestamp.toISOString());
       } catch (error) {
-        console.error('Error processing timestamp for doc:', doc.id, error);
+        console.error(`Error processing timestamp for doc ${doc.id}:`, error);
+        console.error(`Problematic field value:`, timestampField);
       }
     });
 
-    console.log(`Successfully fetched ${logs.length} valid logs for ${reminderType} analysis`);
+    console.log(`Successfully processed ${logs.length} valid logs for ${reminderType} analysis (out of ${querySnapshot.size} documents)`);
+    
+    if (logs.length > 0) {
+      const firstLog = logs[0].timestamp?.toDate?.();
+      const lastLog = logs[logs.length - 1].timestamp?.toDate?.();
+
+      if (firstLog && lastLog) {
+        console.log(`Time range: ${lastLog.toISOString()} to ${firstLog.toISOString()}`);
+      } else {
+        console.log('One or more timestamps are missing or invalid.');
+      }
+    }
+    
     return logs.sort((a, b) => b.timestamp - a.timestamp); // Sort by newest first
   } catch (error) {
     console.error('Error fetching historical data:', error);
+    console.error('Stack trace:', error.stack);
     return [];
   }
 };
@@ -568,19 +595,19 @@ const AIConsentModal = () => (
           <View style={styles.consentSection}>
             <Text style={styles.consentSectionTitle}>Data Usage:</Text>
             <Text style={styles.consentModalText}>
-              • Your baby's feeding, sleep, and diaper change timestamps are sent to OpenAI's servers for analysis{'\n'}
-              • Data is used only to generate personalized scheduling recommendations{'\n'}
-              • No personal information (names, locations) is included in the analysis
+              - Your baby's feeding, sleep, and diaper change timestamps are sent to OpenAI's servers for analysis{'\n'}
+              - Data is used only to generate personalized scheduling recommendations{'\n'}
+              - No personal information (names, locations) is included in the analysis
             </Text>
           </View>
           
           <View style={styles.consentSection}>
             <Text style={styles.consentSectionTitle}>Privacy & Security:</Text>
             <Text style={styles.consentModalText}>
-              • Data transmission is encrypted and secure{'\n'}
-              • OpenAI may retain data for up to 30 days per their policy{'\n'}
-              • You can disable AI analysis at any time{'\n'}
-              • Local pattern analysis is available as an alternative
+              - Data transmission is encrypted and secure{'\n'}
+              - OpenAI may retain data for up to 30 days per their policy{'\n'}
+              - You can disable AI analysis at any time{'\n'}
+              - Local pattern analysis is available as an alternative
             </Text>
           </View>
           
@@ -618,9 +645,16 @@ const callOpenAI = async (prompt) => {
   try {
     console.log('Making OpenAI API request...');
     
-    if (!OPENAI_API_KEY || !OPENAI_API_KEY.startsWith('sk-')) {
-      throw new Error('Invalid API key format. OpenAI API keys should start with "sk-"');
-    }
+if (logs.length > 0) {
+  const firstLog = logs[0].timestamp?.toDate?.();
+  const lastLog = logs[logs.length - 1].timestamp?.toDate?.();
+
+  if (firstLog && lastLog) {
+    console.log(`Time range: ${lastLog.toISOString()} to ${firstLog.toISOString()}`);
+  } else {
+    console.log('One or more timestamps are missing or invalid.');
+  }
+}
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -695,57 +729,108 @@ const extractJSON = (text) => {
   }
 };
 
-// Enhanced local analysis as a reliable fallback
-const generateLocalRecommendations = (analysisData, reminderType, dataCount) => {
-  const { topHours, avgInterval, distribution, totalEntries } = analysisData;
+const generateLocalRecommendations = (analysisData, reminderType, dataCount, childData = {}) => {
+  const { topHours, avgInterval, earliestTime, latestTime, distribution } = analysisData;
   
   let confidence = 'low';
-  if (totalEntries >= 10) confidence = 'medium';
-  if (totalEntries >= 20) confidence = 'high';
+  if (dataCount >= 10) confidence = 'medium';
+  if (dataCount >= 20) confidence = 'high';
   
-  const getTypeSpecificInsights = (type, hours, interval, count) => {
+  const getTypeSpecificInsights = (type, hours, interval, count, childAge) => {
     switch (type) {
       case 'feeding':
         return [
-          `Your baby typically feeds at ${hours.slice(0, 2).join(' and ')} based on ${count} feeding logs`,
-          `Average ${interval} hours between feedings suggests a good routine`,
-          count < 10 ? 'More feeding data will improve recommendations' : 'Feeding pattern is well established'
+          `Baby typically feeds at ${hours.slice(0, 2).join(' and ')} based on ${count} feeding logs`,
+          `Average ${interval} hour intervals between feedings`,
+          childAge && childAge.includes('0-3') ? 'At this age, frequent feeding (every 2-3 hours) is normal' : 'Schedule is developing well with consistent patterns'
         ];
       case 'diaper':
         return [
           `Diaper changes most needed around ${hours.slice(0, 2).join(' and ')}`,
-          `${interval}-hour intervals between changes is typical`,
-          'Regular timing helps maintain comfort and hygiene'
+          `${interval}-hour intervals between changes fits normal patterns`,
+          `Activity spans from ${earliestTime} to ${latestTime}, covering baby's active hours`
         ];
       case 'nap':
         return [
           `Best nap times appear to be ${hours.slice(0, 2).join(' and ')}`,
-          `${interval} hours between sleep periods follows natural rhythms`,
-          'Consistent nap timing supports better nighttime sleep'
+          `${interval} hours between sleep periods follows natural rest cycles`,
+          `Naps logged between ${earliestTime} and ${latestTime} indicate good sleep distribution`
         ];
       default:
         return ['Pattern analysis based on your data', 'Timing shows developing routine', 'Consistency will improve outcomes'];
     }
   };
 
-  const getParentTip = (type) => {
+  const getParentTip = (type, childAge) => {
     const tips = {
-      feeding: 'Watch for hunger cues 15-30 minutes before scheduled feeding times',
-      diaper: 'Check diapers before and after feeds, and when baby seems fussy',
-      nap: 'Look for sleepy cues like yawning or rubbing eyes before nap times'
+      feeding: 'Watch for hunger cues 15-30 minutes before scheduled times. Newborns may need more frequent feeds.',
+      diaper: 'Check diapers before and after feeds, and when baby seems uncomfortable. More frequent changes support skin health.',
+      nap: 'Look for sleepy cues like yawning or rubbing eyes. Consistent nap times help regulate sleep cycles.'
     };
     return tips[type] || 'Maintain consistent timing to help establish healthy routines';
   };
   
   return {
     times: topHours.slice(0, 3),
-    explanation: `Local analysis of ${totalEntries} ${reminderType} entries shows optimal times`,
+    explanation: `Analysis of ${dataCount} logged ${reminderType} activities shows optimal times are ${topHours.slice(0, 2).join(' and ')}. Activity spans from ${earliestTime} to ${latestTime}.`,
     frequency: 'daily',
     confidence,
-    insights: getTypeSpecificInsights(reminderType, topHours, avgInterval, totalEntries),
-    parentTip: getParentTip(reminderType),
+    insights: getTypeSpecificInsights(reminderType, topHours, avgInterval, dataCount, childData?.age),
+    parentTip: getParentTip(reminderType, childData?.age),
     nextOptimization: 'Review patterns weekly as routines develop'
   };
+};
+
+const getChildData = async (childId) => {
+  try {
+    if (!childId) {
+      console.warn('getChildData: childId is missing');
+      return null;
+    }
+
+    const docRef = doc(db, 'children', childId);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      console.log('Child data retrieved:', data);
+      
+      let age = 0;
+      if (data.birthDate) {
+        let birthDate = data.birthDate;
+        if (typeof birthDate.toDate === 'function') {
+          birthDate = birthDate.toDate();
+        } else if (typeof birthDate === 'string') {
+          birthDate = new Date(birthDate);
+        }
+        
+        const today = new Date();
+        age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+      }
+      
+      const result = {
+        age,
+        ageMonths: age,
+        weight: data.weight || 'unknown',
+        weightUnit: data.weightUnit || 'lbs',
+        height: data.height || 'unknown',
+        heightUnit: data.heightUnit || 'in'
+      };
+      
+      console.log('Processed child data:', result);
+      return result;
+    } else {
+      console.warn('No child document found for childId:', childId);
+      return null;
+    }
+  } catch (error) {
+    console.error('Error fetching child data:', error);
+    return null;
+  }
 };
 
 const getAIRecommendations = async (reminderType) => {
@@ -768,34 +853,44 @@ const getAIRecommendations = async (reminderType) => {
       };
     }
 
-    const analysisData = prepareAnalysisData(historicalData, reminderType);
+    // Get child data for context
+    console.log('Fetching child data for childId:', childId);
+    const childData = await getChildData(childId);
+    console.log('Child data result:', childData);
+    
+    const analysisData = prepareAnalysisData(historicalData, reminderType, childData);
     console.log('Analysis data prepared:', analysisData);
     
-    // Fixed prompt without placeholder examples
-    const prompt = `You are analyzing a baby's ${reminderType} patterns. Based on this data, provide specific recommendations.
+const topHoursStr = analysisData.topHours.slice(0, 3).join(', ');
+const timesJsonArray = JSON.stringify(analysisData.topHours.slice(0, 3));
 
-Data Analysis:
-- Total entries: ${historicalData.length} ${reminderType} records
-- Most common times: ${analysisData.topHours.join(', ')}
-- Average interval: ${analysisData.avgInterval} hours
-- Pattern type: ${analysisData.distribution}
+const prompt = `You are analyzing a baby's ${reminderType} patterns. Your job is to recommend reminder times based ONLY on the actual data provided.
 
-Respond with valid JSON only:
+BABY DATA:
+- Age: ${childData?.ageMonths || 'unknown'} months
+- Number of ${reminderType} logs: ${historicalData.length}
+
+ACTUAL DATA ANALYSIS:
+The three most common times for ${reminderType} are: ${topHoursStr}
+Average interval: ${analysisData.avgInterval} hours
+Activity range: ${analysisData.earliestTime} to ${analysisData.latestTime}
+
+CRITICAL INSTRUCTIONS:
+1. You MUST use times from this list ONLY: ${timesJsonArray}
+2. Do NOT make up times or use 12:00 unless it's in the list above
+3. Return exactly 2-3 times from the provided list
+4. Respond with ONLY valid JSON, no other text
+
+Return this JSON structure:
 {
-  "times": [actual recommended times based on the data],
-  "explanation": "specific analysis of what the data shows",
+  "times": ${timesJsonArray},
+  "explanation": "Why these times are recommended based on the data",
   "frequency": "daily",
-  "confidence": "low/medium/high based on data quality",
-  "insights": [
-    "specific observation about timing patterns",
-    "specific observation about frequency patterns", 
-    "specific recommendation for improvement"
-  ],
-  "nextOptimization": "when to review these recommendations",
-  "parentTip": "practical advice based on the specific patterns found"
-}
-
-Use the actual data provided above. Do not use placeholder text.`;
+  "confidence": "medium",
+  "insights": ["insight based on data", "another insight", "third insight"],
+  "nextOptimization": "review timing after 1 week",
+  "parentTip": "practical advice for the parent"
+}`;
 
     try {
       const content = await callOpenAI(prompt);
@@ -810,18 +905,10 @@ Use the actual data provided above. Do not use placeholder text.`;
         throw new Error(`Invalid JSON response: ${parseError.message}`);
       }
       
-      // Validate that we don't have placeholder text
-      if (parsed.insights && parsed.insights.some(insight => 
-          insight.includes('insight 1') || 
-          insight.includes('insight 2') || 
-          insight.includes('insight 3'))) {
-        throw new Error('AI returned placeholder text instead of actual insights');
-      }
-      
-      if (!parsed.times || !Array.isArray(parsed.times)) {
+      if (!parsed.times || !Array.isArray(parsed.times) || parsed.times.length === 0) {
         throw new Error('Invalid response structure: missing or invalid times array');
       }
-      
+
       setAiLoading(false);
       return {
         ...parsed,
@@ -829,7 +916,7 @@ Use the actual data provided above. Do not use placeholder text.`;
       };
     } catch (apiError) {
       console.log(`AI API failed for ${reminderType}, using local analysis:`, apiError.message);
-      const localResult = generateLocalRecommendations(analysisData, reminderType, historicalData.length);
+      const localResult = generateLocalRecommendations(analysisData, reminderType, historicalData.length, childData);
       setAiLoading(false);
       return localResult;
     }
@@ -847,51 +934,128 @@ Use the actual data provided above. Do not use placeholder text.`;
     };
   }
 };
+
   
   // Helper function for enhanced data analysis
-// Replace the prepareAnalysisData function with this safer version:
-const prepareAnalysisData = (data, reminderType) => {
+const prepareAnalysisData = (data, reminderType, childData = {}) => {
+  console.log(`\n=== STARTING prepareAnalysisData for ${reminderType} ===`);
+  console.log(`Received ${data.length} total entries`);
+  
+  if (data.length > 0) {
+    console.log('First entry timestamp:', data[0].timestamp);
+  }
+
   const hourCounts = {};
   const intervals = [];
   const dayPatterns = {};
+  let earliestHour = 24;
+  let latestHour = 0;
 
-  // Filter out entries without valid timestamps first
-  const validData = data.filter(entry => {
-    return entry.timestamp && 
-           entry.timestamp instanceof Date && 
-           !isNaN(entry.timestamp.getTime());
+  // Helper function to convert various timestamp formats to Date
+  const convertToDate = (timestampField) => {
+    if (!timestampField) return null;
+
+    try {
+      // Already a Date
+      if (timestampField instanceof Date) {
+        return timestampField;
+      }
+
+      // Firestore Timestamp with toDate() method
+      if (typeof timestampField.toDate === 'function') {
+        return timestampField.toDate();
+      }
+
+      // Raw Firestore timestamp object: {seconds, nanoseconds}
+      if (
+        typeof timestampField === 'object' &&
+        typeof timestampField.seconds === 'number'
+      ) {
+        const milliseconds = timestampField.seconds * 1000 + Math.floor(timestampField.nanoseconds / 1000000);
+        return new Date(milliseconds);
+      }
+
+      // ISO string
+      if (typeof timestampField === 'string') {
+        return new Date(timestampField);
+      }
+
+      // Unix timestamp (milliseconds or seconds)
+      if (typeof timestampField === 'number') {
+        if (timestampField > 1e10) {
+          return new Date(timestampField); // milliseconds
+        } else {
+          return new Date(timestampField * 1000); // seconds
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error converting timestamp:', error);
+      return null;
+    }
+  };
+
+  // Detailed filter logging
+  const validData = data.filter((entry, idx) => {
+    const convertedDate = convertToDate(entry.timestamp);
+    const isValid = convertedDate && !isNaN(convertedDate.getTime());
+    
+    if (idx < 3) { // Log first 3 entries
+      console.log(`Entry ${idx}:`, {
+        raw: entry.timestamp,
+        converted: convertedDate,
+        isValid: isValid
+      });
+    }
+    
+    // Replace the timestamp with the converted Date
+    if (isValid) {
+      entry.timestamp = convertedDate;
+    }
+    
+    return isValid;
   });
 
-  console.log(`Analyzing ${validData.length} valid entries out of ${data.length} total for ${reminderType}`);
+  console.log(`✓ Filtered to ${validData.length} valid entries`);
 
   if (validData.length === 0) {
+    console.warn(`❌ No valid timestamps found! Returning defaults.`);
     return {
       topHours: ['12:00'],
       avgInterval: 3,
       distribution: 'no valid data',
       patterns: 'insufficient data',
       totalEntries: 0,
-      daySpread: 0
+      daySpread: 0,
+      earliestTime: '00:00',
+      latestTime: '00:00'
     };
   }
 
   validData.forEach((entry, index) => {
     try {
       const hour = entry.timestamp.getHours();
-      const day = entry.timestamp.getDay(); // 0-6 (Sunday-Saturday)
+      const minutes = entry.timestamp.getMinutes();
+      const day = entry.timestamp.getDay();
+      
+      if (index < 3) {
+        console.log(`Processing ${index}: ${entry.timestamp.toISOString()} → hour: ${hour}`);
+      }
       
       if (hour >= 0 && hour <= 23) {
         hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+        earliestHour = Math.min(earliestHour, hour);
+        latestHour = Math.max(latestHour, hour);
       }
       
       if (day >= 0 && day <= 6) {
         dayPatterns[day] = (dayPatterns[day] || 0) + 1;
       }
 
-      // Calculate intervals only with valid consecutive entries
       if (index > 0 && validData[index - 1].timestamp) {
         const intervalHours = Math.abs(entry.timestamp - validData[index - 1].timestamp) / (1000 * 60 * 60);
-        if (intervalHours > 0 && intervalHours < 24) { // Increased max interval to 24 hours
+        if (intervalHours > 0 && intervalHours < 24) {
           intervals.push(intervalHours);
         }
       }
@@ -900,7 +1064,6 @@ const prepareAnalysisData = (data, reminderType) => {
     }
   });
 
-  // Get top 3 hours, fallback to common times if no data
   const topHours = Object.keys(hourCounts).length > 0 
     ? Object.entries(hourCounts)
         .sort(([,a], [,b]) => b - a)
@@ -912,9 +1075,15 @@ const prepareAnalysisData = (data, reminderType) => {
     ? (intervals.reduce((a, b) => a + b, 0) / intervals.length).toFixed(1)
     : getDefaultInterval(reminderType);
 
+  console.log(`Hour counts:`, hourCounts);
+  console.log(`Top hours: ${topHours.join(', ')}`);
+  console.log(`Average interval: ${avgInterval} hours`);
+
   return {
     topHours,
     avgInterval,
+    earliestTime: earliestHour !== 24 ? `${earliestHour.toString().padStart(2, '0')}:00` : '00:00',
+    latestTime: latestHour !== 0 ? `${latestHour.toString().padStart(2, '0')}:00` : '00:00',
     distribution: Object.keys(hourCounts).length > 6 ? 'spread throughout day' : 'concentrated in specific hours',
     patterns: intervals.length > 0 ? `${avgInterval}h average intervals` : 'establishing patterns',
     totalEntries: validData.length,
@@ -1086,17 +1255,17 @@ const scheduleNotifications = async (reminderType, times, useAI = false) => {
       switch (reminderType) {
         case 'feeding':
           notificationBody = currentReminder.confidence === 'high'
-            ? `${timeFormatted}: Perfect time for ${name}'s feeding based on their routine! 🍼`
+            ? `${timeFormatted}: Perfect time for ${name}'s feeding based on their routine! ðŸ¼`
             : `${timeFormatted}: AI suggests feeding time for ${name} based on recent patterns.`;
           break;
         case 'diaper':
           notificationBody = currentReminder.confidence === 'high'
-            ? `${timeFormatted}: Time for ${name}'s diaper check - staying ahead of their schedule! 👶`
+            ? `${timeFormatted}: Time for ${name}'s diaper check - staying ahead of their schedule! ðŸ‘¶`
             : `${timeFormatted}: AI recommends checking ${name}'s diaper based on timing patterns.`;
           break;
         case 'nap':
           notificationBody = currentReminder.confidence === 'high'
-            ? `${timeFormatted}: ${name} is likely getting sleepy - optimal nap time! 😴`
+            ? `${timeFormatted}: ${name} is likely getting sleepy - optimal nap time! ðŸ˜´`
             : `${timeFormatted}: AI suggests nap time for ${name} based on sleep patterns.`;
           break;
         default:
@@ -1104,7 +1273,7 @@ const scheduleNotifications = async (reminderType, times, useAI = false) => {
       }
       
       if (currentReminder.parentTip) {
-        notificationBody += `\n💡 Tip: ${currentReminder.parentTip}`;
+        notificationBody += `\nðŸ’¡ Tip: ${currentReminder.parentTip}`;
       }
     } else {
       const timeFormatted = formatTime12Hour(time);
@@ -1115,7 +1284,7 @@ const scheduleNotifications = async (reminderType, times, useAI = false) => {
       const notificationId = await Notifications.scheduleNotificationAsync({
         content: {
           title: useAI 
-            ? `🤖 Smart Reminder: ${reminder.title}` 
+            ? `AI– Smart Reminder: ${reminder.title}` 
             : `${name}'s ${reminder.title} Reminder`,
           body: notificationBody,
           data: { 
@@ -1163,7 +1332,7 @@ const sendImmediateReminder = async (reminderType) => {
   if (currentReminder.useAI && currentReminder.aiPattern) {
     notificationBody = `Immediate reminder: ${currentReminder.aiPattern}`;
     if (currentReminder.parentTip) {
-      notificationBody += `\n💡 ${currentReminder.parentTip}`;
+      notificationBody += `\nðŸ’¡ ${currentReminder.parentTip}`;
     }
   } else {
     notificationBody = `Manual reminder for ${name}'s ${reminder.title.toLowerCase()}`;
@@ -1173,7 +1342,7 @@ const sendImmediateReminder = async (reminderType) => {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: currentReminder.useAI 
-          ? `🤖 ${reminder.title} - Test Reminder` 
+          ? `ðŸ¤– ${reminder.title} - Test Reminder` 
           : `${reminder.title} Reminder`,
         body: notificationBody,
         data: { childId, reminderType, immediate: true, useAI: currentReminder.useAI },
@@ -1405,62 +1574,57 @@ const saveReminders = async () => {
 };
 
   return (
-    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
-      <ThemedBackground>
-        <View style={styles.container}>
-        <View style={styles.header}>
+    <LinearGradient 
+      colors={theme.backgroundGradient} 
+      start={{ x: 0, x: 0.5 }} 
+      end={{ y: 1, y: 0.5 }}
+      style={styles.gradient}
+    >
+      <View style={styles.container}>
+        {/* Header - Now with proper dark mode support */}
+        <View style={[styles.header, { backgroundColor: darkMode ? 'transparent' : 'transparent' }]}>
           <TouchableOpacity 
             style={styles.backButton} 
             onPress={() => navigation.goBack()}
             activeOpacity={0.7}
           >
-            <BlurView intensity={20} tint="light" style={styles.backButtonBlur}>
-              <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
+            <BlurView intensity={20} tint={darkMode ? "dark" : "light"} style={styles.backButtonBlur}>
+              <MaterialCommunityIcons name="arrow-left" size={24} color={theme.textPrimary} />
             </BlurView>
           </TouchableOpacity>
-          <TouchableOpacity onPress={saveReminders} style={styles.saveButtonContainer}>
+          <TouchableOpacity onPress={saveReminders} style={[styles.saveButtonContainer, { backgroundColor: darkMode ? '#667eea' : '#007AFF' }]}>
             <Text style={styles.saveButton}>Save</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.title}>{name}'s Reminders</Text>
+        <Text style={[styles.title, { color: theme.textPrimary }]}>{name}'s Reminders</Text>
 
         <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
           {/* AI Consent Section */}
-    <View style={styles.aiConsentContainer}>
-    <View style={styles.consentHeader}>
-        <MaterialCommunityIcons name="robot" size={24} color="#FF9800" />
-        <Text style={styles.consentTitle}>AI-Powered Smart Scheduling</Text>
-    </View>
-    <Text style={styles.consentDescription}>
-        Enable AI to analyze your baby's care patterns and suggest optimal reminder times. 
-        AI uses your historical data to identify patterns and recommend personalized schedules that adapt to your baby's natural rhythms.
-    </Text>
-    <View style={styles.consentRow}>
-        <Text style={styles.consentLabel}>Enable AI scheduling assistance</Text>
-        <Switch
-        value={aiConsent}
-        onValueChange={(value) => {
-            if (value) {
-            setShowAiConsentModal(true);
-            } else {
-            handleAiConsentToggle(false);
-            }
-        }}
-        trackColor={{ false: '#E0E0E0', true: '#FF9800' }}
-        thumbColor={aiConsent ? '#FF9800' : '#F4F4F4'}
-        />
-    </View>
-    {aiConsent && (
-        <TouchableOpacity 
-        style={styles.privacyInfoButton}
-        onPress={() => setShowAiConsentModal(true)}
-        >
-        <MaterialCommunityIcons name="information-outline" size={16} color="#666" />
-        <Text style={styles.privacyInfoText}>View privacy & data usage details</Text>
-        </TouchableOpacity>
-    )}
-    </View>
+          <View style={[styles.aiConsentContainer, { backgroundColor: darkMode ? '#2c2c2c' : '#FFF' }]}>
+            <View style={styles.consentHeader}>
+              <MaterialCommunityIcons name="robot" size={24} color="#FF9800" />
+              <Text style={[styles.consentTitle, { color: theme.textPrimary }]}>AI-Powered Smart Scheduling</Text>
+            </View>
+            <Text style={[styles.consentDescription, { color: theme.textSecondary }]}>
+              Enable AI to analyze your baby's care patterns and suggest optimal reminder times.
+            </Text>
+            <View style={styles.consentRow}>
+              <Text style={[styles.consentLabel, { color: theme.textPrimary }]}>Enable AI scheduling assistance</Text>
+              <Switch
+                value={aiConsent}
+                onValueChange={(value) => {
+                  if (value) {
+                    setShowAiConsentModal(true);
+                  } else {
+                    handleAiConsentToggle(false);
+                  }
+                }}
+                trackColor={{ false: '#E0E0E0', true: '#FF9800' }}
+                thumbColor={aiConsent ? '#FF9800' : '#F4F4F4'}
+              />
+            </View>
+          </View>
 
           {/* Reminder Cards */}
           {reminderTypes.map((reminderType) => (
@@ -1477,6 +1641,8 @@ const saveReminders = async () => {
               aiConsent={aiConsent}
               aiLoading={aiLoading}
               reminderTypes={reminderTypes}
+              darkMode={darkMode}
+              theme={theme}
             />
           ))}
           <View style={styles.bottomPadding} />
@@ -1484,57 +1650,55 @@ const saveReminders = async () => {
 
         <AIConsentModal />
 
-{/* Time Picker Modal */}
-{showTimePicker && (
-  <Modal transparent visible={showTimePicker} animationType="slide">
-    <TouchableOpacity 
-      style={styles.modalOverlay} 
-      activeOpacity={1} 
-      onPress={() => {
-        if (Platform.OS === 'android') {
-          setShowTimePicker(false);
-        }
-      }}
-    >
-      <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-        <View style={styles.timePickerModal}>
-          <Text style={styles.modalTitle}>Select Reminder Time</Text>
-          <View style={styles.timePickerContainer}>
-            <DateTimePicker
-              value={tempTime}
-              mode="time"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={handleTimeChange}
-              textColor="#000000"
-              themeVariant="light"
-            />
-          </View>
-          {Platform.OS === 'ios' && (
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={styles.modalButton}
-                onPress={() => {
+        {/* Time Picker Modal */}
+        {showTimePicker && (
+          <Modal transparent visible={showTimePicker} animationType="slide">
+            <TouchableOpacity 
+              style={styles.modalOverlay} 
+              activeOpacity={1} 
+              onPress={() => {
+                if (Platform.OS === 'android') {
                   setShowTimePicker(false);
-                  setCurrentEditingType(null);
-                }}
-              >
-                <Text style={styles.modalButtonText}>Cancel</Text>
+                }
+              }}
+            >
+              <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+                <View style={[styles.timePickerModal, { backgroundColor: darkMode ? '#2c2c2c' : '#FFF' }]}>
+                  <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Select Reminder Time</Text>
+                  <View style={styles.timePickerContainer}>
+                    <DateTimePicker
+                      value={tempTime}
+                      mode="time"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={handleTimeChange}
+                      textColor={theme.textPrimary}
+                    />
+                  </View>
+                  {Platform.OS === 'ios' && (
+                    <View style={styles.modalButtons}>
+                      <TouchableOpacity 
+                        style={[styles.modalButton, { backgroundColor: darkMode ? '#444' : '#F0F0F0' }]}
+                        onPress={() => {
+                          setShowTimePicker(false);
+                          setCurrentEditingType(null);
+                        }}
+                      >
+                        <Text style={[styles.modalButtonText, { color: theme.textPrimary }]}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.modalButton, styles.confirmButton]}
+                        onPress={confirmTimeChange}
+                      >
+                        <Text style={[styles.modalButtonText, styles.confirmButtonText]}>Confirm</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.confirmButton]}
-                onPress={confirmTimeChange}
-              >
-                <Text style={[styles.modalButtonText, styles.confirmButtonText]}>Confirm</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-    </TouchableOpacity>
-  </Modal>
-)}
+            </TouchableOpacity>
+          </Modal>
+        )}
       </View>
-      </ThemedBackground>
     </LinearGradient>
   );
 }
@@ -1553,6 +1717,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+    paddingBottom: 10,
   },
   backButton: {
     width: 40,
@@ -1582,7 +1749,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 20,
-    color: '#333',
   },
   scrollContainer: {
     flex: 1,

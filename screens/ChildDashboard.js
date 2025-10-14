@@ -13,7 +13,7 @@ import {
   doc,            // for permission snapshot
   onSnapshot,     // for permission snapshot
 } from 'firebase/firestore';
-import { Bell, ArrowLeft, Settings, Sparkles, TrendingUp, Activity } from 'lucide-react-native';
+import { Bell, ArrowLeft, Settings, Sparkles, TrendingUp, Activity, Image as ImageIcon } from 'lucide-react-native';
 import { app } from '../firebaseConfig';
 import { useDarkMode } from '../screens/DarkMode';
 import ThemedBackground from '../screens/ThemedBackground';
@@ -437,34 +437,10 @@ export default function ChildDashboard() {
                 <Text style={styles.actionButtonText}>Reminders</Text>
               </LinearGradient>
             </TouchableOpacity>
+            {/* Memories button - only for parents */}
+          
           </View>
 
-          {/* Digest Button */}
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={async () => {
-              try {
-                const NotificationService = (await import('../src/notifications/notificationService')).default;
-                const res = await NotificationService.sendDigestNotificationForChild(childId);
-                if (res) Alert.alert('Digest scheduled');
-                else Alert.alert('No digest sent (throttled or no data)');
-              } catch (e) {
-                console.error(e);
-                Alert.alert('Failed to send digest');
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={darkMode ? ['#ff80ab', '#ff4081'] : ['#F8BBD9', '#F48FB1']}
-              style={styles.actionButtonGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <Sparkles size={12} color="#fff" strokeWidth={2} />
-              <Text style={styles.actionButtonText}>Send Digest Now</Text>
-            </LinearGradient>
-          </TouchableOpacity>
 
           {/* History */}
           <View style={styles.section}>
@@ -645,13 +621,16 @@ const styles = StyleSheet.create({
   actionButtonsContainer:
    { flexDirection: 'row', 
     justifyContent: 'space-between',
-     marginBottom: 30
+     marginBottom: 20,
+     flexWrap: 'wrap',
      },
   actionButton:
    { flex: 1, 
     marginHorizontal: 5, 
     borderRadius: 20, 
-    elevation: 6 
+    elevation: 6,
+    marginBottom: 10,
+    minWidth: '48%',
   },
   actionButtonGradient:
    { flexDirection: 'row',

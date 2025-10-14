@@ -13,31 +13,16 @@ import {
   StatusBar,
   ActivityIndicator,
   Animated,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Video } from 'expo-av';
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  orderBy, 
-  getDocs, 
-  deleteDoc, 
-  doc,
-  serverTimestamp 
-} from 'firebase/firestore';
-import { 
-  ref, 
-  uploadBytes, 
-  getDownloadURL, 
-  deleteObject 
-} from 'firebase/storage';
-import { Camera, ArrowLeft, Plus, Trash2, Play, Image as ImageIcon } from 'lucide-react-native';
-import { db, storage } from '../firebaseConfig';
+import { Camera, ArrowLeft, Plus, Trash2, Play, Image as ImageIcon, Edit3, X } from 'lucide-react-native';
 import { useDarkMode } from '../screens/DarkMode';
 import ThemedBackground from '../screens/ThemedBackground';
 
@@ -54,6 +39,10 @@ export default function MemoriesScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const [selectedMemory, setSelectedMemory] = useState(null);
   const [showFullScreen, setShowFullScreen] = useState(false);
+  const [editingCaption, setEditingCaption] = useState(null);
+  const [captionText, setCaptionText] = useState('');
+  const [showCaptionModal, setShowCaptionModal] = useState(false);
+  const [pendingAsset, setPendingAsset] = useState(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -71,7 +60,7 @@ export default function MemoriesScreen() {
         Alert.alert('Error', 'Child ID is missing');
         navigation.goBack();
       } else {
-        fetchMemories();
+        loadMemories();
       }
     }, [childId])
   );
@@ -91,28 +80,39 @@ export default function MemoriesScreen() {
     return true;
   };
 
-  const fetchMemories = async () => {
+  // Load memories from local storage
+  const loadMemories = async () => {
     try {
       setIsLoading(true);
-      const memoriesQuery = query(
-        collection(db, 'memories'),
-        where('childId', '==', childId),
-        orderBy('createdAt', 'desc')
-      );
+      const storageKey = `memories_${childId}`;
+      const storedMemories = await AsyncStorage.getItem(storageKey);
       
-      const snapshot = await getDocs(memoriesQuery);
-      const fetchedMemories = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date()
-      }));
-      
-      setMemories(fetchedMemories);
+      if (storedMemories) {
+        const parsedMemories = JSON.parse(storedMemories);
+        // Sort by date, newest first
+        const sortedMemories = parsedMemories.sort((a, b) => 
+          new Date(b.createdAt) - new Date(a.createdAt)
+        );
+        setMemories(sortedMemories);
+      } else {
+        setMemories([]);
+      }
     } catch (error) {
-      console.error('Error fetching memories:', error);
+      console.error('Error loading memories:', error);
       Alert.alert('Error', 'Failed to load memories');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Save memories to local storage
+  const saveMemories = async (updatedMemories) => {
+    try {
+      const storageKey = `memories_${childId}`;
+      await AsyncStorage.setItem(storageKey, JSON.stringify(updatedMemories));
+    } catch (error) {
+      console.error('Error saving memories:', error);
+      throw error;
     }
   };
 
@@ -133,15 +133,17 @@ export default function MemoriesScreen() {
     if (!hasPermission) return;
 
     try {
-        const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.All,
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
-          });              
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });              
 
       if (!result.canceled && result.assets[0]) {
-        await uploadMemory(result.assets[0]);
+        setPendingAsset(result.assets[0]);
+        setCaptionText('');
+        setShowCaptionModal(true);
       }
     } catch (error) {
       console.error('Camera error:', error);
@@ -154,15 +156,17 @@ export default function MemoriesScreen() {
     if (!hasPermission) return;
 
     try {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.All,
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
-        });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
           
       if (!result.canceled && result.assets[0]) {
-        await uploadMemory(result.assets[0]);
+        setPendingAsset(result.assets[0]);
+        setCaptionText('');
+        setShowCaptionModal(true);
       }
     } catch (error) {
       console.error('Library error:', error);
@@ -170,41 +174,61 @@ export default function MemoriesScreen() {
     }
   };
 
-  const uploadMemory = async (asset) => {
+  const saveMemory = async (caption = '') => {
+    if (!pendingAsset) return;
+    
     try {
-      console.log('Uploading asset:', asset);
       setIsUploading(true);
       
-      const response = await fetch(asset.uri);
-      const blob = await response.blob();
-      
-      const fileExtension = asset.type === 'video' ? 'mp4' : 'jpg';
-      const fileName = `${childId}_${Date.now()}.${fileExtension}`;
-      const storageRef = ref(storage, `memories/${fileName}`);
-      
-      await uploadBytes(storageRef, blob);
-      const downloadURL = await getDownloadURL(storageRef);
-      
-      const memoryData = {
+      // Create memory object with local URI
+      const newMemory = {
+        id: Date.now().toString(),
         childId,
-        type: asset.type === 'video' ? 'video' : 'image',
-        url: downloadURL,
-        fileName,
-        createdAt: serverTimestamp(),
-        duration: asset.duration || null,
-        width: asset.width,
-        height: asset.height,
+        type: pendingAsset.type === 'video' ? 'video' : 'image',
+        uri: pendingAsset.uri, // Store local URI
+        caption: caption.trim(),
+        createdAt: new Date().toISOString(),
+        duration: pendingAsset.duration || null,
+        width: pendingAsset.width,
+        height: pendingAsset.height,
       };
       
-      await addDoc(collection(db, 'memories'), memoryData);
+      // Add to memories array
+      const updatedMemories = [newMemory, ...memories];
+      setMemories(updatedMemories);
+      
+      // Save to local storage
+      await saveMemories(updatedMemories);
       
       Alert.alert('Success', 'Memory added successfully!');
-      fetchMemories();
     } catch (error) {
-      console.error('Upload error:', error);
-      Alert.alert('Error', 'Failed to upload memory');
+      console.error('Save error:', error);
+      Alert.alert('Error', 'Failed to save memory');
     } finally {
       setIsUploading(false);
+      setShowCaptionModal(false);
+      setCaptionText('');
+      setPendingAsset(null);
+    }
+  };
+
+  const updateCaption = async (memoryId, newCaption) => {
+    try {
+      const updatedMemories = memories.map(memory =>
+        memory.id === memoryId
+          ? { ...memory, caption: newCaption.trim() }
+          : memory
+      );
+      
+      setMemories(updatedMemories);
+      await saveMemories(updatedMemories);
+      
+      Alert.alert('Success', 'Caption updated successfully!');
+      setEditingCaption(null);
+      setCaptionText('');
+    } catch (error) {
+      console.error('Update caption error:', error);
+      Alert.alert('Error', 'Failed to update caption');
     }
   };
 
@@ -219,15 +243,11 @@ export default function MemoriesScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete from storage
-              const storageRef = ref(storage, `memories/${memory.fileName}`);
-              await deleteObject(storageRef);
-              
-              // Delete from firestore
-              await deleteDoc(doc(db, 'memories', memory.id));
+              const updatedMemories = memories.filter(m => m.id !== memory.id);
+              setMemories(updatedMemories);
+              await saveMemories(updatedMemories);
               
               Alert.alert('Success', 'Memory deleted successfully');
-              fetchMemories();
             } catch (error) {
               console.error('Delete error:', error);
               Alert.alert('Error', 'Failed to delete memory');
@@ -238,15 +258,89 @@ export default function MemoriesScreen() {
     );
   };
 
-  const formatDate = (date) => {
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
+
+const CaptionModal = () => (
+    <Modal visible={showCaptionModal} transparent animationType="slide">
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.captionModalContainer}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.captionModalContent, { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }]}>
+            <Text style={[styles.captionModalTitle, { color: darkMode ? '#fff' : '#2E3A59' }]}>
+              Add a Caption
+            </Text>
+            
+            <TextInput
+              style={[
+                styles.captionInput,
+                { 
+                  backgroundColor: darkMode ? '#2c2c2c' : '#f5f5f5',
+                  color: darkMode ? '#fff' : '#2E3A59'
+                }
+              ]}
+              placeholder="Describe this memory... (optional)"
+              placeholderTextColor={darkMode ? '#999' : '#666'}
+              value={captionText}
+              onChangeText={setCaptionText}
+              multiline
+              maxLength={200}
+              autoFocus={false}
+            />
+            
+            <Text style={[styles.characterCount, { color: darkMode ? '#999' : '#666' }]}>
+              {captionText.length}/200
+            </Text>
+
+            <View style={styles.captionModalButtons}>
+              <TouchableOpacity
+                style={[styles.captionModalButton, styles.captionCancelButton]}
+                onPress={() => {
+                  setShowCaptionModal(false);
+                  setCaptionText('');
+                  setPendingAsset(null);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.captionModalButtonText, { color: darkMode ? '#fff' : '#2E3A59' }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.captionModalButton}
+                onPress={() => saveMemory(captionText)}
+                activeOpacity={0.8}
+                disabled={isUploading}
+              >
+                <LinearGradient
+                  colors={['#E1BEE7', '#CE93D8']}
+                  style={styles.captionSaveGradient}
+                >
+                  {isUploading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.captionModalButtonText}>Save Memory</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
 
   const MemoryCard = ({ memory }) => (
     <TouchableOpacity
@@ -259,15 +353,13 @@ export default function MemoriesScreen() {
     >
       <View style={styles.memoryImageContainer}>
         {memory.type === 'image' ? (
-          <Image source={{ uri: memory.url }} style={styles.memoryImage} />
+          <Image source={{ uri: memory.uri }} style={styles.memoryImage} />
         ) : (
           <View style={styles.videoContainer}>
             <Image 
-              source={{ uri: memory.url }} 
+              source={{ uri: memory.uri }} 
               style={styles.memoryImage}
-              onError={() => {
-                // Fallback for video thumbnails
-              }}
+              onError={() => {}}
             />
             <View style={styles.playButton}>
               <Play size={24} color="#fff" fill="#fff" />
@@ -278,6 +370,11 @@ export default function MemoriesScreen() {
           colors={['transparent', 'rgba(0,0,0,0.8)']}
           style={styles.memoryGradient}
         >
+          {memory.caption ? (
+            <Text style={styles.memoryCaption} numberOfLines={2}>
+              {memory.caption}
+            </Text>
+          ) : null}
           <Text style={styles.memoryDate}>
             {formatDate(memory.createdAt)}
           </Text>
@@ -293,7 +390,93 @@ export default function MemoriesScreen() {
       >
         <Trash2 size={16} color="#fff" />
       </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.editButton}
+        onPress={(e) => {
+          e.stopPropagation();
+          setCaptionText(memory.caption || '');
+          setEditingCaption(memory.id);
+        }}
+        activeOpacity={0.7}
+      >
+        <Edit3 size={16} color="#fff" />
+      </TouchableOpacity>
     </TouchableOpacity>
+  );
+
+  const EditCaptionModal = () => (
+    <Modal visible={editingCaption !== null} transparent animationType="slide">
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.captionModalContainer}
+      >
+        <TouchableOpacity 
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => {
+            setEditingCaption(null);
+            setCaptionText('');
+          }}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={[styles.captionModalContent, { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }]}>
+              <Text style={[styles.captionModalTitle, { color: darkMode ? '#fff' : '#2E3A59' }]}>
+                Edit Caption
+              </Text>
+              
+              <TextInput
+                style={[
+                  styles.captionInput,
+                  { 
+                    backgroundColor: darkMode ? '#2c2c2c' : '#f5f5f5',
+                    color: darkMode ? '#fff' : '#2E3A59'
+                  }
+                ]}
+                placeholder="Describe this memory..."
+                placeholderTextColor={darkMode ? '#999' : '#666'}
+                value={captionText}
+                onChangeText={setCaptionText}
+                multiline
+                maxLength={200}
+                autoFocus={false}
+              />
+              
+              <Text style={[styles.characterCount, { color: darkMode ? '#999' : '#666' }]}>
+                {captionText.length}/200
+              </Text>
+
+              <View style={styles.captionModalButtons}>
+                <TouchableOpacity
+                  style={[styles.captionModalButton, styles.captionCancelButton]}
+                  onPress={() => {
+                    setEditingCaption(null);
+                    setCaptionText('');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.captionModalButtonText, { color: darkMode ? '#fff' : '#2E3A59' }]}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.captionModalButton}
+                  onPress={() => updateCaption(editingCaption, captionText)}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={['#81D4FA', '#64B5F6']}
+                    style={styles.captionSaveGradient}
+                  >
+                    <Text style={styles.captionModalButtonText}>Save</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 
   const FullScreenModal = () => (
@@ -304,28 +487,35 @@ export default function MemoriesScreen() {
           onPress={() => setShowFullScreen(false)}
           activeOpacity={0.8}
         >
-          <Text style={styles.fullScreenCloseText}>✕</Text>
+          <X size={24} color="#fff" />
         </TouchableOpacity>
         
         {selectedMemory && (
           <View style={styles.fullScreenContent}>
             {selectedMemory.type === 'image' ? (
               <Image
-                source={{ uri: selectedMemory.url }}
+                source={{ uri: selectedMemory.uri }}
                 style={styles.fullScreenImage}
                 resizeMode="contain"
               />
             ) : (
               <Video
-                source={{ uri: selectedMemory.url }}
+                source={{ uri: selectedMemory.uri }}
                 style={styles.fullScreenVideo}
                 useNativeControls
                 resizeMode="contain"
                 shouldPlay={false}
               />
             )}
+            {selectedMemory.caption ? (
+              <View style={styles.fullScreenCaptionContainer}>
+                <Text style={styles.fullScreenCaption}>
+                  {selectedMemory.caption}
+                </Text>
+              </View>
+            ) : null}
             <Text style={styles.fullScreenDate}>
-              {selectedMemory && formatDate(selectedMemory.createdAt)}
+              {formatDate(selectedMemory.createdAt)}
             </Text>
           </View>
         )}
@@ -341,7 +531,6 @@ export default function MemoriesScreen() {
         backgroundColor="transparent"
       />
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
@@ -379,7 +568,6 @@ export default function MemoriesScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Content */}
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={darkMode ? '#fff' : '#2E3A59'} />
@@ -412,6 +600,8 @@ export default function MemoriesScreen() {
         )}
       </Animated.View>
       
+      <CaptionModal />
+      <EditCaptionModal />
       <FullScreenModal />
     </ThemedBackground>
   );
@@ -527,14 +717,22 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 60,
+    minHeight: 60,
     justifyContent: 'flex-end',
     paddingHorizontal: 12,
     paddingBottom: 12,
+    paddingTop: 20,
+  },
+  memoryCaption: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 4,
+    lineHeight: 18,
   },
   memoryDate: {
-    color: '#fff',
-    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 11,
     fontWeight: '500',
   },
   deleteButton: {
@@ -547,6 +745,77 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(244, 67, 54, 0.9)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  editButton: {
+    position: 'absolute',
+    top: 8,
+    right: 48,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(33, 150, 243, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  captionModalContainer: {
+    flex: 1,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  captionModalContent: {
+    width: width * 0.85,
+    borderRadius: 20,
+    padding: 24,
+    elevation: 10,
+  },
+  captionModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  captionInput: {
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    minHeight: 120,
+    textAlignVertical: 'top',
+    marginBottom: 8,
+  },
+  characterCount: {
+    fontSize: 12,
+    textAlign: 'right',
+    marginBottom: 20,
+  },
+  captionModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  captionModalButton: {
+    flex: 1,
+    marginHorizontal: 6,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  captionCancelButton: {
+    backgroundColor: '#E0E0E0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  captionSaveGradient: {
+    paddingVertical: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  captionModalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
   fullScreenContainer: {
     flex: 1,
@@ -566,11 +835,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 1000,
   },
-  fullScreenCloseText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
   fullScreenContent: {
     flex: 1,
     justifyContent: 'center',
@@ -579,16 +843,29 @@ const styles = StyleSheet.create({
   },
   fullScreenImage: {
     width: width,
-    height: height * 0.8,
+    height: height * 0.7,
   },
   fullScreenVideo: {
     width: width,
-    height: height * 0.8,
+    height: height * 0.7,
   },
-  fullScreenDate: {
+  fullScreenCaptionContainer: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 20,
+    maxWidth: width * 0.9,
+  },
+  fullScreenCaption: {
     color: '#fff',
     fontSize: 16,
-    marginTop: 20,
+    lineHeight: 24,
+    textAlign: 'center',
+  },
+  fullScreenDate: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    marginTop: 12,
     textAlign: 'center',
   },
 });

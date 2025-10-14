@@ -88,12 +88,12 @@ const ReminderCard = ({ reminder, type, reminders, setReminders, toggleReminder,
             <MaterialCommunityIcons name={reminder.icon} size={24} color={reminder.color} />
           </View>
           <View style={styles.reminderInfo}>
-            <Text style={styles.reminderTitle}>{reminder.title}</Text>
-            <Text style={styles.reminderDescription}>{reminder.description}</Text>
+          <Text style={[styles.reminderTitle, { color: theme.textPrimary }]}>{reminder.title}</Text>
+          <Text style={[styles.reminderDescription, { color: theme.textSecondary }]}>{reminder.description}</Text>
             {currentReminder.enabled && (
               <View style={styles.statusContainer}>
                 <View style={[styles.statusDot, { backgroundColor: reminder.color }]} />
-                <Text style={styles.statusText}>
+                <Text style={[styles.statusText, { color: theme.textSecondary }]}>
                   {currentReminder.useAI ? 'AI-Optimized' : 'Manual Schedule'}
                 </Text>
               </View>
@@ -146,8 +146,8 @@ const ReminderCard = ({ reminder, type, reminders, setReminders, toggleReminder,
             <View style={styles.settingInfo}>
               <MaterialCommunityIcons name="clock-outline" size={20} color="#666" />
               <View style={styles.settingLabelContainer}>
-                <Text style={styles.settingLabel}>Manual Time Setting</Text>
-                <Text style={styles.settingSubtext}>Set specific reminder times</Text>
+                <Text style={[styles.settingLabel, { color: theme.textPrimary }]}>Manual Time Setting</Text>
+                <Text style={[styles.settingSubtext, { color: theme.textSecondary }]}>Set specific reminder times</Text>
               </View>
             </View>
             <Switch
@@ -176,11 +176,11 @@ const ReminderCard = ({ reminder, type, reminders, setReminders, toggleReminder,
             <View style={styles.manualTimesSection}>
               <View style={styles.manualTimesSectionHeader}>
                 <MaterialCommunityIcons name="clock" size={16} color="#666" />
-                <Text style={styles.sectionHeaderText}>Reminder Times:</Text>
+                <Text style={[styles.sectionHeaderText, { color: theme.textPrimary }]}>Reminder Times:</Text>
               </View>
               {currentReminder.customTimes.map((time, index) => (
                 <View key={index} style={styles.manualTimeContainer}>
-                  <Text style={styles.timeText}>{formatTime12Hour(time)}</Text>
+                  <Text style={[styles.timeText, { color: theme.textPrimary }]}>{formatTime12Hour(time)}</Text>
                   <View style={styles.timeActions}>
                     <TouchableOpacity 
                       style={styles.editTimeButton}
@@ -231,12 +231,12 @@ const ReminderCard = ({ reminder, type, reminders, setReminders, toggleReminder,
             <View style={styles.settingInfo}>
               <MaterialCommunityIcons name="robot" size={20} color="#FF9800" />
               <View style={styles.settingLabelContainer}>
-                <Text style={styles.settingLabel}>
-                  AI Pattern Recognition
-                </Text>
-                <Text style={styles.settingSubtext}>
-                  Learns from your baby's patterns
-                </Text>
+              <Text style={[styles.settingLabel, { color: theme.textPrimary }]}>
+                AI Pattern Recognition
+              </Text>
+              <Text style={[styles.settingSubtext, { color: theme.textSecondary }]}>
+                Learns from your baby's patterns
+              </Text>
               </View>
             </View>
             {aiLoading && (
@@ -257,7 +257,7 @@ const ReminderCard = ({ reminder, type, reminders, setReminders, toggleReminder,
               <View style={styles.aiMainInfo}>
                 <MaterialCommunityIcons name="robot" size={16} color="#FF9800" />
                 <View style={styles.aiMainContent}>
-                  <Text style={styles.aiPatternText}>{currentReminder.aiPattern}</Text>
+                  <Text style={[styles.aiPatternText, { color: darkMode ? '#FFB74D' : '#FF9800' }]}>{currentReminder.aiPattern}</Text>
                   <View style={styles.aiTimesContainer}>
                     {currentReminder.aiRecommendedTimes.map((time, index) => (
                       <View key={index} style={styles.aiTimeChip}>
@@ -294,7 +294,7 @@ const ReminderCard = ({ reminder, type, reminders, setReminders, toggleReminder,
                   {currentReminder.insights.map((insight, index) => (
                     <View key={index} style={styles.insightRow}>
                       <MaterialCommunityIcons name="circle-small" size={16} color="#FF9800" />
-                      <Text style={styles.insightText}>{insight}</Text>
+                      <Text style={[styles.insightText, { color: theme.textPrimary }]}>{insight}</Text>
                     </View>
                   ))}
                   {currentReminder.parentTip && (
@@ -403,20 +403,29 @@ const loadSavedReminders = async () => {
       const data = reminderDoc.data();
       const loadedReminders = data.reminders || reminders;
       
-      // Migrate old data structure to new structure
+      // Migrate old data structure to new structure and fill in defaults
       const migratedReminders = {};
       for (const [key, reminder] of Object.entries(loadedReminders)) {
         migratedReminders[key] = {
-          ...reminder,
-          // Convert old customTime to new customTimes array
-          customTimes: reminder.customTimes 
-            ? reminder.customTimes 
-            : (reminder.customTime ? [reminder.customTime] : ['12:00'])
+          enabled: reminder?.enabled || false,
+          useAI: reminder?.useAI || false,
+          customTimes: reminder?.customTimes || (reminder?.customTime ? [reminder.customTime] : ['12:00']),
+          aiPattern: reminder?.aiPattern || '',
+          notificationIds: reminder?.notificationIds || [],
+          aiRecommendedTimes: reminder?.aiRecommendedTimes || [],
+          frequency: reminder?.frequency || 'daily',
+          // Optional fields with defaults
+          confidence: reminder?.confidence || null,
+          insights: reminder?.insights || [],
+          parentTip: reminder?.parentTip || '',
+          nextOptimization: reminder?.nextOptimization || ''
         };
       }
       
       setReminders(migratedReminders);
       setAiConsent(data.aiConsent || false);
+      
+      console.log('Reminders loaded successfully:', migratedReminders);
     }
   } catch (error) {
     console.error('Error loading reminders:', error);
@@ -701,6 +710,29 @@ if (logs.length > 0) {
     console.error('OpenAI API error:', error);
     throw error;
   }
+};
+
+const cleanReminderData = (reminders) => {
+  const cleaned = {};
+  
+  for (const [key, reminder] of Object.entries(reminders)) {
+    cleaned[key] = {
+      enabled: reminder.enabled || false,
+      useAI: reminder.useAI || false,
+      customTimes: reminder.customTimes || ['12:00'],
+      aiPattern: reminder.aiPattern || '',
+      notificationIds: reminder.notificationIds || [],
+      aiRecommendedTimes: reminder.aiRecommendedTimes || [],
+      frequency: reminder.frequency || 'daily',
+      // Only include optional fields if they have values
+      ...(reminder.confidence && { confidence: reminder.confidence }),
+      ...(reminder.insights && Array.isArray(reminder.insights) && reminder.insights.length > 0 && { insights: reminder.insights }),
+      ...(reminder.parentTip && reminder.parentTip.length > 0 && { parentTip: reminder.parentTip }),
+      ...(reminder.nextOptimization && reminder.nextOptimization.length > 0 && { nextOptimization: reminder.nextOptimization })
+    };
+  }
+  
+  return cleaned;
 };
 
 // Helper function to extract JSON from potentially messy responses
@@ -1332,7 +1364,7 @@ const sendImmediateReminder = async (reminderType) => {
   if (currentReminder.useAI && currentReminder.aiPattern) {
     notificationBody = `Immediate reminder: ${currentReminder.aiPattern}`;
     if (currentReminder.parentTip) {
-      notificationBody += `\nðŸ’¡ ${currentReminder.parentTip}`;
+      notificationBody += `\n💡 ${currentReminder.parentTip}`;
     }
   } else {
     notificationBody = `Manual reminder for ${name}'s ${reminder.title.toLowerCase()}`;
@@ -1342,51 +1374,76 @@ const sendImmediateReminder = async (reminderType) => {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: currentReminder.useAI 
-          ? `ðŸ¤– ${reminder.title} - Test Reminder` 
+          ? `🤖 ${reminder.title} - Test Reminder` 
           : `${reminder.title} Reminder`,
         body: notificationBody,
         data: { childId, reminderType, immediate: true, useAI: currentReminder.useAI },
         sound: true,
         priority: Notifications.AndroidNotificationPriority.HIGH,
       },
-      trigger: null, // Send immediately
+      trigger: null, // Send immediately - this is the key difference
     });
 
-    Alert.alert('Reminder Sent!', `Immediate ${reminder.title.toLowerCase()} reminder sent.`);
+    Alert.alert('Test Sent!', `Test ${reminder.title.toLowerCase()} notification sent to your device.`);
   } catch (error) {
-    console.error('Error sending immediate reminder:', error);
-    Alert.alert('Error', 'Failed to send reminder notification.');
+    console.error('Error sending test reminder:', error);
+    Alert.alert('Error', 'Failed to send test notification.');
   }
 };
 
-  const toggleReminder = async (type) => {
-    const currentReminder = reminders[type];
-    const newEnabled = !currentReminder.enabled;
 
-    if (newEnabled) {
-      // Schedule notifications
-      setReminders(prev => ({
-        ...prev,
-        [type]: {
-          ...prev[type],
-          enabled: true,
-          notificationIds: []
-        }
-      }));
-    } else {
-      // Cancel notifications
-      await cancelNotifications(currentReminder.notificationIds);
-      
-      setReminders(prev => ({
-        ...prev,
-        [type]: {
-          ...prev[type],
-          enabled: false,
-          notificationIds: []
-        }
-      }));
+// ============================================================================
+// OPTIONAL: If you want to add a "Schedule Notifications" button later,
+// create this function (add it to your component):
+// ============================================================================
+
+const scheduleAllNotifications = async () => {
+  try {
+    // Cancel any existing scheduled notifications first
+    for (const [type, reminder] of Object.entries(reminders)) {
+      if (reminder.notificationIds && reminder.notificationIds.length > 0) {
+        await cancelNotifications(reminder.notificationIds);
+      }
     }
-  };
+
+    // Schedule new notifications for enabled reminders
+    const updatedReminders = { ...reminders };
+    
+    for (const [type, reminder] of Object.entries(reminders)) {
+      if (reminder.enabled) {
+        const timesToUse = reminder.useAI && reminder.aiRecommendedTimes.length > 0
+          ? reminder.aiRecommendedTimes 
+          : reminder.customTimes;
+        
+        const notificationIds = await scheduleNotifications(type, timesToUse, reminder.useAI);
+        updatedReminders[type] = {
+          ...reminder,
+          notificationIds
+        };
+      }
+    }
+    
+    setReminders(updatedReminders);
+    Alert.alert('Success', 'All reminders scheduled!');
+  } catch (error) {
+    console.error('Error scheduling notifications:', error);
+    Alert.alert('Error', 'Failed to schedule notifications.');
+  }
+};
+
+const toggleReminder = async (type) => {
+  const currentReminder = reminders[type];
+  const newEnabled = !currentReminder.enabled;
+
+  setReminders(prev => ({
+    ...prev,
+    [type]: {
+      ...prev[type],
+      enabled: newEnabled,
+      notificationIds: [] // Keep empty - don't schedule yet
+    }
+  }));
+};
 
 const toggleAI = async (type) => {
   if (!aiConsent) {
@@ -1507,7 +1564,6 @@ const updateCustomTime = async (typeAndIndex, newTime) => {
     }
   }));
 
-  // Note: Don't reschedule here - wait for user to save
 };
 const saveReminders = async () => {
   if (!auth.currentUser) {
@@ -1516,55 +1572,23 @@ const saveReminders = async () => {
   }
 
   try {
-    // Schedule notifications for all enabled reminders
-    const updatedReminders = { ...reminders };
-    
-    for (const [type, reminder] of Object.entries(reminders)) {
-      if (reminder.enabled) {
-        // Cancel existing notifications first
-        if (reminder.notificationIds.length > 0) {
-          await cancelNotifications(reminder.notificationIds);
-        }
-        
-        // Schedule new notifications based on current settings
-        const timesToUse = reminder.useAI && reminder.aiRecommendedTimes.length > 0
-          ? reminder.aiRecommendedTimes 
-          : reminder.customTimes;
-        
-        const notificationIds = await scheduleNotifications(type, timesToUse, reminder.useAI);
-        
-        // Clean the reminder object to remove undefined fields
-        updatedReminders[type] = {
-          enabled: reminder.enabled,
-          useAI: reminder.useAI,
-          customTimes: reminder.customTimes || ['12:00'],
-          aiPattern: reminder.aiPattern || '',
-          notificationIds,
-          aiRecommendedTimes: reminder.aiRecommendedTimes || [],
-          frequency: reminder.frequency || 'daily',
-          // Only include optional fields if they exist
-          ...(reminder.confidence && { confidence: reminder.confidence }),
-          ...(reminder.insights && { insights: reminder.insights }),
-          ...(reminder.parentTip && { parentTip: reminder.parentTip }),
-          ...(reminder.nextOptimization && { nextOptimization: reminder.nextOptimization })
-        };
-      }
-    }
-    
-    setReminders(updatedReminders);
+    // Clean the reminder data to remove undefined values
+    const cleanedReminders = cleanReminderData(reminders);
     
     const reminderData = {
       childId,
-      reminders: updatedReminders,
+      reminders: cleanedReminders,
       aiConsent,
-      expoPushToken,
+      expoPushToken: expoPushToken || '',
       userId: auth.currentUser.uid,
       updatedAt: new Date().toISOString()
     };
     
+    console.log('Saving cleaned reminder data:', reminderData);
+    
     await setDoc(doc(db, 'reminders', childId), reminderData);
     
-    Alert.alert('Success', 'Reminder preferences saved and scheduled!', [
+    Alert.alert('Success', 'Reminder preferences saved!', [
       { text: 'OK', onPress: () => navigation.goBack() }
     ]);
   } catch (error) {

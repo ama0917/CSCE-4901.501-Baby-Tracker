@@ -27,10 +27,292 @@ import WeeklySummaryCard from '../src/components/WeeklySummaryCard';
 import OpenAI from 'openai';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getAuth } from 'firebase/auth';
+import { useDarkMode } from '../screens/DarkMode';
+import { appTheme } from '../screens/ThemedBackground';
+import {
+  EnhancedSummaryCard,
+  MetricsGrid,
+  enhancedStyles
+} from './ReportComponents';
 
-const OPENAI_API_KEY = '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';
+const OPENAI_API_KEY = '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';
 const { width } = Dimensions.get('window');
 const adjustedWidth = width - 40;
+
+const SleepMetricsSummary = ({ data, darkMode }) => {
+  const totalSleep = data.summary?.find(s => s.key === 'total');
+  const nightSleep = data.summary?.find(s => s.key === 'night');
+  const naps = data.summary?.find(s => s.key === 'naps');
+  const sessions = data.summary?.find(s => s.key === 'sessions');
+
+  const getSleepQualityStatus = (avg, benchmark) => {
+    const ratio = parseFloat(avg) / benchmark;
+    if (ratio >= 0.95) return { status: 'Excellent', color: '#4CAF50', icon: 'checkmark-circle' };
+    if (ratio >= 0.80) return { status: 'Good', color: '#8BC34A', icon: 'checkmark-circle-outline' };
+    if (ratio >= 0.65) return { status: 'Fair', color: '#FF9800', icon: 'alert-circle' };
+    return { status: 'Needs Attention', color: '#F44336', icon: 'alert-circle' };
+  };
+
+  const quality = totalSleep ? getSleepQualityStatus(totalSleep.avg, totalSleep.benchmark) : null;
+
+  return (
+    <View style={styles.metricsSummaryContainer}>
+      {quality && (
+        <View style={[
+          styles.qualityStatusBanner,
+          {
+            backgroundColor: quality.color + (darkMode ? '25' : '15'),
+            borderLeftColor: quality.color
+          }
+        ]}>
+          <Ionicons name={quality.icon} size={24} color={quality.color} />
+          <View style={styles.qualityStatusText}>
+            <Text style={[styles.qualityStatusLabel, { color: quality.color }]}>
+              {quality.status}
+            </Text>
+            <Text style={[
+              styles.qualityStatusDescription,
+              { color: darkMode ? '#bbb' : '#666' }
+            ]}>
+              {totalSleep?.avg || 0}{totalSleep?.unit || ''}hrs daily vs {totalSleep?.benchmark || 12}hrs recommended
+            </Text>
+          </View>
+        </View>
+      )}
+
+      <View style={[
+        styles.sleepBreakdownContainer,
+        { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }
+      ]}>
+        <View style={[
+          styles.sleepBreakdownItem,
+          {
+            backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+            borderColor: darkMode ? '#404040' : '#e0e0e0'
+          }
+        ]}>
+          <View style={styles.sleepBreakdownIcon}>
+            <Ionicons name="moon" size={18} color="#1976d2" />
+          </View>
+          <View style={styles.sleepBreakdownInfo}>
+            <Text style={[
+              styles.sleepBreakdownLabel,
+              { color: darkMode ? '#999' : '#999' }
+            ]}>
+              Night Sleep
+            </Text>
+            <Text style={[
+              styles.sleepBreakdownValue,
+              { color: darkMode ? '#fff' : '#333' }
+            ]}>
+              {nightSleep?.avg || 0}{nightSleep?.unit || ''}hrs
+            </Text>
+          </View>
+        </View>
+
+        <View style={[
+          styles.sleepBreakdownItem,
+          {
+            backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+            borderColor: darkMode ? '#404040' : '#e0e0e0'
+          }
+        ]}>
+          <View style={styles.sleepBreakdownIcon}>
+            <Ionicons name="partly-sunny" size={18} color="#FF9800" />
+          </View>
+          <View style={styles.sleepBreakdownInfo}>
+            <Text style={[
+              styles.sleepBreakdownLabel,
+              { color: darkMode ? '#999' : '#999' }
+            ]}>
+              Daytime Naps
+            </Text>
+            <Text style={[
+              styles.sleepBreakdownValue,
+              { color: darkMode ? '#fff' : '#333' }
+            ]}>
+              {naps?.avg || 0}{naps?.unit || ''}hrs
+            </Text>
+          </View>
+        </View>
+
+        <View style={[
+          styles.sleepBreakdownItem,
+          {
+            backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+            borderColor: darkMode ? '#404040' : '#e0e0e0'
+          }
+        ]}>
+          <View style={styles.sleepBreakdownIcon}>
+            <Ionicons name="repeat" size={18} color="#00BCD4" />
+          </View>
+          <View style={styles.sleepBreakdownInfo}>
+            <Text style={[
+              styles.sleepBreakdownLabel,
+              { color: darkMode ? '#999' : '#999' }
+            ]}>
+              Total Sessions
+            </Text>
+            <Text style={[
+              styles.sleepBreakdownValue,
+              { color: darkMode ? '#fff' : '#333' }
+            ]}>
+              {sessions?.avg || 0}{sessions?.unit || ''}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+};
+
+// Feeding Summary Component
+const FeedingMetricsSummary = ({ data }) => {
+  const perDay = data.summary?.find(s => s.key === 'perDay');
+  const avgGap = data.summary?.find(s => s.key === 'avgGap');
+  const avgAmount = data.summary?.find(s => s.key === 'avgAmount');
+  const mostCommon = data.summary?.find(s => s.key === 'mostCommon');
+
+  const getFeedingStatus = (perDay, avgGap) => {
+    const gapHours = parseFloat(avgGap);
+    if (gapHours >= 3 && gapHours <= 4 && parseFloat(perDay) >= 5) {
+      return { status: 'Regular Pattern', color: '#4CAF50', icon: 'checkmark-circle' };
+    }
+    if (gapHours > 5) {
+      return { status: 'Long Gaps', color: '#FF9800', icon: 'alert-circle' };
+    }
+    if (gapHours < 2.5) {
+      return { status: 'Frequent Feedings', color: '#FF9800', icon: 'alert-circle' };
+    }
+    return { status: 'Normal Pattern', color: '#4CAF50', icon: 'checkmark-circle' };
+  };
+
+  const status = perDay && avgGap ? getFeedingStatus(perDay.avg, avgGap.avg) : null;
+
+  return (
+    <View style={styles.metricsSummaryContainer}>
+      {status && (
+        <View style={[styles.qualityStatusBanner, { backgroundColor: status.color + '15', borderLeftColor: status.color }]}>
+          <Ionicons name={status.icon} size={24} color={status.color} />
+          <View style={styles.qualityStatusText}>
+            <Text style={[styles.qualityStatusLabel, { color: status.color }]}>
+              {status.status}
+            </Text>
+            <Text style={styles.qualityStatusDescription}>
+              {perDay?.avg || 0} feedings/day, avg {avgGap?.avg || 0}hrs apart
+            </Text>
+          </View>
+        </View>
+      )}
+
+      <View style={styles.feedingDetailsContainer}>
+        <View style={styles.feedingDetailRow}>
+          <View style={styles.feedingDetailLabel}>
+            <Ionicons name="restaurant" size={18} color="#FF9800" />
+            <Text style={styles.feedingDetailText}>Per Day</Text>
+          </View>
+          <Text style={styles.feedingDetailValue}>{perDay?.avg || 0}</Text>
+        </View>
+
+        <View style={styles.feedingDetailRow}>
+          <View style={styles.feedingDetailLabel}>
+            <Ionicons name="time" size={18} color="#FF9800" />
+            <Text style={styles.feedingDetailText}>Avg Gap</Text>
+          </View>
+          <Text style={styles.feedingDetailValue}>{avgGap?.avg || 0}hrs</Text>
+        </View>
+
+        <View style={styles.feedingDetailRow}>
+          <View style={styles.feedingDetailLabel}>
+            <Ionicons name="water" size={18} color="#FF9800" />
+            <Text style={styles.feedingDetailText}>Avg Amount</Text>
+          </View>
+          <Text style={styles.feedingDetailValue}>{avgAmount?.avg || 0}ml</Text>
+        </View>
+
+        <View style={styles.feedingDetailRow}>
+          <View style={styles.feedingDetailLabel}>
+            <Ionicons name="alarm" size={18} color="#FF9800" />
+            <Text style={styles.feedingDetailText}>Common Time</Text>
+          </View>
+          <Text style={styles.feedingDetailValue}>{mostCommon?.avg || 'N/A'}</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
+// Diaper Summary Component
+const DiaperMetricsSummary = ({ data, wetPerDay, bmPerDay }) => {
+  const totalChanges = data.summary?.find(s => s.key === 'total');
+  const wetDiapers = data.summary?.find(s => s.key === 'wet');
+  const bmDiapers = data.summary?.find(s => s.key === 'bm');
+
+  const getHydrationStatus = (wet) => {
+    const wetVal = parseFloat(wet);
+    if (wetVal >= 5) return { status: 'Well Hydrated', color: '#4CAF50', icon: 'checkmark-circle' };
+    if (wetVal >= 4) return { status: 'Adequate', color: '#8BC34A', icon: 'checkmark-circle-outline' };
+    return { status: 'Low Hydration', color: '#F44336', icon: 'alert-circle' };
+  };
+
+  const getDigestionStatus = (bm) => {
+    const bmVal = parseFloat(bm);
+    if (bmVal >= 1 && bmVal <= 4) return { status: 'Normal', color: '#4CAF50' };
+    if (bmVal > 4) return { status: 'Frequent', color: '#FF9800' };
+    if (bmVal > 0) return { status: 'Low', color: '#FF9800' };
+    return { status: 'Concern', color: '#F44336' };
+  };
+
+  const hydration = getHydrationStatus(wetDiapers?.avg || 0);
+  const digestion = getDigestionStatus(bmDiapers?.avg || 0);
+
+  return (
+    <View style={styles.metricsSummaryContainer}>
+      <View style={styles.diaperStatusRow}>
+        <View style={[styles.diaperStatusCard, { borderLeftColor: hydration.color }]}>
+          <View style={styles.diaperCardHeader}>
+            <Ionicons name="water" size={20} color={hydration.color} />
+            <Text style={styles.diaperCardTitle}>Hydration</Text>
+          </View>
+          <Text style={[styles.diaperStatusBadge, { color: hydration.color }]}>
+            {hydration.status}
+          </Text>
+          <Text style={styles.diaperStatusValue}>
+            {wetPerDay || wetDiapers?.avg || 0} wet/day
+          </Text>
+          <Text style={styles.diaperStatusNote}>
+            Target: 5-7/day
+          </Text>
+        </View>
+
+        <View style={[styles.diaperStatusCard, { borderLeftColor: digestion.color }]}>
+          <View style={styles.diaperCardHeader}>
+            <Ionicons name="medical" size={20} color={digestion.color} />
+            <Text style={styles.diaperCardTitle}>Digestion</Text>
+          </View>
+          <Text style={[styles.diaperStatusBadge, { color: digestion.color }]}>
+            {digestion.status}
+          </Text>
+          <Text style={styles.diaperStatusValue}>
+            {bmPerDay || bmDiapers?.avg || 0} BM/day
+          </Text>
+          <Text style={styles.diaperStatusNote}>
+            Age-dependent
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.diaperTotalContainer}>
+        <Ionicons name="repeat" size={18} color="#00BCD4" />
+        <View style={styles.diaperTotalInfo}>
+          <Text style={styles.diaperTotalLabel}>Total Changes</Text>
+          <Text style={styles.diaperTotalValue}>{totalChanges?.avg || 0}/day</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
 
 const DataPointTooltip = ({ visible, data, position, onClose }) => {
   if (!visible || !data) return null;
@@ -185,6 +467,26 @@ const DiaperHealthIndicator = ({ wetPerDay, bmPerDay }) => {
 const ReportPage = () => {
   const route = useRoute();
   const navigation = useNavigation();
+  const { darkMode } = useDarkMode();
+  const theme = darkMode ? appTheme.dark : appTheme.light;
+  const getContainerStyle = (baseStyle) => {
+    return [
+      baseStyle,
+      {
+        backgroundColor: darkMode ? '#1f1f1f' : '#fff',
+        borderColor: darkMode ? '#333' : '#e0e0e0'
+      }
+    ];
+  };
+
+  const getTextStyle = (baseStyle, colorOverride) => {
+    return [
+      baseStyle,
+      {
+        color: colorOverride || theme.textPrimary
+      }
+    ];
+  };
   const { childId, name } = route.params || {};
 
   // State variables - ALL hooks must come before any conditional returns
@@ -283,12 +585,14 @@ const ReportPage = () => {
   // EARLY RETURNS - Must come AFTER all hooks
   if (checkingPermissions) {
     return (
-      <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
+      <LinearGradient 
+        colors={theme.backgroundGradient} 
+        start={{ x: 0, x: 0.5 }} 
+        end={{ y: 1, y: 0.5 }}
+        style={styles.gradient}
+      >
         <SafeAreaView style={styles.container}>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#1976d2" />
-            <Text style={styles.loadingText}>Checking permissions...</Text>
-          </View>
+          {/* Rest of your JSX... */}
         </SafeAreaView>
       </LinearGradient>
     );
@@ -399,14 +703,15 @@ const fetchChildData = async () => {
   };
 
 const chartConfig = {
-  backgroundGradientFrom: "#ffffff",
-  backgroundGradientTo: "#f8f9fa",
+  backgroundGradientFrom: darkMode ? "#2a2a2a" : "#ffffff",
+  backgroundGradientTo: darkMode ? "#1f1f1f" : "#f8f9fa",
   decimalPlaces: 1,
   color: (opacity = 1) => `rgba(25, 118, 210, ${opacity})`,
-  labelColor: () => '#555',
+  labelColor: () => darkMode ? '#ccc' : '#555',
   propsForLabels: {
     fontSize: 11,
     fontWeight: '600',
+    fill: darkMode ? '#ccc' : '#555',
   },
   propsForDots: {
     r: "5",
@@ -417,9 +722,11 @@ const chartConfig = {
   propsForVerticalLabels: {
     fontSize: 11,
     rotation: 0,
+    fill: darkMode ? '#ccc' : '#555',
   },
   propsForHorizontalLabels: {
     fontSize: 11,
+    fill: darkMode ? '#ccc' : '#555',
   },
   paddingRight: 40,
   paddingLeft: 10,
@@ -429,7 +736,6 @@ const chartConfig = {
   fillShadowGradient: '#1976d2',
   fillShadowGradientOpacity: 0.1,
 };
-
   // Helper functions for time labels
   const getLast7Days = () => {
     const days = [];
@@ -527,14 +833,14 @@ const generateCategorizedAISummary = async (childId, childAge, childWeight, chil
 
     // Return insufficient data message if less than 5 entries
     if (relevantDataCount < 5) {
-      return `📊 **Insufficient Data for ${category} Analysis**
+      return `**Insufficient Data for ${category} Analysis**
 
 You currently have ${relevantDataCount} ${categoryName} logged. We need at least 5 entries to provide accurate AI insights and pattern recognition.
 
 **Why more data helps:**
-- Better pattern detection
-- More accurate recommendations
-- Personalized to your baby's unique rhythms
+• Better pattern detection
+• More accurate recommendations
+• Personalized to your baby's unique rhythms
 
 **Next steps:** Keep logging your baby's ${category.toLowerCase()} activities! Once you have 5+ entries, refresh to get detailed AI analysis.`;
     }
@@ -830,16 +1136,16 @@ const ConsentModal = ({ onConsent, onDecline }) => {
             </Text>
             
             <Text style={styles.consentModalSubheading}>What we'll analyze:</Text>
-            <Text style={styles.consentModalBullet}>• Sleep patterns and duration</Text>
-            <Text style={styles.consentModalBullet}>• Feeding frequency and amounts</Text>
-            <Text style={styles.consentModalBullet}>• Diaper change patterns</Text>
-            <Text style={styles.consentModalBullet}>• Age-appropriate developmental milestones</Text>
+            <Text style={styles.consentModalBullet}>- Sleep patterns and duration</Text>
+            <Text style={styles.consentModalBullet}>- Feeding frequency and amounts</Text>
+            <Text style={styles.consentModalBullet}>- Diaper change patterns</Text>
+            <Text style={styles.consentModalBullet}>- Age-appropriate developmental milestones</Text>
             
             <Text style={styles.consentModalSubheading}>Your data privacy:</Text>
-            <Text style={styles.consentModalBullet}>• Data is sent securely to OpenAI</Text>
-            <Text style={styles.consentModalBullet}>• No personal identifying information is shared</Text>
-            <Text style={styles.consentModalBullet}>• Insights are generated in real-time</Text>
-            <Text style={styles.consentModalBullet}>• You can disable this feature anytime</Text>
+            <Text style={styles.consentModalBullet}>- Data is sent securely to OpenAI</Text>
+            <Text style={styles.consentModalBullet}>- No personal identifying information is shared</Text>
+            <Text style={styles.consentModalBullet}>- Insights are generated in real-time</Text>
+            <Text style={styles.consentModalBullet}>- You can disable this feature anytime</Text>
             
             <Text style={styles.consentModalNote}>
               By enabling AI Insights, you agree to share anonymized baby care data with our AI service provider for analysis.
@@ -924,7 +1230,7 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
   };
 
   // Parse markdown-style formatting from AI response
-  const renderFormattedText = (text) => {
+  const renderFormattedText = (text, darkMode) => {
     if (!text) return null;
     
     const lines = text.split('\n');
@@ -933,10 +1239,18 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
       if (line.includes('**')) {
         const parts = line.split('**');
         return (
-          <Text key={index} style={styles.aiSummaryLine}>
+          <Text key={index} style={[
+            styles.aiSummaryLine,
+            { color: darkMode ? '#ddd' : '#333' }
+          ]}>
             {parts.map((part, i) => 
               i % 2 === 1 ? (
-                <Text key={i} style={styles.aiBoldText}>{part}</Text>
+                <Text key={i} style={[
+                  styles.aiBoldText,
+                  { color: darkMode ? '#64b5f6' : '#1976d2' }
+                ]}>
+                  {part}
+                </Text>
               ) : (
                 <Text key={i}>{part}</Text>
               )
@@ -949,8 +1263,18 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
       if (line.trim().startsWith('•') || line.trim().startsWith('-')) {
         return (
           <View key={index} style={styles.aiBulletContainer}>
-            <Text style={styles.aiBulletPoint}>•</Text>
-            <Text style={styles.aiBulletText}>{line.replace(/^[•\-]\s*/, '')}</Text>
+            <Text style={[
+              styles.aiBulletPoint,
+              { color: darkMode ? '#64b5f6' : '#1976d2' }
+            ]}>
+              •
+            </Text>
+            <Text style={[
+              styles.aiBulletText,
+              { color: darkMode ? '#ddd' : '#333' }
+            ]}>
+              {line.replace(/^[•\-]\s*/, '')}
+            </Text>
           </View>
         );
       }
@@ -958,7 +1282,10 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
       // Section numbers (1., 2., etc.)
       if (/^\d+\./.test(line.trim())) {
         return (
-          <Text key={index} style={styles.aiNumberedItem}>
+          <Text key={index} style={[
+            styles.aiNumberedItem,
+            { color: darkMode ? '#ddd' : '#333' }
+          ]}>
             {line}
           </Text>
         );
@@ -967,7 +1294,10 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
       // Regular text
       if (line.trim()) {
         return (
-          <Text key={index} style={styles.aiSummaryLine}>
+          <Text key={index} style={[
+            styles.aiSummaryLine,
+            { color: darkMode ? '#ddd' : '#333' }
+          ]}>
             {line}
           </Text>
         );
@@ -980,7 +1310,13 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
   if (!childId) return null;
 
   return (
-    <View style={styles.aiSummaryContainer}>
+    <View style={[
+      styles.aiSummaryContainer,
+      {
+        backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+        borderColor: darkMode ? '#404040' : '#e8eaf6'
+      }
+    ]}>
       {showConsentModal && (
         <ConsentModal 
           onConsent={handleConsent}
@@ -994,8 +1330,12 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
             <Ionicons name="sparkles" size={18} color="#FFF" />
           </View>
           <View>
-            <Text style={styles.aiSummaryTitle}>AI Insights</Text>
-            <Text style={styles.aiSummarySubtitle}>Powered by GPT-4</Text>
+            <Text style={[styles.aiSummaryTitle, { color: darkMode ? '#fff' : '#333' }]}>
+              AI Insights
+            </Text>
+            <Text style={[styles.aiSummarySubtitle, { color: darkMode ? '#aaa' : '#999' }]}>
+              Powered by GPT-4
+            </Text>
           </View>
         </View>
         <TouchableOpacity 
@@ -1023,11 +1363,20 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
 
       {hasConsented && (
         <>
-          <View style={styles.insightTabContainer}>
+          <View style={[
+            styles.insightTabContainer,
+            { backgroundColor: darkMode ? '#1f1f1f' : '#f5f5f5' }
+          ]}>
             {['Sleep', 'Feeding', 'Diaper'].map(tab => (
               <TouchableOpacity
                 key={tab}
-                style={[styles.insightTab, activeInsightTab === tab && styles.activeInsightTab]}
+                style={[
+                  styles.insightTab,
+                  activeInsightTab === tab && [
+                    styles.activeInsightTab,
+                    { backgroundColor: darkMode ? '#3a3a3a' : '#fff' }
+                  ]
+                ]}
                 onPress={() => handleTabChange(tab)}
                 disabled={isLoading}
               >
@@ -1038,9 +1387,13 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
                     'water-outline'
                   }
                   size={16}
-                  color={activeInsightTab === tab ? '#1976d2' : '#999'}
+                  color={activeInsightTab === tab ? '#1976d2' : darkMode ? '#888' : '#999'}
                 />
-                <Text style={[styles.insightTabText, activeInsightTab === tab && styles.activeInsightTabText]}>
+                <Text style={[
+                  styles.insightTabText,
+                  { color: darkMode ? '#ccc' : '#666' },
+                  activeInsightTab === tab && styles.activeInsightTabText
+                ]}>
                   {tab}
                 </Text>
               </TouchableOpacity>
@@ -1050,15 +1403,31 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
           {isLoading && (
             <View style={styles.aiLoadingContainer}>
               <ActivityIndicator size="small" color="#1976d2" />
-              <Text style={styles.aiLoadingText}>Analyzing patterns...</Text>
+              <Text style={[styles.aiLoadingText, { color: darkMode ? '#bbb' : '#666' }]}>
+                Analyzing patterns...
+              </Text>
             </View>
           )}
           
           {error && (
-            <View style={styles.aiErrorContainer}>
-              <Ionicons name="alert-circle" size={20} color="#d32f2f" />
-              <Text style={styles.aiErrorText}>{error}</Text>
-              <TouchableOpacity onPress={() => handleGenerateSummary(activeInsightTab)} style={styles.retryButton}>
+            <View style={[
+              styles.aiErrorContainer,
+              { backgroundColor: darkMode ? '#5f2f2f' : '#ffebee' }
+            ]}>
+              <Ionicons name="alert-circle" size={20} color={darkMode ? '#ff6b6b' : '#d32f2f'} />
+              <Text style={[
+                styles.aiErrorText,
+                { color: darkMode ? '#ff9999' : '#d32f2f' }
+              ]}>
+                {error}
+              </Text>
+              <TouchableOpacity 
+                onPress={() => handleGenerateSummary(activeInsightTab)}
+                style={[
+                  styles.retryButton,
+                  { backgroundColor: darkMode ? '#ff6b6b' : '#f44336' }
+                ]}
+              >
                 <Text style={styles.retryButtonText}>Try Again</Text>
               </TouchableOpacity>
             </View>
@@ -1067,25 +1436,50 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
           {!isLoading && !error && (overallSummary || categorySummary) && (
             <View style={styles.aiContentContainer}>
               {overallSummary && (
-                <View style={styles.aiInsightCard}>
-                  <View style={styles.aiInsightCardHeader}>
+                <View style={[
+                  styles.aiInsightCard,
+                  { backgroundColor: darkMode ? '#1f1f1f' : '#fafafa' }
+                ]}>
+                  <View style={[
+                    styles.aiInsightCardHeader,
+                    { borderBottomColor: darkMode ? '#404040' : '#e0e0e0' }
+                  ]}>
                     <View style={styles.aiInsightHeaderLeft}>
                       <Ionicons name="stats-chart" size={18} color="#1976d2" />
-                      <Text style={styles.aiInsightCardTitle}>Overall Summary</Text>
+                      <Text style={[
+                        styles.aiInsightCardTitle,
+                        { color: darkMode ? '#fff' : '#333' }
+                      ]}>
+                        Overall Summary
+                      </Text>
                     </View>
-                    <View style={styles.aiInsightBadge}>
-                      <Text style={styles.aiInsightBadgeText}>{reportRange}</Text>
+                    <View style={[
+                      styles.aiInsightBadge,
+                      { backgroundColor: darkMode ? '#1a3a52' : '#e3f2fd' }
+                    ]}>
+                      <Text style={[
+                        styles.aiInsightBadgeText,
+                        { color: darkMode ? '#64b5f6' : '#1976d2' }
+                      ]}>
+                        {reportRange}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.aiInsightContent}>
-                    {renderFormattedText(overallSummary)}
+                    {renderFormattedText(overallSummary, darkMode)}
                   </View>
                 </View>
               )}
               
               {categorySummary && (
-                <View style={styles.aiInsightCard}>
-                  <View style={styles.aiInsightCardHeader}>
+                <View style={[
+                  styles.aiInsightCard,
+                  { backgroundColor: darkMode ? '#1f1f1f' : '#fafafa' }
+                ]}>
+                  <View style={[
+                    styles.aiInsightCardHeader,
+                    { borderBottomColor: darkMode ? '#404040' : '#e0e0e0' }
+                  ]}>
                     <View style={styles.aiInsightHeaderLeft}>
                       <Ionicons 
                         name={
@@ -1096,11 +1490,16 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
                         size={18} 
                         color="#FF9800" 
                       />
-                      <Text style={styles.aiInsightCardTitle}>{activeInsightTab} Deep Dive</Text>
+                      <Text style={[
+                        styles.aiInsightCardTitle,
+                        { color: darkMode ? '#fff' : '#333' }
+                      ]}>
+                        {activeInsightTab} Deep Dive
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.aiInsightContent}>
-                    {renderFormattedText(categorySummary)}
+                    {renderFormattedText(categorySummary, darkMode)}
                   </View>
                 </View>
               )}
@@ -1109,8 +1508,11 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
           
           {!isLoading && !error && !overallSummary && !categorySummary && (
             <View style={styles.noDataContainer}>
-              <Ionicons name="analytics-outline" size={40} color="#ccc" />
-              <Text style={styles.noDataText}>
+              <Ionicons name="analytics-outline" size={40} color={darkMode ? '#555' : '#ccc'} />
+              <Text style={[
+                styles.noDataText,
+                { color: darkMode ? '#aaa' : '#666' }
+              ]}>
                 Tap refresh to get personalized insights
               </Text>
             </View>
@@ -1121,29 +1523,43 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
   );
 };
 
+
   // Fetch sleep data
-  const fetchSleepData = async (startTimestamp, endTimestamp) => {
-    try {
-      const sleepQuery = query(
-        collection(db, 'sleepLogs'),
-        where('childId', '==', childId),
-        where('timestamp', '>=', startTimestamp),
-        where('timestamp', '<=', endTimestamp),
-        orderBy('timestamp', 'asc')
-      );
-      
-      const querySnapshot = await getDocs(sleepQuery);
-      const logs = [];
-      
-      querySnapshot.forEach((doc) => {
-        logs.push({ id: doc.id, ...doc.data() });
+const fetchSleepData = async (startTimestamp, endTimestamp) => {
+  try {
+    console.log('Fetching sleep data for:', {
+      childId,
+      startDate: startTimestamp.toDate(),
+      endDate: endTimestamp.toDate()
+    });
+    
+    const sleepQuery = query(
+      collection(db, 'sleepLogs'),
+      where('childId', '==', childId),
+      where('timestamp', '>=', startTimestamp),
+      where('timestamp', '<=', endTimestamp),
+      orderBy('timestamp', 'asc')
+    );
+    
+    const querySnapshot = await getDocs(sleepQuery);
+    const logs = [];
+    
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      logs.push({ id: doc.id, ...data });
+      console.log('Sleep log entry:', {
+        timestamp: data.timestamp?.toDate(),
+        duration: data.duration
       });
-      
-      setSleepData(logs);
-    } catch (error) {
-      console.error('Error fetching sleep logs:', error);
-    }
-  };
+    });
+    
+    console.log('Total sleep logs fetched:', logs.length);
+    setSleepData(logs);
+  } catch (error) {
+    console.error('Error fetching sleep logs:', error);
+    Alert.alert('Error', 'Failed to fetch sleep data: ' + error.message);
+  }
+};
 
   // Fetch diaper data
   const fetchDiaperData = async (startTimestamp, endTimestamp) => {
@@ -1193,6 +1609,7 @@ const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepDa
     }
   };
 
+
 const processSleepData = () => {
   const { periodLabels } = getTimeRange();
   
@@ -1200,6 +1617,8 @@ const processSleepData = () => {
   const countData = Array(periodLabels.length).fill(0);
   const nightSleepData = Array(periodLabels.length).fill(0);
   const napData = Array(periodLabels.length).fill(0);
+  
+  console.log('Processing sleep data:', sleepData.length, 'entries'); // DEBUG
   
   sleepData.forEach(log => {
     const logDate = log.timestamp.toDate();
@@ -1222,14 +1641,42 @@ const processSleepData = () => {
     }
   });
   
-  // Calculate daily totals
+  console.log('Sleep duration data:', durationData); // DEBUG
+  console.log('Sleep count data:', countData); // DEBUG
+  
+  // Don't average - use totals for the line chart
+  // The chart should show cumulative hours per period
   const totalDailyData = durationData.map((total, i) => 
     parseFloat(total.toFixed(1))
   );
   
-  // Age-appropriate benchmark (can be passed from parent component)
+  // Age-appropriate benchmark
   const recommendedSleep = 12; // hours per day for average baby
   const benchmarkLine = Array(periodLabels.length).fill(recommendedSleep);
+  
+  // Calculate summary statistics (these should be averages)
+  const nonZeroDurations = durationData.filter(v => v > 0);
+  const nonZeroNightSleep = nightSleepData.filter(v => v > 0);
+  const nonZeroNaps = napData.filter(v => v > 0);
+  const nonZeroCounts = countData.filter(v => v > 0);
+  
+  const avgTotalDaily = nonZeroDurations.length > 0 
+    ? (nonZeroDurations.reduce((a, b) => a + b, 0) / nonZeroDurations.length).toFixed(1)
+    : '0';
+  
+  const avgNightSleep = nonZeroNightSleep.length > 0 
+    ? (nonZeroNightSleep.reduce((a, b) => a + b, 0) / nonZeroNightSleep.length).toFixed(1)
+    : '0';
+  
+  const avgNaps = nonZeroNaps.length > 0 
+    ? (nonZeroNaps.reduce((a, b) => a + b, 0) / nonZeroNaps.length).toFixed(1)
+    : '0';
+  
+  const avgSessions = nonZeroCounts.length > 0 
+    ? (nonZeroCounts.reduce((a, b) => a + b, 0) / nonZeroCounts.length).toFixed(1)
+    : '0';
+  
+  console.log('Summary - Total:', avgTotalDaily, 'Night:', avgNightSleep, 'Naps:', avgNaps); // DEBUG
   
   return {
     lineData: {
@@ -1255,7 +1702,8 @@ const processSleepData = () => {
       { 
         key: 'total', 
         label: 'Daily Total',
-        avg: (totalDailyData.reduce((a, b) => a + b, 0) / totalDailyData.filter(v => v > 0).length || 0).toFixed(1),
+        avg: avgTotalDaily,
+        unit: 'hrs',
         trend: calculateTrend(totalDailyData),
         metric: 'more',
         benchmark: recommendedSleep,
@@ -1264,7 +1712,8 @@ const processSleepData = () => {
       { 
         key: 'night', 
         label: 'Night Sleep',
-        avg: (nightSleepData.reduce((a, b) => a + b, 0) / nightSleepData.filter(v => v > 0).length || 0).toFixed(1),
+        avg: avgNightSleep,
+        unit: 'hrs',
         trend: calculateTrend(nightSleepData),
         metric: 'more',
         icon: 'moon-outline'
@@ -1272,7 +1721,8 @@ const processSleepData = () => {
       {
         key: 'naps',
         label: 'Daytime Naps',
-        avg: (napData.reduce((a, b) => a + b, 0) / napData.filter(v => v > 0).length || 0).toFixed(1),
+        avg: avgNaps,
+        unit: 'hrs',
         trend: calculateTrend(napData),
         metric: 'stable',
         icon: 'partly-sunny'
@@ -1280,7 +1730,8 @@ const processSleepData = () => {
       {
         key: 'sessions',
         label: 'Sleep Sessions',
-        avg: (countData.reduce((a, b) => a + b, 0) / countData.filter(v => v > 0).length || 0).toFixed(1),
+        avg: avgSessions,
+        unit: '',
         trend: calculateTrend(countData),
         metric: 'stable',
         icon: 'repeat'
@@ -1295,20 +1746,32 @@ const processSleepData = () => {
 };
 
 // Helper function for consistent time indexing
+
 const getTimeIndex = (logDate, range) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
+  const logDateOnly = new Date(logDate);
+  logDateOnly.setHours(0, 0, 0, 0);
+  
+  const diffTime = Math.abs(today - logDateOnly);
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
   if (range === 'Weekly') {
-    const diffDays = Math.floor((today - logDate) / (1000 * 60 * 60 * 24));
-    return 6 - Math.min(diffDays, 6);
+    // For weekly: 0 = today, 1 = yesterday, ..., 6 = 6 days ago
+    return Math.max(0, Math.min(6 - diffDays, 6));
   } else if (range === 'Monthly') {
-    const diffDays = Math.floor((today - logDate) / (1000 * 60 * 60 * 24));
-    return 3 - Math.min(Math.floor(diffDays / 7), 3);
+    // For monthly: groups by weeks
+    const weekNumber = Math.floor(diffDays / 7);
+    return Math.max(0, Math.min(3 - weekNumber, 3));
   } else {
-    return logDate.getMonth();
+    // For annual: by month
+    const monthDiff = (today.getFullYear() - logDateOnly.getFullYear()) * 12 + 
+                      (today.getMonth() - logDateOnly.getMonth());
+    return Math.max(0, Math.min(monthDiff, 11));
   }
 };
+
 
 // Helper to calculate trend
 const calculateTrend = (data) => {
@@ -1327,11 +1790,16 @@ const calculateTrend = (data) => {
 };
 
 // Helper for time distribution
+
 const calculateTimeDistribution = (logs) => {
+  if (!logs || logs.length === 0) return [];
+  
   const timeDistribution = {};
   logs.forEach(log => {
-    const startHour = log.timestamp.toDate().getHours();
-    timeDistribution[startHour] = (timeDistribution[startHour] || 0) + 1;
+    if (log.timestamp) {
+      const startHour = log.timestamp.toDate().getHours();
+      timeDistribution[startHour] = (timeDistribution[startHour] || 0) + 1;
+    }
   });
   
   const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'];
@@ -1351,6 +1819,7 @@ const calculateTimeDistribution = (logs) => {
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 };
+
 
   const processSleepHeatMapData = () => {
     const { periodLabels } = getTimeRange();
@@ -2143,7 +2612,7 @@ const exportReportAsExcel = async () => {
     <View style={[styles.qualityBadge, { backgroundColor: colors[quality] + '20' }]}>
       <View style={[styles.qualityDot, { backgroundColor: colors[quality] }]} />
       <Text style={[styles.qualityText, { color: colors[quality] }]}>
-        {dataCount} entries • {quality} data quality
+        {dataCount} entries â€¢ {quality} data quality
       </Text>
     </View>
   );
@@ -2201,295 +2670,250 @@ const calculateDetailedTrend = (data) => {
 };
   
   // Render charts based on tab
-  const renderCharts = () => {
-    if (isLoading) {
-      return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#1976d2" />
-          <Text style={styles.loadingText}>Loading report data...</Text>
-        </View>
-      );
-    }
-  
-    const data = getChartData();
-    const chartType = getChartType(activeTab);
-    const yLabel = getYAxisLabel();
-    
-    const legendLabels = {
-      'duration': 'Sleep Duration',
-      'count': 'Nap Duration',
-      'changes': 'Diaper Changes',
-      'wet': 'Wet Diapers',
-      'bm': 'BM Diapers',
-      'amount': 'Feeding Amount',
-      'feedings': 'Feeding Count'
-    };
-  
-    const summaryMetrics = data.summary || [];
-  
+const renderCharts = () => {
+  if (isLoading) {
     return (
-      <View style={styles.chartContainer}>
-  
-        {/* Summary cards */}
-        {(activeTab === 'Sleep' || activeTab === 'Feeding' || activeTab === 'Diaper') && (
-          <View style={styles.summaryCardsContainer}>
-            {summaryMetrics.map((item) => {
-              const isAboveBenchmark = item.benchmark && parseFloat(item.avg) >= item.benchmark;
-              const benchmarkDiff = item.benchmark ? (parseFloat(item.avg) - item.benchmark).toFixed(1) : null;
-              
-              return (
-                <View key={item.key} style={styles.summaryCard}>
-                  <View style={styles.summaryCardHeader}>
-                    <Ionicons 
-                      name={item.icon || "stats-chart"} 
-                      size={20} 
-                      color="#1976d2" 
-                    />
-                    <Text style={styles.summaryTitle}>{item.label || item.key}</Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryValue}>
-                      {item.avg}{item.unit || ''}
-                    </Text>
-                    {item.trend !== 'stable' && (
-                      <View style={[
-                        styles.trendIndicator,
-                        { backgroundColor: getTrendColor(item.trend, item.metric) + '20' }
-                      ]}>
-                        <AntDesign 
-                          name={item.trend === "up" ? "arrowup" : item.trend === "down" ? "arrowdown" : "minus"} 
-                          size={12} 
-                          color={getTrendColor(item.trend, item.metric)} 
-                        />
-                      </View>
-                    )}
-                  </View>
-                  {benchmarkDiff !== null && activeTab !== 'Diaper' && (
-                    <Text style={[
-                      styles.benchmarkText,
-                      { color: isAboveBenchmark ? '#4CAF50' : '#FF9800' }
-                    ]}>
-                      {isAboveBenchmark ? '+' : ''}{benchmarkDiff}hrs vs recommended
-                    </Text>
-                  )}
-                  {benchmarkDiff !== null && activeTab === 'Diaper' && item.key !== 'ratio' && (
-                    <Text style={[
-                      styles.benchmarkText,
-                      { color: isAboveBenchmark ? '#4CAF50' : '#F44336' }
-                    ]}>
-                      Target: {item.benchmark}/day
-                    </Text>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        )}
-        {activeTab === 'Diaper' && data.summary && (
-        <DiaperHealthIndicator 
-          wetPerDay={parseFloat(data.summary.find(s => s.key === 'wet')?.avg || 0)}
-          bmPerDay={parseFloat(data.summary.find(s => s.key === 'bm')?.avg || 0)}
-        />
-        )}
-
-        {/* Line Chart */}
-        {chartType === "line" && data.lineData && (
-          <LineChart
-            data={data.lineData}
-            width={adjustedWidth}
-            height={220}
-            yAxisLabel=""
-            yAxisSuffix={yLabel}
-            fromZero
-            chartConfig={{
-              ...chartConfig,
-              paddingLeft: 40,
-            }}
-            bezier
-            style={styles.chart}
-            withInnerLines={true}
-            withOuterLines={true}
-            withVerticalLines={false}
-            withHorizontalLines={true}
-            withDots={true}
-            onDataPointClick={showDataLabels ? handleDataPointClick : undefined}
-          />
-        )}
-  
-        {/* Bar Chart */}
-        {chartType === "bar" && activeTab === 'Diaper' && data.series && (
-          <StackedBarChart 
-            series={data.series} 
-            categories={data.options?.xaxis?.categories || []} 
-            height={300}
-          />
-        )}
-  
-        {/* Legend */}
-        <View style={styles.legendContainer}>
-          {getLegend(activeTab === 'Diaper' ? data.barData : data.lineData)}
-          <TouchableOpacity 
-            style={styles.dataLabelToggle}
-            onPress={() => setShowDataLabels(!showDataLabels)}
-          >
-            <Text style={styles.dataLabelText}>
-              {showDataLabels ? "Hide Values" : "Show Values"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-  
-        {/* Additional Charts */}
-        {activeTab === 'Sleep' && data.timeDistribution && data.timeDistribution.length > 0 && (
-          <View style={styles.additionalChartContainer}>
-            <Text style={styles.sectionTitle}>Common Sleep and Nap Times</Text>
-            <PieChart
-              data={data.timeDistribution}
-              width={adjustedWidth}
-              height={200}
-              chartConfig={chartConfig}
-              accessor="count"
-              backgroundColor="transparent"
-              paddingLeft="15"
-              absolute
-            />
-          </View>
-        )}
-  
-        {activeTab === 'Feeding' && data.typeDistribution && data.typeDistribution.length > 0 && (
-          <View style={styles.additionalChartContainer}>
-            <Text style={styles.sectionTitle}>Feeding Type Distribution</Text>
-            <PieChart
-              data={data.typeDistribution}
-              width={adjustedWidth}
-              height={200}
-              chartConfig={chartConfig}
-              accessor="count"
-              backgroundColor="transparent"
-              paddingLeft="15"
-              absolute
-            />
-          </View>
-        )}
-        {/* Time of Day Analysis */}
-        {activeTab === 'Sleep' && sleepData.length > 0 && (
-          <View style={styles.additionalChartContainer}>
-            <TimeOfDayHeatmap 
-              data={processSleepTimeOfDay()} 
-              title="Sleep Start Times" 
-              color="#1976d2"
-            />
-          </View>
-        )}
-
-        {activeTab === 'Feeding' && feedingData.length > 0 && (
-          <View style={styles.additionalChartContainer}>
-            <TimeOfDayHeatmap 
-              data={processFeedingTimeOfDay()} 
-              title="Feeding Times Throughout Day" 
-              color="#FF9800"
-            />
-          </View>
-        )}
-
-        {activeTab === 'Diaper' && diaperData.length > 0 && (
-          <View style={styles.additionalChartContainer}>
-            <TimeOfDayHeatmap 
-              data={processDiaperTimeOfDay()} 
-              title="Diaper Change Times" 
-              color="#00BCD4"
-            />
-          </View>
-        )}
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#1976d2" />
+        <Text style={styles.loadingText}>Loading report data...</Text>
       </View>
     );
-  };
+  }
+
+  const data = getChartData();
+  
+  // DEBUG: Log the data being used
+  if (activeTab === 'Sleep') {
+    console.log('Sleep chart data:', {
+      dataPoints: data.lineData?.datasets[0]?.data,
+      summaryItems: data.summary?.map(s => ({
+        label: s.label,
+        avg: s.avg,
+        unit: s.unit
+      }))
+    });
+  }
+  
+  const chartType = getChartType(activeTab);
+  const yLabel = getYAxisLabel();
 
   return (
-    <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={styles.gradient}>
+    <View style={[
+      styles.chartContainer,
+      {
+        backgroundColor: darkMode ? '#1f1f1f' : '#fff',
+        borderColor: darkMode ? '#333' : '#e0e0e0'
+      }
+    ]}>
+      
+      {/* TYPE-SPECIFIC SUMMARY SECTIONS */}
+      {activeTab === 'Sleep' && data && (
+        <SleepMetricsSummary data={data} darkMode={darkMode} />
+      )}
+      
+      {activeTab === 'Feeding' && data && (
+        <FeedingMetricsSummary data={data} />
+      )}
+      
+      {activeTab === 'Diaper' && data && (
+        <DiaperMetricsSummary 
+          data={data}
+          wetPerDay={parseFloat(data.summary?.find(s => s.key === 'wet')?.avg || 0)}
+          bmPerDay={parseFloat(data.summary?.find(s => s.key === 'bm')?.avg || 0)}
+        />
+      )}
+
+      {/* LINE CHART */}
+      {chartType === "line" && data.lineData && (
+        <LineChart
+          data={data.lineData}
+          width={adjustedWidth}
+          height={220}
+          yAxisLabel=""
+          yAxisSuffix={yLabel}
+          fromZero
+          chartConfig={{
+            ...chartConfig,
+            paddingLeft: 40,
+          }}
+          bezier
+          style={styles.chart}
+          withInnerLines={true}
+          withOuterLines={true}
+          withVerticalLines={false}
+          withHorizontalLines={true}
+          withDots={true}
+          onDataPointClick={showDataLabels ? handleDataPointClick : undefined}
+        />
+      )}
+
+      {/* STACKED BAR CHART */}
+      {chartType === "bar" && activeTab === 'Diaper' && data.series && (
+        <StackedBarChart 
+          series={data.series} 
+          categories={data.options?.xaxis?.categories || []} 
+          height={300}
+        />
+      )}
+
+      {/* LEGEND */}
+      <View style={[
+        styles.legendContainer,
+        {
+          backgroundColor: darkMode ? '#2c2c2c' : '#fff',
+          borderColor: darkMode ? '#333' : '#f0f0f0'
+        }
+      ]}>
+        {getLegend(activeTab === 'Diaper' ? data.barData : data.lineData)}
+        <TouchableOpacity 
+          style={styles.dataLabelToggle}
+          onPress={() => setShowDataLabels(!showDataLabels)}
+        >
+          <Text style={styles.dataLabelText}>
+            {showDataLabels ? "Hide Values" : "Show Values"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* PIE CHARTS & HEATMAPS */}
+      {activeTab === 'Sleep' && data.timeDistribution && data.timeDistribution.length > 0 && (
+        <View style={styles.additionalChartContainer}>
+          <Text style={styles.sectionTitle}>Sleep Time Distribution</Text>
+          <PieChart
+            data={data.timeDistribution}
+            width={adjustedWidth}
+            height={200}
+            chartConfig={chartConfig}
+            accessor="count"
+            backgroundColor="transparent"
+            paddingLeft="15"
+            absolute
+          />
+        </View>
+      )}
+
+      {activeTab === 'Sleep' && sleepData.length > 0 && (
+        <View style={styles.additionalChartContainer}>
+          <TimeOfDayHeatmap 
+            data={processSleepTimeOfDay()} 
+            title="Sleep Start Times" 
+            color="#1976d2"
+          />
+        </View>
+      )}
+
+      {activeTab === 'Feeding' && feedingData.length > 0 && (
+        <View style={styles.additionalChartContainer}>
+          <TimeOfDayHeatmap 
+            data={processFeedingTimeOfDay()} 
+            title="Feeding Times" 
+            color="#FF9800"
+          />
+        </View>
+      )}
+
+      {activeTab === 'Diaper' && diaperData.length > 0 && (
+        <View style={styles.additionalChartContainer}>
+          <TimeOfDayHeatmap 
+            data={processDiaperTimeOfDay()} 
+            title="Diaper Change Times" 
+            color="#00BCD4"
+          />
+        </View>
+      )}
+    </View>
+  );
+};
+
+  return (
+    <LinearGradient 
+      colors={darkMode ? ['#1f1f1f', '#2a2a2a'] : ['#B2EBF2', '#FCE4EC']} 
+      style={styles.gradient}
+    >
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: darkMode ? 'transparent' : 'transparent' }]}>
         <TouchableOpacity 
           style={styles.backButton} 
           onPress={() => navigation.goBack()}
         >
-          <Ionicons name="arrow-back" size={24} color="#1976d2" />
-          <Text style={styles.backText}>Dashboard</Text>
+          <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
+          <Text style={[styles.backText, { color: theme.textPrimary }]}>Dashboard</Text>
         </TouchableOpacity>
-          <View style={styles.logoContainer}>
-            <Image 
-              source={require('../assets/logo.png')} 
-              style={styles.logo}
-            />
-          </View>
-          <View style={styles.headerRightSpace} />
+        <View style={styles.logoContainer}>
+          <Image 
+            source={require('../assets/logo.png')} 
+            style={styles.logo}
+          />
         </View>
+        <View style={styles.headerRightSpace} />
+      </View>
 
-        <Text style={styles.title}>{`${name || 'Child'}'s Reports`}</Text>
+      <Text style={[styles.title, { color: theme.textPrimary }]}>{`${name || 'Child'}'s Reports`}</Text>
 
         {/* Time period toggle */}
-        <View style={styles.toggleContainer}>
+      <View style={[styles.toggleContainer, { backgroundColor: darkMode ? '#2c2c2c' : '#f0f0f0' }]}>
+        <TouchableOpacity
+          style={[styles.toggleButton, reportRange === 'Weekly' && [styles.activeToggle, { backgroundColor: darkMode ? '#444' : '#fff' }]]}
+          onPress={() => setReportRange('Weekly')}
+        >
+          <Text style={[styles.toggleText, reportRange === 'Weekly' && { color: theme.textPrimary }]}>
+            Week
+          </Text>
+        </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.toggleButton, reportRange === 'Weekly' && styles.activeToggle]}
-            onPress={() => setReportRange('Weekly')}
-          >
-            <Text style={[styles.toggleText, reportRange === 'Weekly' && styles.activeToggleText]}>
-              Week
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.toggleButton, reportRange === 'Monthly' && styles.activeToggle]}
+            style={[styles.toggleButton, reportRange === 'Monthly' && [styles.activeToggle, { backgroundColor: darkMode ? '#444' : '#fff' }]]}
             onPress={() => setReportRange('Monthly')}
           >
-            <Text style={[styles.toggleText, reportRange === 'Monthly' && styles.activeToggleText]}>
+            <Text style={[styles.toggleText, reportRange === 'Monthly' && { color: theme.textPrimary }]}>
               Month
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.toggleButton, reportRange === 'Annual' && styles.activeToggle]}
+            style={[styles.toggleButton, reportRange === 'Annual' &&[styles.activeToggle, { backgroundColor: darkMode ? '#444' : '#fff' }]]}
             onPress={() => setReportRange('Annual')}
           >
-            <Text style={[styles.toggleText, reportRange === 'Annual' && styles.activeToggleText]}>
+            <Text style={[styles.toggleText, reportRange === 'Annual' && { color: theme.textPrimary }]}>
               Year
             </Text>
           </TouchableOpacity>
         </View>
 
         
-        <View style={styles.tabContainer}>
+        <View style={[styles.tabContainer, { backgroundColor: darkMode ? '#2c2c2c' : '#fff' }]}>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'Sleep' && styles.activeTab]}
+            style={[styles.tabButton, activeTab === 'Sleep' && [styles.activeTab, { backgroundColor: darkMode ? '#3c3c3c' : '#E3F2FD' }]]}
             onPress={() => setActiveTab('Sleep')}
           >
             <Ionicons 
               name="bed-outline" 
               size={20} 
-              color={activeTab === 'Sleep' ? '#1976d2' : '#666'} 
+              color={activeTab === 'Sleep' ? '#1976d2' : theme.textSecondary} 
             />
             <Text style={[styles.tabText, activeTab === 'Sleep' && styles.activeTabText]}>
               Sleep
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'Feeding' && styles.activeTab]}
+            style={[styles.tabButton, activeTab === 'Feeding' && [styles.activeTab, { backgroundColor: darkMode ? '#3c3c3c' : '#E3F2FD' }]]}
             onPress={() => setActiveTab('Feeding')}
           >
             <Ionicons 
               name="restaurant-outline" 
               size={20} 
-              color={activeTab === 'Feeding' ? '#1976d2' : '#666'} 
+              color={activeTab === 'Feeding' ? '#1976d2' : theme.textSecondary} 
             />
             <Text style={[styles.tabText, activeTab === 'Feeding' && styles.activeTabText]}>
               Feeding
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'Diaper' && styles.activeTab]}
+            style={[styles.tabButton, activeTab === 'Diaper' && [styles.activeTab, { backgroundColor: darkMode ? '#3c3c3c' : '#E3F2FD' }]]}
             onPress={() => setActiveTab('Diaper')}
           >
             <Ionicons 
               name="water-outline" 
               size={20} 
-              color={activeTab === 'Diaper' ? '#1976d2' : '#666'} 
+              color={activeTab === 'Diaper' ? '#1976d2' : theme.textSecondary} 
             />
             <Text style={[styles.tabText, activeTab === 'Diaper' && styles.activeTabText]}>
               Diaper
@@ -2509,70 +2933,89 @@ const calculateDetailedTrend = (data) => {
               feedingData={feedingData || []}
               diaperData={diaperData || []}
               reportRange={reportRange}
+              darkMode={darkMode}
+              theme={theme}
             />
           )}
           {renderCharts()}
         </ScrollView>
 
-        <ExportReportSection 
-          exportReportAsPDF={exportReportAsPDF} 
-          exportReportAsExcel={exportReportAsExcel} 
-        />
+      <ExportReportSection 
+        exportReportAsPDF={exportReportAsPDF} 
+        exportReportAsExcel={exportReportAsExcel}
+        darkMode={darkMode}
+        theme={theme}
+      />
       </SafeAreaView>
     </LinearGradient>
   );
 };
 
 // Add export report functionality
-const ExportReportSection = ({ exportReportAsPDF, exportReportAsExcel }) => {
-  const handleExport = (type) => {
-    Alert.alert(
-      'Export Report',
-      `Report will be exported as ${type}`,
-      [{ text: 'OK' }]
+ const ExportReportSection = ({ 
+    exportReportAsPDF, 
+    exportReportAsExcel,
+    darkMode,
+    theme 
+  }) => {
+    return (
+      <View style={[
+        styles.exportContainer,
+        {
+          backgroundColor: darkMode ? '#1f1f1f' : '#fff',
+          borderColor: darkMode ? '#333' : '#e0e0e0'
+        }
+      ]}>
+        <Text style={[styles.exportTitle, { color: theme.textPrimary }]}>
+          Export Report
+        </Text>
+        <View style={styles.exportOptionsRow}>
+          <TouchableOpacity 
+            style={[
+              styles.exportOption,
+              { backgroundColor: darkMode ? '#2c2c2c' : '#f8f8f8' }
+            ]}
+            onPress={exportReportAsPDF}
+          >
+            <AntDesign
+              name="file-pdf"
+              size={18}
+              color="#E53935"
+              style={styles.exportOptionIcon}
+            />
+            <Text style={[styles.exportOptionText, { color: theme.textPrimary }]}>
+              PDF
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[
+              styles.exportOption,
+              { backgroundColor: darkMode ? '#2c2c2c' : '#f8f8f8' }
+            ]}
+            onPress={exportReportAsExcel}
+          >
+            <FontAwesome5
+              name="file-excel"
+              size={18}
+              color="#2E7D32"
+              style={styles.exportOptionIcon}
+            />
+            <Text style={[styles.exportOptionText, { color: theme.textPrimary }]}>
+              Excel
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity 
+          style={styles.exportButton}
+          onPress={exportReportAsPDF}
+        >
+          <Text style={styles.exportButtonText}>Share Report</Text>
+        </TouchableOpacity>
+      </View>
     );
   };
 
-  return (
-    <View style={styles.exportContainer}>
-      <Text style={styles.exportTitle}>Export Report</Text>
-      <View style={styles.exportOptionsRow}>
-      <TouchableOpacity 
-        style={styles.exportOption}
-        onPress={exportReportAsPDF}
-      >
-        <AntDesign
-          name="file-pdf"
-          size={18}
-          color="#E53935"
-          style={styles.exportOptionIcon}
-        />
-      <Text style={styles.exportOptionText}>PDF</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity 
-        style={styles.exportOption}
-        onPress={exportReportAsExcel}
-      >
-        <FontAwesome5
-          name="file-excel"
-          size={18}
-          color="#2E7D32"
-          style={styles.exportOptionIcon}
-          />
-        <Text style={styles.exportOptionText}>Excel</Text>
-      </TouchableOpacity>
-
-      </View>
-      <TouchableOpacity 
-        style={styles.exportButton}
-        onPress={exportReportAsPDF}
-      >
-        <Text style={styles.exportButtonText}>Share Report</Text>
-      </TouchableOpacity>
-    </View>
-  );
-};
 
 
 // Add insights component
@@ -2651,6 +3094,45 @@ const InsightsSection = ({ activeTab, data }) => {
 
 
 const styles = StyleSheet.create({
+  metricsGridContainer: enhancedStyles.metricsGridContainer,
+enhancedSummaryCard: enhancedStyles.enhancedSummaryCard,
+cardTopRow: enhancedStyles.cardTopRow,
+cardIconContainer: enhancedStyles.cardIconContainer,
+cardLabelContainer: enhancedStyles.cardLabelContainer,
+cardLabel: enhancedStyles.cardLabel,
+trendPill: enhancedStyles.trendPill,
+trendPillText: enhancedStyles.trendPillText,
+cardValueSection: enhancedStyles.cardValueSection,
+cardValue: enhancedStyles.cardValue,
+benchmarkLabel: enhancedStyles.benchmarkLabel,
+cardDetails: enhancedStyles.cardDetails,
+metricsSummaryContainer: enhancedStyles.metricsSummaryContainer,
+qualityStatusBanner: enhancedStyles.qualityStatusBanner,
+qualityStatusText: enhancedStyles.qualityStatusText,
+qualityStatusLabel: enhancedStyles.qualityStatusLabel,
+qualityStatusDescription: enhancedStyles.qualityStatusDescription,
+sleepBreakdownContainer: enhancedStyles.sleepBreakdownContainer,
+sleepBreakdownItem: enhancedStyles.sleepBreakdownItem,
+sleepBreakdownIcon: enhancedStyles.sleepBreakdownIcon,
+sleepBreakdownInfo: enhancedStyles.sleepBreakdownInfo,
+sleepBreakdownLabel: enhancedStyles.sleepBreakdownLabel,
+sleepBreakdownValue: enhancedStyles.sleepBreakdownValue,
+feedingDetailsContainer: enhancedStyles.feedingDetailsContainer,
+feedingDetailRow: enhancedStyles.feedingDetailRow,
+feedingDetailLabel: enhancedStyles.feedingDetailLabel,
+feedingDetailText: enhancedStyles.feedingDetailText,
+feedingDetailValue: enhancedStyles.feedingDetailValue,
+diaperStatusRow: enhancedStyles.diaperStatusRow,
+diaperStatusCard: enhancedStyles.diaperStatusCard,
+diaperCardHeader: enhancedStyles.diaperCardHeader,
+diaperCardTitle: enhancedStyles.diaperCardTitle,
+diaperStatusBadge: enhancedStyles.diaperStatusBadge,
+diaperStatusValue: enhancedStyles.diaperStatusValue,
+diaperStatusNote: enhancedStyles.diaperStatusNote,
+diaperTotalContainer: enhancedStyles.diaperTotalContainer,
+diaperTotalInfo: enhancedStyles.diaperTotalInfo,
+diaperTotalLabel: enhancedStyles.diaperTotalLabel,
+diaperTotalValue: enhancedStyles.diaperTotalValue,
   gradient: {
     flex: 1,
   },
@@ -2772,7 +3254,7 @@ backText: {
     shadowRadius: 3,
     elevation: 3,
   },
-  summaryCardsContainer: {
+    summaryCardsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 15,
@@ -2815,6 +3297,10 @@ backText: {
   legendContainer: {
     marginTop: 10,
     marginBottom: 15,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 10,
   },
   legendRow: {
     flexDirection: 'row',

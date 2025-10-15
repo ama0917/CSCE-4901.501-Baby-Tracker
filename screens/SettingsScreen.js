@@ -18,6 +18,7 @@ import { getAuth, sendEmailVerification, multiFactor } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import useUserRole from './useUserRole';
 import * as Clipboard from 'expo-clipboard';
+import { RefreshCcw } from 'lucide-react-native';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -621,21 +622,31 @@ export default function SettingsScreen() {
           )}
         </Card>
 
-		{/* ---------- 0) Restore Backup ---------- */}
-			  <LinearGradient colors={neonGradients.card} style={styles.settingCard}>
-				<Text style={[styles.settingTitle, { color: currentTheme.text }]}>Restore Backup</Text>
-				<TouchableOpacity
-				  style={[styles.button, restoreLoading && { opacity: 0.6 }]}
-				  onPress={handleRestoreBackup}
-				  disabled={restoreLoading}
-				>
-				  {restoreLoading ? (
-					<ActivityIndicator color="#fff" />
-				  ) : (
-					<Text style={styles.buttonText}>Restore Backup</Text>
-				  )}
-				</TouchableOpacity>
-			  </LinearGradient>
+		{/* ---------- Restore Data ---------- */}
+		<SectionTitle 
+		  icon={<RefreshCcw size={18} color={currentTheme.textPrimary} />} 
+		  text="Restore Data" 
+		/>
+
+		<Card>
+		  <TouchableOpacity
+			activeOpacity={0.9}
+			onPress={handleRestoreBackup}
+			disabled={restoreLoading}
+			style={{ opacity: restoreLoading ? 0.7 : 1 }}
+		  >
+			<LinearGradient
+			  colors={darkMode ? gradients.warnDark : gradients.warnLight}
+			  style={styles.fullWidthGradient}
+			>
+			  {restoreLoading ? (
+				<ActivityIndicator color="#fff" />
+			  ) : (
+				<Text style={styles.fullWidthText}>Restore Data</Text>
+			  )}
+			</LinearGradient>
+		  </TouchableOpacity>
+		</Card>
 
         {/* ---------- 6) Change Password ---------- */}
         <SectionTitle icon={<Fingerprint size={18} color={currentTheme.textPrimary} />} text="Change Password" />

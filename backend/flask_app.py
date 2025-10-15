@@ -50,7 +50,7 @@ def restore_backup_route():
         else:
             user_id = data["user_id"]
 
-        3print(f"[Flask] Restore backup requested for user_id: {user_id}")
+        print(f"[Flask] Restore backup requested for user_id: {user_id}")
         print(f"[Flask] Restore backup requested.")
         restore_backup(user_id)
         #print(f"[Flask] Backup restored successfully for user_id: {user_id}")
@@ -79,4 +79,5 @@ if __name__ == "__main__":
     start_background_tasks()
     # Use 0.0.0.0 if you want LAN access from phone, or 127.0.0.1 for localhost only
     app.run(debug=True, host='0.0.0.0', port=5001, use_reloader=False)
+
 

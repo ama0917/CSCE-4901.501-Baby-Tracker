@@ -6,6 +6,9 @@ from backup_service import start_automatic_backup, restore_backup
 
 app = Flask(__name__)
 
+from flask_cors import CORS
+CORS(app)
+
 # 🔹 Absolute path to serviceAccountKey.json
 SERVICE_ACCOUNT_PATH = r"C:\Users\cneno\Downloads\CSCE-4901.501-Baby-Tracker-main\CSCE-4901.501-Baby-Tracker-main\backend\serviceAccountKey.json"
 
@@ -79,5 +82,4 @@ if __name__ == "__main__":
     start_background_tasks()
     # Use 0.0.0.0 if you want LAN access from phone, or 127.0.0.1 for localhost only
     app.run(debug=True, host='0.0.0.0', port=5001, use_reloader=False)
-
 

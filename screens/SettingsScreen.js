@@ -324,32 +324,31 @@ export default function SettingsScreen() {
   };
   
     // --- Restore Backup Handler ---
-  const handleRestoreBackup = async () => {
-  setRestoreLoading(true);
-  try {
-    const response = await fetch('http://10.73.180.149:5001/restore-backup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: "test_user" }) // send a user_id to match Flask route
-    });
+	const handleRestoreBackup = async () => {
+	  setRestoreLoading(true);
+	  try {
+		const response = await fetch('http://192.168.1.68:5001/restore-backup', { // use your computer's IP
+		  method: 'POST',
+		  headers: { 'Content-Type': 'application/json' },
+		  body: JSON.stringify({ user_id: "test_user" }) // send a user_id to match Flask route
+		});
 
-    if (!response.ok) {
-      throw new Error('Backup restore failed.');
-    }
+		const data = await response.json();
+		console.log('Restore response:', data); // debug output
 
-    const data = await response.json();
-    if (data.success) {
-      Alert.alert('Backup restored', data.message || 'Your local data has been restored.');
-    } else {
-      throw new Error(data.error || 'Backup restore failed.');
-    }
-  } catch (e) {
-    Alert.alert('Error', e.message || 'Could not restore backup.');
-  } finally {
-    setRestoreLoading(false);
-  }
-};
+		if (!response.ok || !data.success) {
+		  throw new Error(data.error || 'Backup restore failed.');
+		}
 
+		// ✅ Simple alert message
+		Alert.alert('Backup restored', 'Backup restored successfully.');
+
+	  } catch (e) {
+		console.error('Restore error:', e); // debug output
+		Alert.alert('Error', e.message || 'Could not restore backup.');
+	  } finally {
+		setRestoreLoading(false);
+	  }
   return (
     <ThemedBackground>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} translucent />

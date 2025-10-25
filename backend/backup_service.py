@@ -7,6 +7,7 @@ from threading import Thread
 from cryptography.fernet import Fernet
 import firebase_admin
 from firebase_admin import credentials, firestore
+#import auth from "@react-native-firebase/auth";
 
 # -------------------------------
 # Load encryption key
@@ -136,7 +137,11 @@ def backup_data():
 # Restore function
 # -------------------------------
 def restore_backup(user_id):
-    print(f"[Restore] Starting restore for user {user_id}...")
+    """
+    Restore backup for a specific user_id from the encrypted SQLite backup.
+    """
+    print(f"[Restore] Starting restore for user '{user_id}'...")
+
     if db is None:
         print("[Restore] No Firestore client; cannot restore data.")
         return
@@ -146,51 +151,66 @@ def restore_backup(user_id):
         return
 
     try:
-        # Decrypt backup
+        # 🔹 Decrypt backup
         with open(backup_db_encrypted_path, "rb") as f:
             encrypted_bytes = f.read()
         decrypted_bytes = cipher.decrypt(encrypted_bytes)
 
-        # Temporarily write decrypted DB
+        # 🔹 Temporarily write decrypted DB
         temp_db_path = backup_db_path
         with open(temp_db_path, "wb") as f:
             f.write(decrypted_bytes)
 
-        # Connect and restore data
+        # 🔹 Connect to decrypted SQLite DB
         conn = sqlite3.connect(temp_db_path)
         cursor = conn.cursor()
 
-        # Restore children
+        # 🔹 Restore children
         cursor.execute('SELECT id, data FROM "children"')
         children_rows = cursor.fetchall()
         user_children_ids = []
 
         for child_id, child_json in children_rows:
             child_data = json.loads(child_json)
-            if child_data.get("userId") == user_id:
+
+            # 🔹 Diagnostic logging
+            print(f"[Restore] Checking child {child_id} with userId={child_data.get('userId')}")
+
+            # 🔹 Compare user IDs more robustly
+            if str(child_data.get("userId", "")).strip().lower() == str(user_id).strip().lower():
                 user_children_ids.append(child_id)
                 db.collection("children").document(child_id).set(child_data)
-        print(f"[Restore] Restored {len(user_children_ids)} children for user {user_id}")
 
-        # Restore logs
+        print(f"[Restore] Restored {len(user_children_ids)} children for user '{user_id}'")
+
+        # 🔹 Restore associated logs
         log_collections = ["diaperLogs", "feedLogs", "sleepLogs"]
         for collection_name in log_collections:
             cursor.execute(f'SELECT id, data FROM "{collection_name}"')
             rows = cursor.fetchall()
             restored_count = 0
+
             for doc_id, doc_json in rows:
                 doc_data = json.loads(doc_json)
+
+                if "childId" not in doc_data:
+                    print(f"[Restore] Skipping {collection_name} doc {doc_id}: no childId field.")
+                    continue
+
                 if doc_data.get("childId") in user_children_ids:
                     db.collection(collection_name).document(doc_id).set(doc_data)
                     restored_count += 1
+
             print(f"[Restore] Restored {restored_count} documents in {collection_name}")
 
+        # 🔹 Cleanup
         conn.close()
         os.remove(temp_db_path)
-        print("[Restore] Temporary decrypted file removed. Restore completed.")
+        print("[Restore] Temporary decrypted file removed. Restore completed successfully.")
 
     except Exception as e:
         print(f"[Restore] Error during restore: {e}")
+
 
 # -------------------------------
 # Automatic backup scheduler

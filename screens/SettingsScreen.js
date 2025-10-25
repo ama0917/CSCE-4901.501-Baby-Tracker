@@ -323,32 +323,49 @@ export default function SettingsScreen() {
     setDigestOpen(v => !v);
   };
   
-    // --- Restore Backup Handler ---
-	const handleRestoreBackup = async () => {
-	  setRestoreLoading(true);
-	  try {
-		const response = await fetch('http://192.168.1.68:5001/restore-backup', { // use your computer's IP
-		  method: 'POST',
-		  headers: { 'Content-Type': 'application/json' },
-		  body: JSON.stringify({ user_id: "test_user" }) // send a user_id to match Flask route
-		});
+// --- Restore Backup Handler ---
+const handleRestoreBackup = async () => {
+  console.log('Restore button pressed');
 
-		const data = await response.json();
-		console.log('Restore response:', data); // debug output
+  // Get the current logged-in user from your Firebase config
+  const user = auth.currentUser; // no parentheses if auth is from firebaseConfig
+  const actualUserId = user?.uid;
 
-		if (!response.ok || !data.success) {
-		  throw new Error(data.error || 'Backup restore failed.');
-		}
+  console.log('Current user:', user);
+  console.log('Actual user ID:', actualUserId);
 
-		// ✅ Simple alert message
-		Alert.alert('Backup restored', 'Backup restored successfully.');
+  if (!actualUserId) {
+    Alert.alert('Error', 'User ID not found. Cannot restore backup.');
+    return;
+  }
 
-	  } catch (e) {
-		console.error('Restore error:', e); // debug output
-		Alert.alert('Error', e.message || 'Could not restore backup.');
-	  } finally {
-		setRestoreLoading(false);
-	  }
+  setRestoreLoading(true);
+
+  try {
+    const response = await fetch('http://192.168.1.68:5001/restore-backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: actualUserId }) // send actual user ID
+    });
+
+    const data = await response.json();
+    console.log('Restore response:', data); // debug output
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Backup restore failed.');
+    }
+
+    // ✅ Simple alert message
+    Alert.alert('Backup restored', 'Backup restored successfully.');
+
+  } catch (e) {
+    console.error('Restore error:', e); // debug output
+    Alert.alert('Error', e.message || 'Could not restore backup.');
+  } finally {
+    setRestoreLoading(false);
+  }
+};
+
   return (
     <ThemedBackground>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} translucent />

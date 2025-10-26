@@ -224,9 +224,9 @@ const DiaperChangeForm = ({ navigation, route }) => {
               <View style={styles.pickerContainer}>
                 <Picker selectedValue={stoolType} onValueChange={(val) => setStoolType(val)}>
                   <Picker.Item label="Wet" value="Wet" />
-                  <Picker.Item label="BM" value="BM" />
+                  <Picker.Item label="BM (Bowel Movement)" value="BM" />
                   <Picker.Item label="Dry" value="Dry" />
-                  <Picker.Item label="Wet + BM" value="Wet+BM" />
+                  <Picker.Item label="Wet + BM (Bowel Movement)" value="Wet+BM" />
                 </Picker>
               </View>
             )}

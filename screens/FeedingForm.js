@@ -25,6 +25,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useDarkMode } from '../screens/DarkMode';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { ArrowLeft } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // bring in role hook for caregiver gating
 import useUserRole from './useUserRole';
@@ -69,6 +70,24 @@ export default function FeedingForm({ navigation }) {
     });
     return () => unsub();
   }, [role, childId, uid]);
+
+    const [hasAIConsent, setHasAIConsent] = useState(false);
+  
+  // Load AI consent status
+  useEffect(() => {
+    const loadAIConsent = async () => {
+      try {
+        if (childId) {
+          const consent = await AsyncStorage.getItem(`ai_consent_${childId}`);
+          setHasAIConsent(consent === 'true');
+        }
+      } catch (error) {
+        console.error('Error loading AI consent:', error);
+      }
+    };
+    
+    loadAIConsent();
+  }, [childId]);
 
   const [selectedTime, setSelectedTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -153,7 +172,7 @@ export default function FeedingForm({ navigation }) {
                 };
 
                 await addDoc(collection(db, 'feedLogs'), logData);
-                alert('Feeding log saved successfully!');
+                Alert.alert('Success', 'Log saved successfully!');
                 navigation.goBack();
               } catch (error) {
                 console.error('Error saving feeding log:', error);
@@ -181,7 +200,7 @@ export default function FeedingForm({ navigation }) {
       };
 
       await addDoc(collection(db, 'feedLogs'), logData);
-      alert('Feeding log saved successfully!');
+      Alert.alert('Success', 'Log saved successfully!');
       navigation.goBack();
     } catch (error) {
       console.error('Error saving feeding log:', error);
@@ -207,7 +226,6 @@ export default function FeedingForm({ navigation }) {
     );
   }
 
-
   return (
     <ThemedBackground>
       <SafeAreaView style={styles.container}>
@@ -217,7 +235,6 @@ export default function FeedingForm({ navigation }) {
             style={{ flex: 1 }}
           >
             <ScrollView contentContainerStyle={styles.scrollViewContent}>
-              {/* Header */}
               <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
                   <LinearGradient
@@ -313,11 +330,12 @@ export default function FeedingForm({ navigation }) {
                     <Picker selectedValue={amountUnit} onValueChange={(val) => setAmountUnit(val)}>
                       <Picker.Item label="mL" value="mL" />
                       <Picker.Item label="oz" value="oz" />
+                      <Picker.Item label="fl oz" value="fl oz" />
                       <Picker.Item label="Cups" value="Cups" />
                       <Picker.Item label="Pieces" value="Pieces" />
                       <Picker.Item label="None/Refused" value="None" />
                     </Picker>
-                  </View>
+                  </View> 
                 )}
               </LinearGradient>
 
@@ -344,11 +362,24 @@ export default function FeedingForm({ navigation }) {
                 )}
               </LinearGradient>
 
-              {/* Notes */}
+              {/* Notes with AI helper */}
               <LinearGradient colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']} style={styles.inputCard}>
-                <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Notes</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Notes</Text>
+                  {hasAIConsent && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: darkMode ? '#1a3a52' : '#E3F2FD', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
+                      <Text style={{ fontSize: 10, color: darkMode ? '#64b5f6' : '#1976d2', marginRight: 4 }}>✨</Text>
+                      <Text style={{ fontSize: 10, color: darkMode ? '#64b5f6' : '#1976d2', fontWeight: '600' }}>AI</Text>
+                    </View>
+                  )}
+                </View>
+                {hasAIConsent && (
+                  <Text style={{ fontSize: 11, color: darkMode ? '#64b5f6' : '#1976d2', fontStyle: 'italic', marginBottom: 8 }}>
+                    💡 Be specific about food details for better AI insights (e.g., "mashed sweet potato" instead of just "vegetables")
+                  </Text>
+                )}
                 <TextInput
-                  placeholder="Any additional notes..."
+                  placeholder={hasAIConsent ? "Describe the food in detail for better AI analysis..." : "Any additional notes..."}
                   placeholderTextColor={darkMode ? '#777' : '#aaa'}
                   style={[styles.textInput, { height: 80, color: currentTheme.textPrimary }]}
                   value={notes}

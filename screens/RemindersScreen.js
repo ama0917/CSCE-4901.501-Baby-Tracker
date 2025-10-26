@@ -1165,6 +1165,83 @@ const getChildData = async (childId) => {
   }
 };
 
+// AI-powered age-based recommendations when there's insufficient data
+const getAIAgeBasedRecommendations = async (reminderType, childData) => {
+  const ageMonths = childData?.ageMonths || 0;
+  const weight = childData?.weight || 'unknown';
+  const height = childData?.height || 'unknown';
+
+  const prompt = `You are a pediatric care assistant. Recommend optimal ${reminderType} times for a baby based on their age and development.
+
+BABY INFORMATION:
+- Age: ${ageMonths} months old
+- Weight: ${weight} ${childData?.weightUnit || 'lbs'}
+- Height: ${height} ${childData?.heightUnit || 'in'}
+
+TASK: Provide age-appropriate ${reminderType} schedule recommendations.
+
+CRITICAL INSTRUCTIONS:
+1. Base recommendations on typical developmental needs for this age
+2. For ${reminderType}, consider:
+   ${reminderType === 'feeding' ? `
+   - Newborns (0-2 months): Every 2-3 hours (8-12 times/day)
+   - Infants (2-6 months): Every 3-4 hours (6-8 times/day)
+   - Older infants (6-12 months): Every 4-5 hours (4-6 times/day)
+   - Toddlers (12+ months): 3 meals + 2 snacks (5 times/day)` : ''}
+   ${reminderType === 'diaper' ? `
+   - Newborns (0-3 months): Every 2-3 hours (8-10 times/day)
+   - Infants (3-12 months): Every 3-4 hours (6-8 times/day)
+   - Toddlers (12+ months): Every 3-4 hours (6 times/day)` : ''}
+   ${reminderType === 'nap' ? `
+   - Newborns (0-3 months): 4-5 naps per day
+   - Infants (3-6 months): 3-4 naps per day
+   - Older infants (6-12 months): 2-3 naps per day
+   - Toddlers (12-18 months): 2 naps per day
+   - Toddlers (18+ months): 1 nap per day` : ''}
+3. Avoid nighttime hours (10:00 PM - 6:00 AM) unless age requires it
+4. Use 24-hour format for times in the JSON array (e.g., "07:00", "15:00")
+5. Use 12-hour AM/PM format in explanation text (e.g., "7:00 AM", "3:00 PM")
+6. Respond with ONLY valid JSON, no other text
+
+Return this JSON structure:
+{
+  "times": ["07:00", "10:00", "13:00", "16:00"],
+  "explanation": "Age-appropriate schedule for ${ageMonths}-month-old with intervals based on developmental needs (use 12-hour AM/PM format here)",
+  "frequency": "daily",
+  "confidence": "low",
+  "insights": [
+    "This schedule is based on typical developmental needs for a ${ageMonths}-month-old",
+    "Log ${reminderType} activities for 3-5 days to get personalized recommendations",
+    "Pattern will adapt as you track your baby's unique routine"
+  ],
+  "nextOptimization": "Log 8 activities to unlock personalized AI analysis",
+  "parentTip": "Age-specific practical advice for ${ageMonths}-month-old regarding ${reminderType}"
+}`;
+
+  try {
+    const content = await callOpenAI(prompt);
+    console.log('AI age-based recommendation:', content);
+    
+    const parsed = JSON.parse(content);
+    
+    if (!parsed.times || !Array.isArray(parsed.times) || parsed.times.length === 0) {
+      throw new Error('Invalid AI response structure');
+    }
+
+    return parsed;
+  } catch (error) {
+    console.error('AI age-based recommendation error:', error);
+    
+    // Ultimate fallback to generateLocalRecommendations
+    return generateLocalRecommendations(
+      { topHours: getDefaultTopHours(reminderType), avgInterval: getDefaultInterval(reminderType) },
+      reminderType,
+      0,
+      childData
+    );
+  }
+};
+
 const getAIRecommendations = async (reminderType) => {
   setAiLoading(true);
 
@@ -1173,65 +1250,66 @@ const getAIRecommendations = async (reminderType) => {
     const historicalData = await getChildHistoricalData(reminderType);
     console.log(`Historical data length: ${historicalData?.length || 0}`);
 
-    if (!historicalData || historicalData.length < 3) {
-      console.log('Insufficient data, using defaults');
-      setAiLoading(false);
-      return {
-        times: getDefaultTimes(reminderType),
-        explanation: `Insufficient data (${historicalData?.length || 0} entries). Using age-appropriate defaults.`,
-        frequency: 'daily',
-        confidence: 'low',
-        insights: [`Start tracking ${reminderType} activities to get personalized recommendations`]
-      };
-    }
-
-    // Get child data for context
+    // Get child data for context - ALWAYS needed now
     console.log('Fetching child data for childId:', childId);
     const childData = await getChildData(childId);
     console.log('Child data result:', childData);
-    
+
+    // If insufficient data, use AI-powered age-based recommendations
+    if (!historicalData || historicalData.length < 3) {
+      console.log('Insufficient data, using AI age-based recommendations');
+      
+      const ageBasedRecommendation = await getAIAgeBasedRecommendations(reminderType, childData);
+      setAiLoading(false);
+      return ageBasedRecommendation;
+    }
+
     const analysisData = prepareAnalysisData(historicalData, reminderType, childData);
     console.log('Analysis data prepared:', analysisData);
     
     const topHoursStr = analysisData.topHours.slice(0, 3).map(h => formatTime12Hour(h)).join(', ');
     const timesJsonArray = JSON.stringify(analysisData.topHours.slice(0, 3));
     const ageMonths = childData?.ageMonths || 0;
+    const weight = childData?.weight || 'unknown';
+    const height = childData?.height || 'unknown';
 
-    const prompt = `You are analyzing a baby's ${reminderType} patterns. Your job is to recommend reminder times based ONLY on the actual data provided.
+    const prompt = `You are analyzing a baby's ${reminderType} patterns. Your job is to recommend reminder times based on the actual data provided AND the baby's age/development.
 
-    BABY DATA:
-    - Age: ${ageMonths} months old
-    - Number of ${reminderType} logs: ${historicalData.length}
+BABY DATA:
+- Age: ${ageMonths} months old
+- Weight: ${weight} ${childData?.weightUnit || 'lbs'}
+- Height: ${height} ${childData?.heightUnit || 'in'}
+- Number of ${reminderType} logs: ${historicalData.length}
 
-    ACTUAL DATA ANALYSIS:
-    The three most common times for ${reminderType} are: ${topHoursStr}
-    Average interval: ${analysisData.avgInterval} hours
-    Activity range: ${formatTime12Hour(analysisData.earliestTime)} to ${formatTime12Hour(analysisData.latestTime)}
+ACTUAL DATA ANALYSIS:
+The three most common times for ${reminderType} are: ${topHoursStr}
+Average interval: ${analysisData.avgInterval} hours
+Activity range: ${formatTime12Hour(analysisData.earliestTime)} to ${formatTime12Hour(analysisData.latestTime)}
 
-    CRITICAL INSTRUCTIONS:
-    1. You MUST use times from this list ONLY: ${timesJsonArray}
-    2. Consider baby's sleep schedule - avoid recommendations between 10:00 PM and 6:00 AM unless data shows clear pattern
-    3. For feeding, space recommendations to avoid nighttime unless baby regularly feeds at night
-    4. Return exactly 2-3 times from the provided list
-    5. In your "explanation" field, ALWAYS use 12-hour AM/PM format (e.g., "8:00 AM" or "3:00 PM"), NEVER 24-hour format
-    6. Respond with ONLY valid JSON, no other text
+CRITICAL INSTRUCTIONS:
+1. You MUST use times from this list ONLY: ${timesJsonArray}
+2. Consider baby's typical sleep schedule for this age (avoid 10 PM - 6 AM unless data clearly shows nighttime ${reminderType})
+3. For ${reminderType}, consider developmental needs:
+   - Newborns (0-3 months): More frequent ${reminderType} throughout day and night
+   - Infants (3-12 months): Consolidating schedule, fewer nighttime ${reminderType}
+   - Toddlers (12+ months): Regular daytime schedule, minimal nighttime ${reminderType}
+4. Return exactly 2-4 times from the provided list based on age appropriateness
+5. In your "explanation" field, ALWAYS use 12-hour AM/PM format (e.g., "8:00 AM" or "3:00 PM"), NEVER 24-hour format
+6. Respond with ONLY valid JSON, no other text
 
-    EXAMPLE of correct explanation format:
-    "Baby typically feeds at 7:00 AM and 3:00 PM based on consistent patterns"
+EXAMPLE of correct explanation format:
+"Baby typically feeds at 7:00 AM, 11:00 AM, and 3:00 PM based on consistent patterns and age-appropriate intervals"
 
-    NOT this format:
-    "Baby typically feeds at 07:00 and 15:00"
-
-    Return this JSON structure:
-    {
-      "times": ${timesJsonArray},
-      "explanation": "Use 12-hour AM/PM format here (e.g., 8:00 AM, not 08:00 or 8:00)",
-      "frequency": "daily",
-      "confidence": "medium",
-      "insights": ["insight with 12-hour times if mentioning times", "another insight", "third insight"],
-      "nextOptimization": "review timing after 1 week",
-      "parentTip": "practical advice for the parent"
-    }`;
+Return this JSON structure:
+{
+  "times": ["07:00", "11:00", "15:00"],
+  "explanation": "Use 12-hour AM/PM format here, mention age if relevant",
+  "frequency": "daily",
+  "confidence": "medium or high",
+  "insights": ["insight with 12-hour times if mentioning times", "mention age-appropriate patterns", "third insight"],
+  "nextOptimization": "review timing after 1 week",
+  "parentTip": "practical advice considering the baby's age and development"
+}`;
 
     try {
       const content = await callOpenAI(prompt);
@@ -1256,7 +1334,7 @@ const getAIRecommendations = async (reminderType) => {
         rawData: analysisData
       };
     } catch (apiError) {
-      console.log(`AI API failed for ${reminderType}, using local analysis:`, apiError.message);
+      console.log(`AI API failed for ${reminderType}, using enhanced local analysis:`, apiError.message);
       const localResult = generateLocalRecommendations(analysisData, reminderType, historicalData.length, childData);
       setAiLoading(false);
       return localResult;
@@ -1265,14 +1343,10 @@ const getAIRecommendations = async (reminderType) => {
     console.error('AI recommendation error:', error);
     setAiLoading(false);
 
-    return {
-      times: getDefaultTimes(reminderType),
-      explanation: 'Analysis temporarily unavailable. Using smart defaults.',
-      frequency: 'daily',
-      confidence: 'low',
-      insights: ['Pattern analysis will improve with more data'],
-      parentTip: 'Keep logging activities for better recommendations'
-    };
+    // Get child data for fallback
+    const childData = await getChildData(childId);
+    const ageBasedFallback = await getAIAgeBasedRecommendations(reminderType, childData);
+    return ageBasedFallback;
   }
 };
 
@@ -1572,112 +1646,131 @@ const getDefaultInterval = (reminderType) => {
     };
   };
 
-  // Schedule multiple notifications for user-specified times
-  const scheduleNotifications = async (reminderType, times, useAI = false) => {
-    const reminder = reminderTypes.find(r => r.key === reminderType);
-    const notificationIds = [];
-    const currentReminder = reminders[reminderType];
-    
-    console.log(`\n📅 Scheduling ${reminderType} notifications for times:`, times);
-    
-    for (const time of times) {
-      const [hours, minutes] = time.split(':').map(Number);
-      
-      console.log(`Setting up notification for ${formatTime12Hour(time)}`);
-      
-      // Create trigger for daily repeat at specific time
-      const trigger = {
-        hour: hours,
-        minute: minutes,
-        repeats: true, // Daily repeat
-      };
+// Schedule individual notification at proper time
+const scheduleReminder = async (reminderType, time, useAI = false) => {
+  const reminder = reminderTypes.find(r => r.key === reminderType);
+  const currentReminder = reminders[reminderType];
+  
+  const [hours, minutes] = time.split(':').map(Number);
+  
+  // Create a date for the reminder
+  const now = new Date();
+  const reminderTime = new Date();
+  reminderTime.setHours(hours);
+  reminderTime.setMinutes(minutes);
+  reminderTime.setSeconds(0);
+  reminderTime.setMilliseconds(0);
+  
+  // If reminder time has already passed today, schedule for tomorrow
+  if (reminderTime <= now) {
+    reminderTime.setDate(reminderTime.getDate() + 1);
+    console.log(`⏭️ Time ${formatTime12Hour(time)} has passed today, scheduling for tomorrow`);
+  } else {
+    console.log(`📅 Scheduling for today at ${formatTime12Hour(time)}`);
+  }
 
-      // Create notification content
-      const timeFormatted = formatTime12Hour(time);
-      let notificationTitle;
-      let notificationBody;
-      
-      if (useAI && currentReminder?.aiPattern) {
-        // AI-based notification
-        switch (reminderType) {
-          case 'feeding':
-            notificationTitle = '🍼 Feeding Time!';
-            notificationBody = currentReminder.confidence === 'high'
-              ? `${name} typically feeds around now based on their routine. Time for feeding!`
-              : `Suggested feeding time for ${name} based on age-appropriate schedule.`;
-            break;
-          case 'diaper':
-            notificationTitle = '👶 Diaper Check';
-            notificationBody = currentReminder.confidence === 'high'
-              ? `Time to check ${name}'s diaper - staying on schedule!`
-              : `Recommended diaper check time for ${name}.`;
-            break;
-          case 'nap':
-            notificationTitle = '😴 Nap Time';
-            notificationBody = currentReminder.confidence === 'high'
-              ? `${name} is likely getting sleepy. Optimal nap time!`
-              : `Suggested nap time for ${name} based on age.`;
-            break;
-          default:
-            notificationTitle = `🤖 ${reminder.title} Reminder`;
-            notificationBody = `AI suggests it's time for ${reminder.title.toLowerCase()}.`;
-        }
-        
-        if (currentReminder.parentTip && currentReminder.confidence === 'high') {
-          notificationBody += `\n\n💡 ${currentReminder.parentTip}`;
-        }
-      } else {
-        // Manual notification
-        switch (reminderType) {
-          case 'feeding':
-            notificationTitle = `🍼 ${name}'s Feeding Time`;
-            notificationBody = `Time for ${name}'s feeding!`;
-            break;
-          case 'diaper':
-            notificationTitle = `👶 ${name}'s Diaper Change`;
-            notificationBody = `Time to check ${name}'s diaper!`;
-            break;
-          case 'nap':
-            notificationTitle = `😴 ${name}'s Nap Time`;
-            notificationBody = `Time for ${name}'s nap!`;
-            break;
-          default:
-            notificationTitle = `${name}'s ${reminder.title}`;
-            notificationBody = `Time for ${name}'s ${reminder.title.toLowerCase()}!`;
-        }
-      }
-
-      try {
-        const notificationId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: notificationTitle,
-            body: notificationBody,
-            data: { 
-              childId, 
-              childName: name,
-              reminderType, 
-              useAI,
-              time: timeFormatted,
-              confidence: currentReminder?.confidence,
-              scheduledFor: `${hours}:${minutes.toString().padStart(2, '0')}`
-            },
-            sound: true,
-            priority: Notifications.AndroidNotificationPriority.HIGH,
-            badge: 1,
-          },
-          trigger, // This schedules it for the specific hour and minute, repeating daily
-        });
-        
-        notificationIds.push(notificationId);
-        console.log(`✅ Scheduled ${reminderType} notification at ${timeFormatted} (ID: ${notificationId})`);
-      } catch (error) {
-        console.error(`❌ Error scheduling notification for ${timeFormatted}:`, error);
-      }
+  // Create notification content
+  const timeFormatted = formatTime12Hour(time);
+  let notificationTitle;
+  let notificationBody;
+  
+  if (useAI && currentReminder?.aiPattern) {
+    // AI-based notification
+    switch (reminderType) {
+      case 'feeding':
+        notificationTitle = '🍼 Feeding Time!';
+        notificationBody = currentReminder.confidence === 'high'
+          ? `${name} typically feeds around now based on their routine. Time for feeding!`
+          : `Suggested feeding time for ${name} based on age-appropriate schedule.`;
+        break;
+      case 'diaper':
+        notificationTitle = '👶 Diaper Check';
+        notificationBody = currentReminder.confidence === 'high'
+          ? `Time to check ${name}'s diaper - staying on schedule!`
+          : `Recommended diaper check time for ${name}.`;
+        break;
+      case 'nap':
+        notificationTitle = '😴 Nap Time';
+        notificationBody = currentReminder.confidence === 'high'
+          ? `${name} is likely getting sleepy. Optimal nap time!`
+          : `Suggested nap time for ${name} based on age.`;
+        break;
+      default:
+        notificationTitle = `🤖 ${reminder.title} Reminder`;
+        notificationBody = `AI suggests it's time for ${reminder.title.toLowerCase()}.`;
     }
+    
+    if (currentReminder.parentTip && currentReminder.confidence === 'high') {
+      notificationBody += `\n\n💡 ${currentReminder.parentTip}`;
+    }
+  } else {
+    // Manual notification
+    switch (reminderType) {
+      case 'feeding':
+        notificationTitle = `🍼 ${name}'s Feeding Time`;
+        notificationBody = `Time for ${name}'s feeding!`;
+        break;
+      case 'diaper':
+        notificationTitle = `👶 ${name}'s Diaper Change`;
+        notificationBody = `Time to check ${name}'s diaper!`;
+        break;
+      case 'nap':
+        notificationTitle = `😴 ${name}'s Nap Time`;
+        notificationBody = `Time for ${name}'s nap!`;
+        break;
+      default:
+        notificationTitle = `${name}'s ${reminder.title}`;
+        notificationBody = `Time for ${name}'s ${reminder.title.toLowerCase()}!`;
+    }
+  }
 
-    console.log(`✅ Total ${notificationIds.length} notifications scheduled for ${reminderType}\n`);
-    return notificationIds;
-  };
+  try {
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: notificationTitle,
+        body: notificationBody,
+        data: { 
+          childId, 
+          childName: name,
+          reminderType, 
+          useAI,
+          time: timeFormatted,
+          confidence: currentReminder?.confidence,
+          scheduledFor: `${hours}:${minutes.toString().padStart(2, '0')}`
+        },
+        sound: true,
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+        badge: 1,
+      },
+      trigger: reminderTime, // Schedule for the specific date/time
+    });
+    
+    console.log(`✅ Scheduled ${reminderType} at ${timeFormatted} (ID: ${notificationId})`);
+    console.log(`   Will fire at: ${reminderTime.toLocaleString()}`);
+    
+    return notificationId;
+  } catch (error) {
+    console.error(`❌ Error scheduling notification for ${timeFormatted}:`, error);
+    return null;
+  }
+};
+
+// Schedule all times for a reminder type
+const scheduleNotifications = async (reminderType, times, useAI = false) => {
+  console.log(`\n📅 Scheduling ${reminderType} notifications for times:`, times);
+  
+  const notificationIds = [];
+  
+  for (const time of times) {
+    const notificationId = await scheduleReminder(reminderType, time, useAI);
+    if (notificationId) {
+      notificationIds.push(notificationId);
+    }
+  }
+
+  console.log(`✅ Total ${notificationIds.length} notifications scheduled for ${reminderType}\n`);
+  return notificationIds;
+};
 
   // Cancel multiple scheduled notifications
   const cancelNotifications = async (notificationIds) => {
@@ -1946,21 +2039,17 @@ const saveReminders = async () => {
       style={styles.gradient}
     >
       <View style={styles.container}>
-        {/* Header - Now with proper dark mode support */}
-        <View style={[styles.header, { backgroundColor: darkMode ? 'transparent' : 'transparent' }]}>
-          <TouchableOpacity 
-            style={styles.backButton} 
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.7}
-          >
-            <BlurView intensity={20} tint={darkMode ? "dark" : "light"} style={styles.backButtonBlur}>
-              <MaterialCommunityIcons name="arrow-left" size={24} color={theme.textPrimary} />
-            </BlurView>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={saveReminders} style={[styles.saveButtonContainer, { backgroundColor: darkMode ? '#667eea' : '#007AFF' }]}>
-            <Text style={styles.saveButton}>Save</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={[styles.header, { backgroundColor: darkMode ? 'transparent' : 'transparent' }]}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <BlurView intensity={20} tint={darkMode ? "dark" : "light"} style={styles.backButtonBlur}>
+            <MaterialCommunityIcons name="arrow-left" size={24} color={theme.textPrimary} />
+          </BlurView>
+        </TouchableOpacity>
+      </View>
 
         <Text style={[styles.title, { color: theme.textPrimary }]}>{name}'s Reminders</Text>
 
@@ -2013,86 +2102,106 @@ const saveReminders = async () => {
           ))}
           <View style={styles.bottomPadding} />
 
-          {/* Schedule Notifications Button */}
-          {Object.values(reminders).some(r => r.enabled) && (
-            <View style={styles.scheduleSection}>
-              <View style={[
-                styles.scheduleInfoBox,
-                { backgroundColor: darkMode ? '#2c2c2c' : '#F0F7FF' }
+        {/* Schedule Notifications Button */}
+        {Object.values(reminders).some(r => r.enabled) && (
+          <View style={styles.scheduleSection}>
+            <View style={[
+              styles.scheduleInfoBox,
+              { backgroundColor: darkMode ? '#2c2c2c' : '#F0F7FF' }
+            ]}>
+              <MaterialCommunityIcons 
+                name="information-outline" 
+                size={20} 
+                color={darkMode ? '#64B5F6' : '#1976D2'} 
+              />
+              <Text style={[
+                styles.scheduleInfoText,
+                { color: darkMode ? '#B0B0B0' : '#666' }
               ]}>
-                <MaterialCommunityIcons 
-                  name="information-outline" 
-                  size={20} 
-                  color={darkMode ? '#64B5F6' : '#1976D2'} 
-                />
-                <Text style={[
-                  styles.scheduleInfoText,
-                  { color: darkMode ? '#B0B0B0' : '#666' }
-                ]}>
-                  Your reminders are configured but not scheduled yet. 
-                  Tap below to schedule notifications at your chosen times.
-                </Text>
-              </View>
-              
-              <TouchableOpacity 
-                style={[
-                  styles.scheduleAllButton,
-                  { backgroundColor: darkMode ? '#667eea' : '#007AFF' }
-                ]}
-                onPress={async () => {
-                  Alert.alert(
-                    'Schedule Notifications?',
-                    'This will schedule all enabled reminders to send at their designated times daily.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { 
-                        text: 'Schedule Now', 
-                        onPress: async () => {
-                          try {
-                            // Cancel existing
-                            for (const [type, reminder] of Object.entries(reminders)) {
-                              if (reminder.notificationIds?.length > 0) {
-                                await cancelNotifications(reminder.notificationIds);
-                              }
+                Your reminders are configured. Tap below to save settings and schedule notifications at your chosen times.
+              </Text>
+            </View>
+            
+            <TouchableOpacity 
+              style={[
+                styles.scheduleAllButton,
+                { backgroundColor: darkMode ? '#667eea' : '#007AFF' }
+              ]}
+              onPress={async () => {
+                if (!auth.currentUser) {
+                  Alert.alert('Error', 'You must be logged in to schedule reminders.');
+                  return;
+                }
+
+                Alert.alert(
+                  'Save & Schedule?',
+                  'This will save your settings and schedule all enabled reminders to send at their designated times.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { 
+                      text: 'Save & Schedule', 
+                      onPress: async () => {
+                        try {
+                          // Cancel existing notifications first
+                          for (const [type, reminder] of Object.entries(reminders)) {
+                            if (reminder.notificationIds?.length > 0) {
+                              await cancelNotifications(reminder.notificationIds);
                             }
-                            
-                            // Schedule new
-                            const updatedReminders = { ...reminders };
-                            let totalScheduled = 0;
-                            
-                            for (const [type, reminder] of Object.entries(reminders)) {
-                              if (reminder.enabled) {
-                                const timesToUse = reminder.useAI && reminder.aiRecommendedTimes.length > 0
-                                  ? reminder.aiRecommendedTimes 
-                                  : reminder.customTimes;
-                                
-                                const notificationIds = await scheduleNotifications(type, timesToUse, reminder.useAI);
-                                updatedReminders[type] = { ...reminder, notificationIds };
-                                totalScheduled += notificationIds.length;
-                              }
-                            }
-                            
-                            setReminders(updatedReminders);
-                            
-                            Alert.alert(
-                              '✅ Notifications Scheduled!', 
-                              `${totalScheduled} notification${totalScheduled !== 1 ? 's' : ''} will be sent at your specified times daily.\n\nUse "Send Now" buttons to test.`
-                            );
-                          } catch (error) {
-                            console.error('Error scheduling:', error);
-                            Alert.alert('Error', 'Failed to schedule notifications. Please try again.');
                           }
+                          
+                          // Schedule new notifications
+                          const updatedReminders = { ...reminders };
+                          let totalScheduled = 0;
+                          
+                          for (const [type, reminder] of Object.entries(reminders)) {
+                            if (reminder.enabled) {
+                              const timesToUse = reminder.useAI && reminder.aiRecommendedTimes.length > 0
+                                ? reminder.aiRecommendedTimes 
+                                : reminder.customTimes;
+                              
+                              const notificationIds = await scheduleNotifications(type, timesToUse, reminder.useAI);
+                              updatedReminders[type] = { ...reminder, notificationIds };
+                              totalScheduled += notificationIds.length;
+                            }
+                          }
+                          
+                          setReminders(updatedReminders);
+                          
+                          // Save to Firebase
+                          const cleanedReminders = cleanReminderData(updatedReminders);
+                          
+                          const reminderData = {
+                            childId,
+                            reminders: cleanedReminders,
+                            aiConsent,
+                            expoPushToken: expoPushToken || '',
+                            userId: auth.currentUser.uid,
+                            updatedAt: new Date().toISOString()
+                          };
+                          
+                          console.log('Saving reminder data:', reminderData);
+                          await setDoc(doc(db, 'reminders', childId), reminderData);
+                          
+                          Alert.alert(
+                            '✅ Success!', 
+                            `Settings saved and ${totalScheduled} notification${totalScheduled !== 1 ? 's' : ''} scheduled!\n\nNotifications will be sent at your specified times.\n\nUse "Send Now" buttons to test immediately.`,
+                            [{ text: 'OK', onPress: () => navigation.goBack() }]
+                          );
+                        } catch (error) {
+                          console.error('Error saving and scheduling:', error);
+                          Alert.alert('Error', 'Failed to save and schedule reminders. Please try again.');
                         }
                       }
-                    ]
-                  );
-                }}
-              >
-                <MaterialCommunityIcons name="calendar-clock" size={20} color="#FFF" />
-                <Text style={styles.scheduleAllButtonText}>Schedule All Notifications</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+                    }
+                  ]
+                );
+              }}
+            >
+              <MaterialCommunityIcons name="content-save-check" size={20} color="#FFF" />
+              <Text style={styles.scheduleAllButtonText}>Save & Schedule All Reminders</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         </ScrollView>
 
         <AIConsentModal />

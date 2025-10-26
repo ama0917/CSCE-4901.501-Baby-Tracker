@@ -434,13 +434,13 @@ const FeedingMetricsSummary = ({ data, darkMode  }) => {
           <Text style={styles.feedingDetailValue}>{avgGap?.avg || 0}hrs</Text>
         </View>
 
-        <View style={styles.feedingDetailRow}>
+        {/* <View style={styles.feedingDetailRow}>
           <View style={styles.feedingDetailLabel}>
             <Ionicons name="water" size={18} color="#FF9800" />
             <Text style={styles.feedingDetailText}>Avg Amount</Text>
           </View>
           <Text style={styles.feedingDetailValue}>{avgAmount?.avg || 0}ml</Text>
-        </View>
+        </View> */}
 
         <View style={styles.feedingDetailRow}>
           <View style={styles.feedingDetailLabel}>
@@ -1737,167 +1737,184 @@ const renderFormattedText = (text, darkMode) => {
   });
 };
 
-const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepData, feedingData, diaperData, reportRange, activeTab: mainActiveTab, darkMode, theme }) => {
-  const [summaryCache, setSummaryCache] = useState({});
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [hasConsented, setHasConsented] = useState(false);
-  const [showConsentModal, setShowConsentModal] = useState(false);
-  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
-  const cacheLoadedRef = useRef(false);
-  const consentCheckRef = useRef(false); // NEW: Prevent double checks
+  const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepData, feedingData, diaperData, reportRange, activeTab: mainActiveTab, darkMode, theme }) => {
+    const [summaryCache, setSummaryCache] = useState({});
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [hasConsented, setHasConsented] = useState(false);
+    const [showConsentModal, setShowConsentModal] = useState(false);
+    const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
+    const cacheLoadedRef = useRef(false);
+    const consentCheckRef = useRef(false);
 
-  // Load consent and cache on mount - ONLY ONCE
-  useEffect(() => {
-    if (consentCheckRef.current) return; // Prevent re-running
-    
-    const loadConsent = async () => {
-      try {
-        const consent = await AsyncStorage.getItem(`ai_consent_${childId}`);
-        setHasConsented(consent === 'true');
-        
-        const cached = await AsyncStorage.getItem(`ai_summary_cache_${childId}`);
-        if (cached) {
-          const parsedCache = JSON.parse(cached);
-          setSummaryCache(parsedCache);
-          cacheLoadedRef.current = true;
-        }
-      } catch (error) {
-        console.error('Error loading AI data:', error);
-      }
-    };
-    
-    if (childId && !cacheLoadedRef.current) {
-      consentCheckRef.current = true;
-      loadConsent();
-    }
-  }, [childId]);
-
-  const handleGenerateSummary = async (category, forceRefresh = false) => {
-    if (!hasConsented) {
-      setShowConsentModal(true);
-      return;
-    }
-
-    const cacheKey = `${reportRange}_${category}`;
-    
-    if (!forceRefresh && summaryCache[cacheKey]) {
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      const [overallResponse, categoryResponse] = await Promise.all([
-        generateCategorizedAISummary(
-          childId, childAge, childWeight, childHeight, 
-          sleepData || [], feedingData || [], diaperData || [],
-          'Overall', reportRange
-        ),
-        generateCategorizedAISummary(
-          childId, childAge, childWeight, childHeight, 
-          sleepData || [], feedingData || [], diaperData || [],
-          category, reportRange
-        )
-      ]);
+    // Load consent and cache on mount - ONLY ONCE
+    useEffect(() => {
+      if (consentCheckRef.current) return;
       
-      const newCache = {
-        ...summaryCache,
-        [`${reportRange}_Overall`]: overallResponse,
-        [cacheKey]: categoryResponse
+      const loadConsent = async () => {
+        try {
+          const consent = await AsyncStorage.getItem(`ai_consent_${childId}`);
+          setHasConsented(consent === 'true');
+          
+          const cached = await AsyncStorage.getItem(`ai_summary_cache_${childId}`);
+          if (cached) {
+            const parsedCache = JSON.parse(cached);
+            setSummaryCache(parsedCache);
+            cacheLoadedRef.current = true;
+          }
+        } catch (error) {
+          console.error('Error loading AI data:', error);
+        }
       };
       
-      setSummaryCache(newCache);
-      await AsyncStorage.setItem(`ai_summary_cache_${childId}`, JSON.stringify(newCache));
-    } catch (error) {
-      console.error('Error in handleGenerateSummary:', error);
-      setError('Unable to generate AI insights at this time. Please try again later.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      if (childId && !cacheLoadedRef.current) {
+        consentCheckRef.current = true;
+        loadConsent();
+      }
+    }, [childId]);
 
-  const handleConsent = async () => {
-    setShowConsentModal(false);
-    
-    try {
-      await AsyncStorage.setItem(`ai_consent_${childId}`, 'true');
-      setHasConsented(true);
+    const handleGenerateSummary = async (category, forceRefresh = false) => {
+      if (!hasConsented) {
+        setShowConsentModal(true);
+        return;
+      }
+
+      const cacheKey = `${reportRange}_${category}`;
       
-      // Wait a bit before generating to avoid race conditions
-      setTimeout(() => {
+      if (!forceRefresh && summaryCache[cacheKey]) {
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        const [overallResponse, categoryResponse] = await Promise.all([
+          generateCategorizedAISummary(
+            childId, childAge, childWeight, childHeight, 
+            sleepData || [], feedingData || [], diaperData || [],
+            'Overall', reportRange
+          ),
+          generateCategorizedAISummary(
+            childId, childAge, childWeight, childHeight, 
+            sleepData || [], feedingData || [], diaperData || [],
+            category, reportRange
+          )
+        ]);
+        
+        const newCache = {
+          ...summaryCache,
+          [`${reportRange}_Overall`]: overallResponse,
+          [cacheKey]: categoryResponse
+        };
+        
+        setSummaryCache(newCache);
+        await AsyncStorage.setItem(`ai_summary_cache_${childId}`, JSON.stringify(newCache));
+      } catch (error) {
+        console.error('Error in handleGenerateSummary:', error);
+        setError('Unable to generate AI insights at this time. Please try again later.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const handleConsent = async () => {
+      setShowConsentModal(false);
+      
+      try {
+        await AsyncStorage.setItem(`ai_consent_${childId}`, 'true');
+        setHasConsented(true);
+        setTimeout(() => {
+          handleGenerateSummary(mainActiveTab);
+        }, 300);
+      } catch (error) {
+        console.error('Error saving consent:', error);
+        Alert.alert('Error', 'Failed to save consent preference');
+      }
+    };
+
+    const handleRevokeConsent = async () => {
+      try {
+        await AsyncStorage.multiRemove([
+          `ai_consent_${childId}`,
+          `ai_summary_cache_${childId}`
+        ]);
+        setHasConsented(false);
+        setSummaryCache({});
+        setShowRevokeConfirm(false);
+        Alert.alert('Success', 'AI Insights access has been revoked');
+      } catch (error) {
+        console.error('Error revoking consent:', error);
+        Alert.alert('Error', 'Failed to revoke consent');
+      }
+    };
+
+    useEffect(() => {
+      if (!hasConsented || !cacheLoadedRef.current) return;
+      
+      const cacheKey = `${reportRange}_${mainActiveTab}`;
+      const shouldLoad = !summaryCache[cacheKey] && 
+                        (sleepData?.length > 0 || feedingData?.length > 0 || diaperData?.length > 0);
+      
+      if (shouldLoad) {
         handleGenerateSummary(mainActiveTab);
-      }, 300);
-    } catch (error) {
-      console.error('Error saving consent:', error);
-      Alert.alert('Error', 'Failed to save consent preference');
-    }
-  };
+      }
+    }, [reportRange]);
 
-  // Auto-load only when reportRange changes
-  useEffect(() => {
-    if (!hasConsented || !cacheLoadedRef.current) return;
-    
-    const cacheKey = `${reportRange}_${mainActiveTab}`;
-    const shouldLoad = !summaryCache[cacheKey] && 
-                       (sleepData?.length > 0 || feedingData?.length > 0 || diaperData?.length > 0);
-    
-    if (shouldLoad) {
-      handleGenerateSummary(mainActiveTab);
-    }
-  }, [reportRange]); // Only trigger on reportRange change
+    if (!childId) return null;
 
-return (
-  <View style={[
-    styles.aiSummaryContainer,
-    {
-      backgroundColor: darkMode ? '#2a2a2a' : '#fff',
-      borderColor: darkMode ? '#404040' : '#e8eaf6'
-    }
-  ]}>
-    {/* Render consent modal ONLY if it should show */}
-      {showConsentModal && !showRevokeConfirm && (
-        <ConsentModal 
-          onConsent={handleConsent}
-          onDecline={() => setShowConsentModal(false)}
-        />
-      )}
+    const currentCacheKey = `${reportRange}_${mainActiveTab}`;
+    const overallCacheKey = `${reportRange}_Overall`;
 
-    {/* Render revoke modal */}
-      {showRevokeConfirm && !showConsentModal && (
-        <Modal transparent visible={true} animationType="fade">
-        <View style={styles.consentModalOverlay}>
-          <View style={[styles.consentModalContainer, { maxHeight: '40%' }]}>
-            <View style={styles.consentModalHeader}>
-              <Ionicons name="warning-outline" size={32} color="#f44336" />
-              <Text style={styles.consentModalTitle}>Revoke AI Access?</Text>
+    return (
+      <View style={[
+        styles.aiSummaryContainer,
+        {
+          backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+          borderColor: darkMode ? '#404040' : '#e8eaf6'
+        }
+      ]}>
+        {showConsentModal && !showRevokeConfirm && (
+          <ConsentModal 
+            onConsent={handleConsent}
+            onDecline={() => setShowConsentModal(false)}
+          />
+        )}
+
+        {showRevokeConfirm && !showConsentModal && (
+          <Modal transparent visible={true} animationType="fade">
+            <View style={styles.consentModalOverlay}>
+              <View style={[styles.consentModalContainer, { maxHeight: '40%' }]}>
+                <View style={styles.consentModalHeader}>
+                  <Ionicons name="warning-outline" size={32} color="#f44336" />
+                  <Text style={styles.consentModalTitle}>Revoke AI Access?</Text>
+                </View>
+                
+                <View style={{ padding: 20 }}>
+                  <Text style={styles.consentModalText}>
+                    This will disable AI-powered insights and delete your consent preference. You can re-enable it anytime.
+                  </Text>
+                </View>
+                
+                <View style={styles.consentModalActions}>
+                  <TouchableOpacity 
+                    style={styles.consentDeclineButton} 
+                    onPress={() => setShowRevokeConfirm(false)}
+                  >
+                    <Text style={styles.consentDeclineText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.consentAcceptButton, { backgroundColor: '#f44336' }]} 
+                    onPress={handleRevokeConsent}
+                  >
+                    <Text style={styles.consentAcceptText}>Revoke Access</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-            
-            <View style={{ padding: 20 }}>
-              <Text style={styles.consentModalText}>
-                This will disable AI-powered insights and delete your consent preference. You can re-enable it anytime.
-              </Text>
-            </View>
-            
-            <View style={styles.consentModalActions}>
-              <TouchableOpacity 
-                style={styles.consentDeclineButton} 
-                onPress={() => setShowRevokeConfirm(false)}
-              >
-                <Text style={styles.consentDeclineText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.consentAcceptButton, { backgroundColor: '#f44336' }]} 
-                onPress={handleRevokeConsent}
-              >
-                <Text style={styles.consentAcceptText}>Revoke Access</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    )}
+          </Modal>
+        )}
+
         <View style={styles.aiSummaryHeaderRow}>
           <View style={styles.aiSummaryHeaderLeft}>
             <View style={styles.aiIconBadge}>
@@ -2065,8 +2082,7 @@ return (
         )}
       </View>
     );
-};
-
+  };
 
   // Fetch sleep data
 const fetchSleepData = async (startTimestamp, endTimestamp) => {
@@ -3411,6 +3427,25 @@ const renderCharts = () => {
         </>
       )}
 
+      {activeTab === 'Feeding' && feedingData.length > 0 && hasAIConsent && (
+      <View style={[
+        styles.chartContainer,
+        {
+          backgroundColor: darkMode ? '#1f1f1f' : '#fff',
+          borderColor: darkMode ? '#333' : '#e0e0e0',
+        },
+      ]}>
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+          Feeding Type Distribution
+        </Text>
+        <FeedingBreakdownPieChart 
+          feedingData={feedingData}
+          darkMode={darkMode}
+          theme={theme}
+        />
+      </View>
+    )}
+
         {/* STACKED BAR CHART */}
         {chartType === 'bar' && activeTab === 'Diaper' && data.series && (
           <StackedBarChart
@@ -3466,25 +3501,6 @@ const renderCharts = () => {
         <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
           Sleep Duration Distribution
         </Text>
-
-      {activeTab === 'Feeding' && feedingData.length > 0 && hasAIConsent && (
-      <View style={[
-        styles.chartContainer,
-        {
-          backgroundColor: darkMode ? '#1f1f1f' : '#fff',
-          borderColor: darkMode ? '#333' : '#e0e0e0',
-        },
-      ]}>
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
-          Feeding Type Distribution
-        </Text>
-        <FeedingBreakdownPieChart 
-          feedingData={feedingData}
-          darkMode={darkMode}
-          theme={theme}
-        />
-      </View>
-    )}
 
       {/* SLEEP DURATION SUMMARY */}
       <View style={styles.sleepDurationSummary}>

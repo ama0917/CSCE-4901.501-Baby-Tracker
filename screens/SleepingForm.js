@@ -454,7 +454,7 @@ const checkForDuplicates = async () => {
                     onPress={() => setShowStartPicker(false)} 
                     style={styles.enterButton}
                   >
-                    <Text style={styles.enterButtonText}>Enter</Text>
+                    <Text style={styles.enterButtonText}>Done</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -499,7 +499,7 @@ const checkForDuplicates = async () => {
                         onPress={() => setShowEndPicker(false)} 
                         style={styles.enterButton}
                       >
-                        <Text style={styles.enterButtonText}>Enter</Text>
+                        <Text style={styles.enterButtonText}>Done</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -548,7 +548,7 @@ const checkForDuplicates = async () => {
                   onPress={() => setShowSleepTypePicker(false)} 
                   style={styles.enterButton}
                 >
-                  <Text style={styles.enterButtonText}>Enter</Text>
+                  <Text style={styles.enterButtonText}>Done</Text>
                 </TouchableOpacity>
               </View>
             )}

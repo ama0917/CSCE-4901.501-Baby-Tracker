@@ -268,7 +268,7 @@ const saveLog = async () => {
                     onPress={() => setShowTimePicker(false)} 
                     style={styles.enterButton}
                   >
-                    <Text style={styles.enterButtonText}>Enter</Text>
+                    <Text style={styles.enterButtonText}>Done</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -327,7 +327,7 @@ const saveLog = async () => {
                   onPress={() => setShowStoolPicker(false)} 
                   style={styles.enterButton}
                 >
-                  <Text style={styles.enterButtonText}>Enter</Text>
+                  <Text style={styles.enterButtonText}>Done</Text>
                 </TouchableOpacity>
               </View>
             )}

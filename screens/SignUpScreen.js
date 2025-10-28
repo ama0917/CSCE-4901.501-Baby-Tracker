@@ -31,12 +31,98 @@ export default function SignUpScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [isFocused, setIsFocused] = useState({ email: false, password: false, confirm: false });
 
+  // List of allowed email domains
+  const allowedDomains = [
+    'gmail.com',
+    'yahoo.com',
+    'hotmail.com',
+    'outlook.com',
+    'icloud.com',
+    'aol.com',
+    'protonmail.com',
+    'zoho.com',
+    'mail.com',
+    'gmx.com',
+    'yandex.com',
+    'live.com',
+    'msn.com',
+    'yahoo.co.uk',
+    'yahoo.ca',
+    'googlemail.com',
+  ];
+
+  // Enhanced email validation with domain whitelist
+  const isValidEmail = (email) => {
+    // Basic format validation
+    const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email)) {
+      return { valid: false, message: 'Please enter a valid email address.' };
+    }
+
+    // Extract domain and check against whitelist
+    const domain = email.split('@')[1].toLowerCase();
+    
+    // Check for common typos in popular domains
+    const commonTypos = {
+      'gmail.con': 'gmail.com',
+      'gmail.co': 'gmail.com',
+      'gmai.com': 'gmail.com',
+      'gmial.com': 'gmail.com',
+      'yahooo.com': 'yahoo.com',
+      'yaho.com': 'yahoo.com',
+      'hotmial.com': 'hotmail.com',
+      'hotmai.com': 'hotmail.com',
+      'outlok.com': 'outlook.com',
+      'outloo.com': 'outlook.com',
+    };
+
+    if (commonTypos[domain]) {
+      return { 
+        valid: false, 
+        message: `Did you mean ${email.split('@')[0]}@${commonTypos[domain]}?`,
+        suggestion: true
+      };
+    }
+
+    // Check if domain is in allowed list
+    if (!allowedDomains.includes(domain)) {
+      return { valid: false, message: 'Please enter a valid email address.' };
+    }
+
+    // Check for suspicious patterns
+    if (domain.includes('..') || domain.startsWith('.') || domain.endsWith('.')) {
+      return { valid: false, message: 'Please enter a valid email address.' };
+    }
+
+    return { valid: true };
+  };
+
   const handleSignUp = async () => {
+    // Check for empty fields
     if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
       Alert.alert('Input Required', 'Please fill in all fields.');
       return;
     }
 
+    // Validate email format and domain
+    const emailValidation = isValidEmail(email);
+    if (!emailValidation.valid) {
+      if (emailValidation.suggestion) {
+        // Show suggestion for common typos
+        Alert.alert('Check Your Email', emailValidation.message);
+      } else {
+        Alert.alert('Invalid Email', emailValidation.message);
+      }
+      return;
+    }
+
+    // Validate password length
+    if (password.length < 6) {
+      Alert.alert('Invalid Password', 'Password must be at least 6 characters long.');
+      return;
+    }
+
+    // Check password match
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match!');
       return;
@@ -52,23 +138,40 @@ export default function SignUpScreen() {
         MFAEnabled: false,     
         UserType: 'parent',
         Name: '',
+        EmailVerified: false,  // Track verification status
       });
 
       // Send verification email
       try {
         await sendEmailVerification(user);
         Alert.alert(
-          'Verify your email',
-          'We sent a verification link to your inbox. Please verify your email, then log in.'
+          'Verify Your Email',
+          'We\'ve sent a verification link to your email address. Please check your inbox (and spam folder) and verify your email before logging in.\n\nNote: You won\'t be able to access all features until your email is verified.',
+          [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
         );
       } catch (e) {
-        // Not fatal for signup; user can verify later from Settings
         console.warn('sendEmailVerification failed:', e);
+        Alert.alert(
+          'Account Created',
+          'Your account has been created, but we couldn\'t send the verification email. Please verify your email from Settings after logging in.',
+          [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+        );
       }
-
-      navigation.navigate('Login');
     } catch (error) {
-      Alert.alert('Sign Up Error', error.message);
+      // Handle Firebase errors with custom messages
+      let errorMessage = 'An error occurred during sign up. Please try again.';
+      
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = 'This email is already registered. Please use a different email or log in.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Please enter a valid email address.';
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = 'Password must be at least 6 characters long.';
+      } else if (error.code === 'auth/network-request-failed') {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      }
+      
+      Alert.alert('Sign Up Error', errorMessage);
     }
   };
     

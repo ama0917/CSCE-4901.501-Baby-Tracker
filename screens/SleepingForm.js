@@ -7,7 +7,7 @@ import { db } from '../firebaseConfig';
 import { addDoc, collection, serverTimestamp, doc, onSnapshot, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { useRoute } from '@react-navigation/native';
 
-import { ArrowLeft, AlarmClock } from 'lucide-react-native';
+import { ArrowLeft, AlarmClock, Pencil } from 'lucide-react-native';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { useDarkMode } from '../screens/DarkMode';
 
@@ -378,7 +378,17 @@ const checkForDuplicates = async () => {
                         </Text>
                       </View>
                       <View style={styles.incompleteLogBadge}>
-                        <Text style={styles.incompleteLogBadgeText}>
+                        <Text
+                          style={[
+                            styles.incompleteLogBadgeText,
+                            {
+                              color:
+                                editingLogId === log.id
+                                  ? '#fff'
+                                  : '#ecececff',
+                            },
+                          ]}
+                        >
                           {editingLogId === log.id ? '✓ Editing' : 'Tap to Complete'}
                         </Text>
                       </View>
@@ -395,10 +405,17 @@ const checkForDuplicates = async () => {
                 colors={['#4CAF50', '#45a049']}
                 style={styles.editingBannerGradient}
               >
-                <Text style={styles.editingBannerText}>
-                  ✏️ Editing incomplete log - Set the end time below
-                </Text>
-                <TouchableOpacity 
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Pencil 
+                    size={18} 
+                    color='#fafafaff'
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.editingBannerText}>
+                    Editing incomplete log - Set the end time below
+                  </Text>
+                </View>
+                  <TouchableOpacity 
                   onPress={() => {
                     setEditingLogId(null);
                     setStartTime(new Date());

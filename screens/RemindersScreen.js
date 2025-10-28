@@ -561,7 +561,7 @@ const [reminders, setReminders] = useState({
     {
       key: 'feeding',
       title: 'Feeding',
-      icon: 'food',
+      icon: 'cookie',
       color: '#4ECDC4',
       description: 'Never miss feeding time',
       collection: 'feedLogs',
@@ -570,7 +570,7 @@ const [reminders, setReminders] = useState({
     {
       key: 'diaper',
       title: 'Diaper Change',
-      icon: 'baby-face',
+      icon: 'toilet',
       color: '#45B7D1',
       description: 'Stay on top of diaper changes',
       collection: 'diaperLogs',

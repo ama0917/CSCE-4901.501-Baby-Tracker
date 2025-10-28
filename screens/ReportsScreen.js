@@ -1774,10 +1774,6 @@ const renderFormattedText = (text, darkMode) => {
     }, [childId]);
 
     const handleGenerateSummary = async (category, forceRefresh = false) => {
-      if (!hasConsented) {
-        setShowConsentModal(true);
-        return;
-      }
 
       const cacheKey = `${reportRange}_${category}`;
       

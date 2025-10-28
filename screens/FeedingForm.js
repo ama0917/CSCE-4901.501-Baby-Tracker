@@ -18,7 +18,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRoute } from '@react-navigation/native';
-import { collection, addDoc, serverTimestamp, doc, onSnapshot } from 'firebase/firestore'; 
+import { collection, addDoc, serverTimestamp, doc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../firebaseConfig'; 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -113,7 +113,11 @@ export default function FeedingForm({ navigation }) {
   };
 
   const handleCompleteLog = async () => {
-    if (!canLog) { Alert.alert('Access is off', 'Parent has turned off access for this child.'); return; }
+    if (!canLog) { 
+      Alert.alert('Access is off', 'Parent has turned off access for this child.'); 
+      return; 
+    }
+    
     const auth = getAuth();
     const user = auth.currentUser;
 
@@ -122,92 +126,131 @@ export default function FeedingForm({ navigation }) {
       return;
     }
 
-    if (!mealType || (!foodType && !customFoodType) || !amount || !amountUnit) {
+    if (!mealType || mealType === 'default' || (!foodType && !customFoodType) || foodType === 'default' || !amount || !amountUnit || amountUnit === 'default') {
       alert('Please fill in all required fields before saving the log');
       return;
     }
 
-    // validation & optional confirmation for large amounts (your logic)
-    if (!childId) {
-      alert('No child selected');
-      return;
-    }
-
-    const numericAmount = parseFloat(amount);
-    const MAX_AMOUNT = 1000;
-    const WARNING_AMOUNT = 500;
-
-    if (isNaN(numericAmount) || numericAmount <= 0) {
-      alert('Please enter a valid positive number for amount');
-      return;
-    }
-
-    if (numericAmount > MAX_AMOUNT) {
-      alert(
-        `The entered amount (${numericAmount} ${amountUnit}) is too large to be valid. Please double-check.`
-      );
-      return;
-    }
-
-    if (numericAmount > WARNING_AMOUNT) {
+    // Check for future time
+    const now = new Date();
+    if (selectedTime > now) {
       Alert.alert(
-        'Large Amount Entered',
-        `You entered ${numericAmount} ${amountUnit}. Are you sure this amount is correct?`,
+        'Future Time Detected',
+        'The selected time is in the future. Are you sure you want to continue?',
         [
           { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Yes, Save',
-            onPress: async () => {
-              try {
-                const logData = {
-                  timestamp: selectedTime,
-                  feedType: foodType === 'Other' ? customFoodType : foodType,
-                  amount: numericAmount, // numeric
-                  amountUnit,
-                  mealType,
-                  notes,
-                  childId,
-                  createdAt: serverTimestamp(),
-                  logDate: getTodayStr(),
-                };
-
-                await addDoc(collection(db, 'feedLogs'), logData);
-                Alert.alert('Success', 'Log saved successfully!');
-                navigation.goBack();
-              } catch (error) {
-                console.error('Error saving feeding log:', error);
-                alert('Failed to save feeding log. Please try again.');
-              }
-            },
-          },
+          { text: 'Continue', onPress: () => validateAmount() }
         ]
       );
       return;
     }
 
-    // Normal save path (kept)
-    try {
-      const logData = {
-        timestamp: selectedTime,
-        feedType: foodType === 'Other' ? customFoodType : foodType,
-        amount, // string is fine for non-warning path (kept from your code)
-        amountUnit,
-        mealType,
-        notes,
-        childId,
-        createdAt: serverTimestamp(),
-        logDate: getTodayStr(),
-      };
-
-      await addDoc(collection(db, 'feedLogs'), logData);
-      Alert.alert('Success', 'Log saved successfully!');
-      navigation.goBack();
-    } catch (error) {
-      console.error('Error saving feeding log:', error);
-      alert('Failed to save feeding log. Please try again.');
-    }
+    validateAmount();
   };
 
+const validateAmount = () => {
+  const numericAmount = parseFloat(amount);
+  const MAX_AMOUNT = 1000;
+  const WARNING_AMOUNT = 500;
+
+  if (isNaN(numericAmount) || numericAmount <= 0) {
+    alert('Please enter a valid positive number for amount');
+    return;
+  }
+
+  if (numericAmount > MAX_AMOUNT) {
+    alert(
+      `The entered amount (${numericAmount} ${amountUnit}) is too large to be valid. Please double-check.`
+    );
+    return;
+  }
+
+  if (numericAmount > WARNING_AMOUNT) {
+    Alert.alert(
+      'Large Amount Entered',
+      `You entered ${numericAmount} ${amountUnit}. Are you sure this amount is correct?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Yes, Continue', onPress: () => checkForDuplicates() }
+      ]
+    );
+    return;
+  }
+
+  checkForDuplicates();
+};
+
+const checkForDuplicates = async () => {
+  try {
+    // Query recent logs for this child today
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const logsRef = collection(db, 'feedLogs');
+    const q = query(
+      logsRef,
+      where('childId', '==', childId),
+      where('timestamp', '>=', todayStart)
+    );
+
+    const snapshot = await getDocs(q);
+    const selectedMinutes = selectedTime.getHours() * 60 + selectedTime.getMinutes();
+    let hasDuplicate = false;
+
+    snapshot.forEach((docSnap) => {
+      const log = docSnap.data();
+      const logTime = log.timestamp?.toDate();
+      if (logTime) {
+        const logMinutes = logTime.getHours() * 60 + logTime.getMinutes();
+        // Check if times are within 5 minutes
+        if (Math.abs(logMinutes - selectedMinutes) < 5) {
+          hasDuplicate = true;
+        }
+      }
+    });
+
+    if (hasDuplicate) {
+      Alert.alert(
+        'Duplicate Entry',
+        'A similar feeding log already exists for this time. Do you want to add it anyway?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Add Anyway', onPress: () => saveLog() }
+        ]
+      );
+      return;
+    }
+
+    await saveLog();
+  } catch (error) {
+    console.error('Error checking duplicates:', error);
+    await saveLog();
+  }
+};
+
+const saveLog = async () => {
+  try {
+    const numericAmount = parseFloat(amount);
+    const logData = {
+      timestamp: selectedTime,
+      feedType: foodType === 'Other' ? customFoodType : foodType,
+      amount: numericAmount,
+      amountUnit,
+      mealType,
+      notes,
+      childId,
+      createdAt: serverTimestamp(),
+      logDate: getTodayStr(),
+    };
+
+    await addDoc(collection(db, 'feedLogs'), logData);
+    Alert.alert('Success', 'Log saved successfully!');
+    navigation.goBack();
+  } catch (error) {
+    console.error('Error saving feeding log:', error);
+    alert('Failed to save feeding log. Please try again.');
+  }
+};
   if (!canLog) {
     return (
       <LinearGradient colors={['#B2EBF2', '#FCE4EC']} style={{ flex: 1, justifyContent: 'center' }}>
@@ -259,12 +302,26 @@ export default function FeedingForm({ navigation }) {
                   <Text style={{ color: currentTheme.textPrimary }}>{formatTime(selectedTime)}</Text>
                 </TouchableOpacity>
                 {showTimePicker && (
-                  <DateTimePicker
-                    value={selectedTime}
-                    mode="time"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(e, date) => date && setSelectedTime(date)}
-                  />
+                  <View>
+                    <DateTimePicker
+                      value={selectedTime}
+                      mode="time"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(e, date) => {
+                        if (date) setSelectedTime(date);
+                        if (Platform.OS === 'android') setShowTimePicker(false);
+                      }}
+                      textColor={darkMode ? '#fff' : '#2E3A59'}
+                    />
+                    {Platform.OS === 'ios' && (
+                      <TouchableOpacity 
+                        onPress={() => setShowTimePicker(false)} 
+                        style={styles.enterButton}
+                      >
+                        <Text style={styles.enterButtonText}>Enter</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 )}
               </LinearGradient>
 
@@ -276,23 +333,35 @@ export default function FeedingForm({ navigation }) {
                   style={styles.fieldButton}
                 >
                   <Text style={{ color: currentTheme.textPrimary }}>
-                    {foodType || 'Select Food Type'}
+                    {foodType && foodType !== 'default' ? foodType : 'Select Food Type'}
                   </Text>
                 </TouchableOpacity>
                 {showFoodPicker && (
                   <View style={styles.pickerContainer}>
-                    <Picker selectedValue={foodType} onValueChange={(val) => setFoodType(val)}>
-                      <Picker.Item label="Formula" value="Formula" />
-                      <Picker.Item label="Breastmilk" value="Breastmilk" />
-                      <Picker.Item label="Solids/Other" value="Solids/Other" />
-                      <Picker.Item label="Fruits" value="Fruits" />
-                      <Picker.Item label="Vegetables" value="Vegetables" />
-                      <Picker.Item label="Grains" value="Grains" />
-                      <Picker.Item label="Protein" value="Protein" />
-                      <Picker.Item label="Dairy" value="Dairy" />
-                      <Picker.Item label="Snacks / Treats" value="Snacks" />
-                      <Picker.Item label="Other" value="Other" />
+                    <Picker 
+                      selectedValue={foodType || 'default'} 
+                      onValueChange={(val) => setFoodType(val)}
+                      style={{ color: darkMode ? '#fff' : '#2E3A59' }}
+                      dropdownIconColor={darkMode ? '#fff' : '#2E3A59'}
+                    >
+                      <Picker.Item label="-- Select Food Type --" value="default" color={darkMode ? '#888' : '#999'} />
+                      <Picker.Item label="Formula" value="Formula" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Breastmilk" value="Breastmilk" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Solids/Other" value="Solids/Other" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Fruits" value="Fruits" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Vegetables" value="Vegetables" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Grains" value="Grains" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Protein" value="Protein" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Dairy" value="Dairy" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Snacks / Treats" value="Snacks" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Other" value="Other" color={darkMode ? '#fff' : '#2E3A59'} />
                     </Picker>
+                    <TouchableOpacity 
+                      onPress={() => setShowFoodPicker(false)} 
+                      style={styles.enterButton}
+                    >
+                      <Text style={styles.enterButtonText}>Enter</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
                 {foodType === 'Other' && (
@@ -317,24 +386,43 @@ export default function FeedingForm({ navigation }) {
                   onChangeText={setAmount}
                   keyboardType="numeric"
                 />
+                <TouchableOpacity 
+                  onPress={() => Keyboard.dismiss()} 
+                  style={styles.enterButton}
+                >
+                  <Text style={styles.enterButtonText}>Enter Amount</Text>
+                </TouchableOpacity>
+                
                 <TouchableOpacity
                   onPress={() => setShowUnitPicker(!showUnitPicker)}
                   style={styles.fieldButton}
                 >
                   <Text style={{ color: currentTheme.textPrimary }}>
-                    {amountUnit || 'Select Unit'}
+                    {amountUnit && amountUnit !== 'default' ? amountUnit : 'Select Unit'}
                   </Text>
                 </TouchableOpacity>
                 {showUnitPicker && (
                   <View style={styles.pickerContainer}>
-                    <Picker selectedValue={amountUnit} onValueChange={(val) => setAmountUnit(val)}>
-                      <Picker.Item label="mL" value="mL" />
-                      <Picker.Item label="oz" value="oz" />
-                      <Picker.Item label="fl oz" value="fl oz" />
-                      <Picker.Item label="Cups" value="Cups" />
-                      <Picker.Item label="Pieces" value="Pieces" />
-                      <Picker.Item label="None/Refused" value="None" />
+                    <Picker 
+                      selectedValue={amountUnit || 'default'} 
+                      onValueChange={(val) => setAmountUnit(val)}
+                      style={{ color: darkMode ? '#fff' : '#2E3A59' }}
+                      dropdownIconColor={darkMode ? '#fff' : '#2E3A59'}
+                    >
+                      <Picker.Item label="-- Select Unit --" value="default" color={darkMode ? '#888' : '#999'} />
+                      <Picker.Item label="mL" value="mL" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="oz" value="oz" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="fl oz" value="fl oz" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Cups" value="Cups" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Pieces" value="Pieces" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="None/Refused" value="None" color={darkMode ? '#fff' : '#2E3A59'} />
                     </Picker>
+                    <TouchableOpacity 
+                      onPress={() => setShowUnitPicker(false)} 
+                      style={styles.enterButton}
+                    >
+                      <Text style={styles.enterButtonText}>Enter</Text>
+                    </TouchableOpacity>
                   </View> 
                 )}
               </LinearGradient>
@@ -347,17 +435,29 @@ export default function FeedingForm({ navigation }) {
                   style={styles.fieldButton}
                 >
                   <Text style={{ color: currentTheme.textPrimary }}>
-                    {mealType || 'Select Meal Type'}
+                    {mealType && mealType !== 'default' ? mealType : 'Select Meal Type'}
                   </Text>
                 </TouchableOpacity>
                 {showMealPicker && (
                   <View style={styles.pickerContainer}>
-                    <Picker selectedValue={mealType} onValueChange={(val) => setMealType(val)}>
-                      <Picker.Item label="Breakfast" value="Breakfast" />
-                      <Picker.Item label="Lunch" value="Lunch" />
-                      <Picker.Item label="Dinner" value="Dinner" />
-                      <Picker.Item label="Snack" value="Snack" />
+                    <Picker 
+                      selectedValue={mealType || 'default'} 
+                      onValueChange={(val) => setMealType(val)}
+                      style={{ color: darkMode ? '#fff' : '#2E3A59' }}
+                      dropdownIconColor={darkMode ? '#fff' : '#2E3A59'}
+                    >
+                      <Picker.Item label="-- Select Meal Type --" value="default" color={darkMode ? '#888' : '#999'} />
+                      <Picker.Item label="Breakfast" value="Breakfast" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Lunch" value="Lunch" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Dinner" value="Dinner" color={darkMode ? '#fff' : '#2E3A59'} />
+                      <Picker.Item label="Snack" value="Snack" color={darkMode ? '#fff' : '#2E3A59'} />
                     </Picker>
+                    <TouchableOpacity 
+                      onPress={() => setShowMealPicker(false)} 
+                      style={styles.enterButton}
+                    >
+                      <Text style={styles.enterButtonText}>Enter</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </LinearGradient>
@@ -486,4 +586,18 @@ const styles = StyleSheet.create({
     fontWeight: '700', 
     fontSize: 16
    },
+  enterButton: {
+    backgroundColor: '#4CAF50',
+    padding: 12,
+    alignItems: 'center',
+    borderRadius: 10,
+    marginTop: 10,
+    marginHorizontal: 10,
+    marginBottom: 10,
+  },
+  enterButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
 });

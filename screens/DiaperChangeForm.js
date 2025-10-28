@@ -21,8 +21,10 @@ import {
   Timestamp,
   doc,
   onSnapshot,
+  query,
+  where,
+  getDocs,
 } from 'firebase/firestore';
-
 import NotificationService from '../src/notifications/notificationService';
 import { useDarkMode } from '../screens/DarkMode';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
@@ -87,47 +89,120 @@ const DiaperChangeForm = ({ navigation, route }) => {
   };
 
   const handleCompleteLog = async () => {
-    if (!canLog) { Alert.alert('Access is off', 'Parent has turned off access for this child.'); return; }
-    try {
-      const auth = getAuth();
-      const user = auth.currentUser;
-
-      if (!user) {
-        Alert.alert('Authentication Error', 'You must be logged in to save logs.');
-        return;
-      }
-      if (!stoolType) {
-        Alert.alert('Missing Info', 'Please select a stool type.');
-        return;
-      }
-      if (!childId) {
-        Alert.alert('Error', 'Child ID is missing. Please go back and try again.');
-        return;
-      }
-
-      const logData = {
-        childId,
-        stoolType,
-        bathroomType,
-        time: Timestamp.fromDate(selectedTime),
-        timestamp: Timestamp.now(),
-        createdBy: user.uid,
-        logDate: getTodayStr(),
-      };
-
-      await addDoc(collection(db, 'diaperLogs'), logData);
-
-      try {
-        NotificationService.sendDigestNotificationForChild(childId).catch(() => {});
-      } catch (e) {}
-
-      Alert.alert('Success', 'Log saved successfully!');
-      navigation.goBack();
-    } catch (error) {
-      console.error('Error saving diaper log:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+    if (!canLog) { 
+      Alert.alert('Access is off', 'Parent has turned off access for this child.'); 
+      return; 
     }
+
+    const auth = getAuth();
+    const user = auth.currentUser;
+
+    if (!user) {
+      Alert.alert('Authentication Error', 'You must be logged in to save logs.');
+      return;
+    }
+    if (!stoolType || stoolType === 'default') {
+      Alert.alert('Missing Info', 'Please select a stool type.');
+      return;
+    }
+    if (!childId) {
+      Alert.alert('Error', 'Child ID is missing. Please go back and try again.');
+      return;
+    }
+
+    // Check for future time
+    const now = new Date();
+    if (selectedTime > now) {
+      Alert.alert(
+        'Future Time Detected',
+        'The selected time is in the future. Are you sure you want to continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Continue', onPress: () => checkForDuplicates() }
+        ]
+      );
+      return;
+    }
+
+    checkForDuplicates();
   };
+
+const checkForDuplicates = async () => {
+  try {
+    // Query recent logs for this child today
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const logsRef = collection(db, 'diaperLogs');
+    const q = query(
+      logsRef,
+      where('childId', '==', childId),
+      where('time', '>=', Timestamp.fromDate(todayStart))
+    );
+
+    const snapshot = await getDocs(q);
+    const selectedMinutes = selectedTime.getHours() * 60 + selectedTime.getMinutes();
+    let hasDuplicate = false;
+
+    snapshot.forEach((docSnap) => {
+      const log = docSnap.data();
+      const logTime = log.time?.toDate();
+      if (logTime) {
+        const logMinutes = logTime.getHours() * 60 + logTime.getMinutes();
+        // Check if times are within 5 minutes
+        if (Math.abs(logMinutes - selectedMinutes) < 5) {
+          hasDuplicate = true;
+        }
+      }
+    });
+
+    if (hasDuplicate) {
+      Alert.alert(
+        'Duplicate Entry',
+        'A similar diaper log already exists for this time. Do you want to add it anyway?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Add Anyway', onPress: () => saveLog() }
+        ]
+      );
+      return;
+    }
+
+    await saveLog();
+  } catch (error) {
+    console.error('Error checking duplicates:', error);
+    await saveLog();
+  }
+};
+
+const saveLog = async () => {
+  try {
+    const auth = getAuth();
+    const user = auth.currentUser;
+
+    const logData = {
+      childId,
+      stoolType,
+      bathroomType,
+      time: Timestamp.fromDate(selectedTime),
+      timestamp: Timestamp.now(),
+      createdBy: user.uid,
+      logDate: getTodayStr(),
+    };
+
+    await addDoc(collection(db, 'diaperLogs'), logData);
+
+    try {
+      NotificationService.sendDigestNotificationForChild(childId).catch(() => {});
+    } catch (e) {}
+
+    Alert.alert('Success', 'Log saved successfully!');
+    navigation.goBack();
+  } catch (error) {
+    console.error('Error saving diaper log:', error);
+    Alert.alert('Error', 'Something went wrong. Please try again.');
+  }
+};
 
   if (!canLog) {
     return (
@@ -177,12 +252,26 @@ const DiaperChangeForm = ({ navigation, route }) => {
               <Text style={{ color: currentTheme.textPrimary }}>{formatTime(selectedTime)}</Text>
             </TouchableOpacity>
             {showTimePicker && (
-              <DateTimePicker
-                value={selectedTime}
-                mode="time"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={(e, date) => date && setSelectedTime(date)}
-              />
+              <View>
+                <DateTimePicker
+                  value={selectedTime}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(e, date) => {
+                    if (date) setSelectedTime(date);
+                    if (Platform.OS === 'android') setShowTimePicker(false);
+                  }}
+                  textColor={darkMode ? '#fff' : '#2E3A59'}
+                />
+                {Platform.OS === 'ios' && (
+                  <TouchableOpacity 
+                    onPress={() => setShowTimePicker(false)} 
+                    style={styles.enterButton}
+                  >
+                    <Text style={styles.enterButtonText}>Enter</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
           </LinearGradient>
 
@@ -217,17 +306,29 @@ const DiaperChangeForm = ({ navigation, route }) => {
             <Text style={[styles.label, { color: currentTheme.textPrimary }]}>Stool Type</Text>
             <TouchableOpacity onPress={() => setShowStoolPicker(!showStoolPicker)} style={styles.fieldButton}>
               <Text style={{ color: currentTheme.textPrimary }}>
-                {stoolType || 'Select Stool Type'}
+                {stoolType && stoolType !== 'default' ? stoolType : 'Select Stool Type'}
               </Text>
             </TouchableOpacity>
             {showStoolPicker && (
               <View style={styles.pickerContainer}>
-                <Picker selectedValue={stoolType} onValueChange={(val) => setStoolType(val)}>
-                  <Picker.Item label="Wet" value="Wet" />
-                  <Picker.Item label="BM (Bowel Movement)" value="BM" />
-                  <Picker.Item label="Dry" value="Dry" />
-                  <Picker.Item label="Wet + BM (Bowel Movement)" value="Wet+BM" />
+                <Picker 
+                  selectedValue={stoolType || 'default'} 
+                  onValueChange={(val) => setStoolType(val)}
+                  style={{ color: darkMode ? '#fff' : '#2E3A59' }}
+                  dropdownIconColor={darkMode ? '#fff' : '#2E3A59'}
+                >
+                  <Picker.Item label="-- Select Stool Type --" value="default" color={darkMode ? '#888' : '#999'} />
+                  <Picker.Item label="Wet" value="Wet" color={darkMode ? '#fff' : '#2E3A59'} />
+                  <Picker.Item label="BM (Bowel Movement)" value="BM" color={darkMode ? '#fff' : '#2E3A59'} />
+                  <Picker.Item label="Dry" value="Dry" color={darkMode ? '#fff' : '#2E3A59'} />
+                  <Picker.Item label="Wet + BM (Bowel Movement)" value="Wet+BM" color={darkMode ? '#fff' : '#2E3A59'} />
                 </Picker>
+                <TouchableOpacity 
+                  onPress={() => setShowStoolPicker(false)} 
+                  style={styles.enterButton}
+                >
+                  <Text style={styles.enterButtonText}>Enter</Text>
+                </TouchableOpacity>
               </View>
             )}
           </LinearGradient>
@@ -342,6 +443,20 @@ const styles = StyleSheet.create({
      fontWeight: '700',
       fontSize: 16 
     },
+  enterButton: {
+    backgroundColor: '#4CAF50',
+    padding: 12,
+    alignItems: 'center',
+    borderRadius: 10,
+    marginTop: 10,
+    marginHorizontal: 10,
+    marginBottom: 10,
+    },
+  enterButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
 });
 
 export default DiaperChangeForm;

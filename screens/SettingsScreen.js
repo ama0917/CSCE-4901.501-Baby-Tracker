@@ -1,6 +1,6 @@
 // SettingsScreen.js
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Switch, TextInput, StyleSheet, ScrollView, Image, Alert, StatusBar, ActivityIndicator, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { View, Text, TouchableOpacity, Switch, TextInput, StyleSheet, ScrollView, Image, Alert, StatusBar, ActivityIndicator, LayoutAnimation, Platform, UIManager, KeyboardAvoidingView, } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
@@ -11,7 +11,7 @@ import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import NotificationService from '../src/notifications/notificationService';
 import { summaryRepository } from '../src/data/summaryRepository';
 import { useActiveChild } from '../src/contexts/ActiveChildContext';
-import { ArrowLeft, ChevronDown, ChevronRight, ShieldCheck, Users, Bell, Fingerprint } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, ChevronRight, ShieldCheck, Users, Bell, Lock } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { startTotpEnrollment, finishTotpEnrollment } from '../auth/mfa';
 import { getAuth, sendEmailVerification, multiFactor } from 'firebase/auth';
@@ -19,6 +19,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import useUserRole from './useUserRole';
 import * as Clipboard from 'expo-clipboard';
 import { RefreshCcw } from 'lucide-react-native';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -176,42 +177,95 @@ export default function SettingsScreen() {
   };
 
   const handleDisableTotp = async () => {
-    const user = auth.currentUser;
-    if (!user) {
-      Alert.alert('Not signed in', 'Please sign in again and try disabling MFA.');
-      return;
-    }
-    try {
-      setMfaBusy(true);
-      await user.reload();
+    Alert.alert(
+      'Disable Two-Step Verification',
+      'Enter your 6-digit authenticator code to confirm disabling MFA.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          onPress: () => {
+            // Show input dialog for TOTP code
+            Alert.prompt(
+              'Enter Code',
+              'Enter the 6-digit code from your authenticator app',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Disable MFA',
+                  style: 'destructive',
+                  onPress: async (code) => {
+                    if (!code || !/^\d{6}$/.test(code.trim())) {
+                      Alert.alert('Invalid Code', 'Please enter a 6-digit code.');
+                      return;
+                    }
 
-      const before = multiFactor(user).enrolledFactors || [];
-      const totpFactors = before.filter(f => f.factorId === 'totp');
+                    const user = auth.currentUser;
+                    if (!user) {
+                      Alert.alert('Not signed in', 'Please sign in again and try disabling MFA.');
+                      return;
+                    }
 
-      if (totpFactors.length === 0) {
-        await disableTotpServerSide();
-      } else {
-        for (const f of totpFactors) {
-          await multiFactor(user).unenroll(f.uid);
-        }
-      }
+                    try {
+                      setMfaBusy(true);
+                      await user.reload();
 
-      await updateDoc(doc(db, 'users', user.uid), { MFAEnabled: false });
-      setMfa(false);
-      setMfaEnrollOpen(false);
-      setOtpauthUrl(null);
-      setTotpCode('');
-      Alert.alert('MFA disabled', 'Authenticator removed from your account.');
-    } catch (e) {
-      if (e?.code === 'auth/requires-recent-login') {
-        Alert.alert('Please sign in again', 'For your security, sign out and back in to make this change.');
-      } else {
-        Alert.alert('Couldn’t turn off two-step verification', 'Please try again in a moment.');
-      }
-      setMfa(true);
-    } finally {
-      setMfaBusy(false);
-    }
+                      // Verify the TOTP code first by attempting a multi-factor session
+                      const mfaSession = await multiFactor(user).getSession();
+                      
+                      const enrolledFactors = multiFactor(user).enrolledFactors || [];
+                      const totpFactors = enrolledFactors.filter(f => f.factorId === 'totp');
+
+                      if (totpFactors.length === 0) {
+                        Alert.alert('No MFA Enabled', 'You do not have two-step verification enabled.');
+                        setMfa(false);
+                        return;
+                      }
+
+                      // Unenroll all TOTP factors
+                      for (const factor of totpFactors) {
+                        await multiFactor(user).unenroll(factor);
+                      }
+
+                      await user.reload();
+
+                      // Update Firestore
+                      const userRef = doc(db, 'users', user.uid);
+                      await updateDoc(userRef, { MFAEnabled: false });
+
+                      setMfa(false);
+                      setMfaEnrollOpen(false);
+                      setOtpauthUrl(null);
+                      setTotpCode('');
+                      Alert.alert('Two-step verification disabled', 'Authenticator removed from your account.');
+                    } catch (e) {
+                      console.error('MFA disable error:', e);
+                      if (e?.code === 'auth/requires-recent-login') {
+                        Alert.alert(
+                          'Please Sign In Again',
+                          'For your security, sign out and back in to make this change.',
+                          [{ text: 'OK' }]
+                        );
+                      } else if (e?.code === 'auth/invalid-verification-code') {
+                        Alert.alert('Invalid Code', 'The code you entered is incorrect. Please try again.');
+                      } else {
+                        Alert.alert('Error', e?.message || 'Could not turn off two-step verification. Please try again.');
+                      }
+                      setMfa(true);
+                    } finally {
+                      setMfaBusy(false);
+                    }
+                  },
+                },
+              ],
+              'plain-text',
+              '',
+              'number-pad'
+            );
+          },
+        },
+      ]
+    );
   };
 
   // ---------- Notifications helpers ----------
@@ -355,7 +409,6 @@ const handleRestoreBackup = async () => {
       throw new Error(data.error || 'Backup restore failed.');
     }
 
-    // ✅ Simple alert message
     Alert.alert('Backup restored', 'Backup restored successfully.');
 
   } catch (e) {
@@ -369,340 +422,347 @@ const handleRestoreBackup = async () => {
   return (
     <ThemedBackground>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} translucent />
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-          <LinearGradient
-            colors={darkMode ? ['#1f1e1eff', '#323233ff'] : gradients.cardLight}
-            style={styles.headerButtonGradient}
-          >
-            <ArrowLeft size={20} color={darkMode ? '#fff' : '#2E3A59'} />
-          </LinearGradient>
-          </TouchableOpacity>
-
-          <View style={styles.logoWrapper}>
-            <Image source={require('../assets/logo.png')} style={styles.logo} />
-          </View>
-
-          <TouchableOpacity style={styles.signOutButton} onPress={() => navigation.navigate('Login')}>
-            <Text style={styles.signOutText}>Sign out</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ---------- 1) Dark Mode ---------- */}
-        <SectionTitle icon={<Fingerprint size={18} color={currentTheme.textPrimary} />} text="App Preferences" />
-        <Card>
-          <View style={styles.row}>
-            <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Dark Mode</Text>
-            <Switch value={darkMode} onValueChange={setDarkMode} />
-          </View>
-        </Card>
-
-        {/* ---------- 2) MFA ---------- */}
-        <SectionTitle icon={<ShieldCheck size={18} color={currentTheme.textPrimary} />} text="Security" />
-        <Card>
-          <View style={styles.row}>
-            <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Multi-Factor Authentication</Text>
-            <Switch
-              value={mfa}
-              onValueChange={async (val) => {
-                setMfa(val);
-                const user = auth.currentUser;
-                if (!user) return;
-                if (!val) {
-                  await handleDisableTotp();
-                } else {
-                  // mark flag; actual enrollment below
-                  try { await updateDoc(doc(db, 'users', user.uid), { MFAEnabled: true }); } catch {}
-                }
-              }}
-            />
-          </View>
-
-          {/* MFA Enrollment block */}
-          {mfa && !mfaEnrollOpen && (
-            <TouchableOpacity
-              onPress={handleStartTotp}
-              disabled={mfaBusy}
-              activeOpacity={0.9}
-              style={styles.fullWidthButton}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        style={{ flex: 1 }}
+        enabled={Platform.OS === 'ios'}
+      >
+      <ScrollView 
+        contentContainerStyle={styles.container} 
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="on-drag"
+        nestedScrollEnabled={true}
+      >
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+            <LinearGradient
+              colors={darkMode ? ['#1f1e1eff', '#323233ff'] : gradients.cardLight}
+              style={styles.headerButtonGradient}
             >
-              <LinearGradient
-                colors={darkMode ? gradients.primaryDark : gradients.primaryLight}
-                style={styles.fullWidthGradient}
-              >
-                {mfaBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.fullWidthText}>Set up Authenticator (TOTP)</Text>}
-              </LinearGradient>
+              <ArrowLeft size={20} color={darkMode ? '#fff' : '#2E3A59'} />
+            </LinearGradient>
             </TouchableOpacity>
-          )}
 
-          {mfa && mfaEnrollOpen && (
-            <View style={{ marginTop: 12, alignItems: 'center' }}>
-              <Text style={[styles.helperText, { color: currentTheme.textSecondary }]}>
-                Scan this QR code with your authenticator app, then enter the 6-digit code below.
-              </Text>
+            <View style={styles.logoWrapper}>
+              <Image source={require('../assets/logo.png')} style={styles.logo} />
+            </View>
 
-              {otpauthUrl ? (
-                <View style={styles.qrBox}>
-                  <QRCode value={otpauthUrl} size={180} />
-                </View>
-              ) : (
-                <Text style={[styles.helperText, { color: currentTheme.textSecondary }]}>Generating QR…</Text>
-              )}
+            <TouchableOpacity style={styles.signOutButton} onPress={() => navigation.navigate('Login')}>
+              <Text style={styles.signOutText}>Sign out</Text>
+            </TouchableOpacity>
+          </View>
 
-              {!!manualKey && (
-                <TouchableOpacity
-                  onPress={async () => {
-                    try {
-                      await Clipboard.setStringAsync(manualKey);
-                      Alert.alert('Copied', 'Setup key copied to clipboard.');
-                    } catch (e) {
-                      Alert.alert('Copy failed', e?.message || 'Please try again.');
+          {/* ---------- 1) Dark Mode ---------- */}
+          <SectionTitle text="App Preferences" />
+          <Card>
+            <View style={styles.row}>
+              <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Dark Mode</Text>
+              <Switch value={darkMode} onValueChange={setDarkMode} />
+            </View>
+          </Card>
+
+          {/* ---------- 2) MFA ---------- */}
+          <SectionTitle icon={<ShieldCheck size={18} color={currentTheme.textPrimary} />} text="Security" />
+          <Card>
+            <View style={styles.row}>
+              <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Multi-Factor Authentication</Text>
+              <Switch
+                value={mfa}
+                onValueChange={async (val) => {
+                  if (!val) {
+                    // Disabling MFA
+                    await handleDisableTotp();
+                  } else {
+                    // Enabling MFA - just set the flag, enrollment happens when they tap setup button
+                    setMfa(val);
+                    const user = auth.currentUser;
+                    if (user) {
+                      try { 
+                        await updateDoc(doc(db, 'users', user.uid), { MFAEnabled: true }); 
+                      } catch (e) {
+                        console.error('Error updating MFA flag:', e);
+                      }
                     }
-                  }}
-                  style={styles.copyKey}
-                  activeOpacity={0.9}
-                >
-                  <Text style={styles.copyKeyText}>Copy setup key</Text>
-                </TouchableOpacity>
-              )}
-
-              <TextInput
-                placeholder="123456"
-                placeholderTextColor={currentTheme.textSecondary}
-                keyboardType="number-pad"
-                maxLength={6}
-                value={totpCode}
-                onChangeText={(t) => setTotpCode(t.replace(/\D/g, ''))}
-                style={[
-                  styles.codeInput,
-                  { borderColor: darkMode ? '#5b5f66' : '#e6d6ef' }
-                ]}
+                  }
+                }}
               />
+            </View>
 
-              <View style={styles.dualRow}>
-                <TouchableOpacity
-                  onPress={handleFinishTotp}
-                  disabled={mfaBusy || !/^\d{6}$/.test(totpCode)}
-                  style={[styles.dualBtn, { opacity: mfaBusy || !/^\d{6}$/.test(totpCode) ? 0.6 : 1 }]}
-                  activeOpacity={0.9}
+            {/* MFA Enrollment block */}
+            {mfa && !mfaEnrollOpen && (
+              <TouchableOpacity
+                onPress={handleStartTotp}
+                disabled={mfaBusy}
+                activeOpacity={0.9}
+                style={styles.fullWidthButton}
+              >
+                <LinearGradient
+                  colors={darkMode ? gradients.primaryDark : gradients.primaryLight}
+                  style={styles.fullWidthGradient}
                 >
-                  <LinearGradient colors={darkMode ? gradients.warnDark : gradients.warnLight} style={styles.dualGrad}>
-                    {mfaBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.dualText}>Confirm</Text>}
+                  {mfaBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.fullWidthText}>Set up Authenticator (TOTP)</Text>}
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+
+            {mfa && mfaEnrollOpen && (
+              <View style={{ marginTop: 12, alignItems: 'center' }}>
+                <Text style={[styles.helperText, { color: currentTheme.textSecondary }]}>
+                  Scan this QR code or enter the setup key in your authenticator app, then enter the 6-digit code below.
+                </Text>
+
+                {otpauthUrl ? (
+                  <View style={styles.qrBox}>
+                    <QRCode value={otpauthUrl} size={180} />
+                  </View>
+                ) : (
+                  <Text style={[styles.helperText, { color: currentTheme.textSecondary }]}>Generating QR…</Text>
+                )}
+
+                {!!manualKey && (
+                  <TouchableOpacity
+                    onPress={async () => {
+                      try {
+                        await Clipboard.setStringAsync(manualKey);
+                        Alert.alert('Copied', 'Setup key copied to clipboard.');
+                      } catch (e) {
+                        Alert.alert('Copy failed', e?.message || 'Please try again.');
+                      }
+                    }}
+                    style={styles.copyKey}
+                    activeOpacity={0.9}
+                  >
+                    <Text style={styles.copyKeyText}>Copy setup key</Text>
+                  </TouchableOpacity>
+                )}
+
+                <TextInput
+                  placeholder="123456"
+                  placeholderTextColor={currentTheme.textSecondary}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={totpCode}
+                  onChangeText={(t) => setTotpCode(t.replace(/\D/g, ''))}
+                  style={[
+                    styles.codeInput,
+                    { borderColor: darkMode ? '#5b5f66' : '#e6d6ef' }
+                  ]}
+                />
+
+                <View style={styles.dualRow}>
+                  <TouchableOpacity
+                    onPress={handleFinishTotp}
+                    disabled={mfaBusy || !/^\d{6}$/.test(totpCode)}
+                    style={[styles.dualBtn, { opacity: mfaBusy || !/^\d{6}$/.test(totpCode) ? 0.6 : 1 }]}
+                    activeOpacity={0.9}
+                  >
+                    <LinearGradient colors={darkMode ? gradients.warnDark : gradients.warnLight} style={styles.dualGrad}>
+                      {mfaBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.dualText}>Confirm</Text>}
+                    </LinearGradient>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => { setMfaEnrollOpen(false); setOtpauthUrl(null); setTotpCode(''); }}
+                    disabled={mfaBusy}
+                    style={[styles.dualBtn, { opacity: mfaBusy ? 0.6 : 1 }]}
+                    activeOpacity={0.9}
+                  >
+                    <LinearGradient colors={darkMode ? gradients.primaryDark : gradients.primaryLight} style={styles.dualGrad}>
+                      <Text style={styles.dualText}>Cancel</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </Card>
+
+          {/* ---------- 3) Caregiver ---------- */}
+          <SectionTitle icon={<Users size={18} color={currentTheme.textPrimary} />} text="Caregiver" />
+          <Card>
+            {role === 'parent' ? (
+              <TouchableOpacity
+                onPress={() => navigation.navigate('ManageCaregivers')}
+                style={styles.rowNav}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Manage Caregivers</Text>
+                <ChevronRight size={18} color={currentTheme.textSecondary} />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => navigation.navigate('AcceptInvite')}
+                style={styles.rowNav}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Enter Invite Code</Text>
+                <ChevronRight size={18} color={currentTheme.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </Card>
+
+          {/* ---------- 4) Weekly Digest ---------- */}
+          <SectionTitle icon={<Bell size={18} color={currentTheme.textPrimary} />} text="Notifications" />
+          <Card>
+            <View style={styles.row}>
+              <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Weekly Digest Notifications</Text>
+              <Switch
+                value={weeklyDigest}
+                onValueChange={async (val) => {
+                  setWeeklyDigest(val);
+                  const currentUser = auth.currentUser;
+                  if (!currentUser) return;
+                  const docRef = doc(db, 'users', currentUser.uid);
+                  try {
+                    const snap = await getDoc(docRef);
+                    if (!snap.exists()) {
+                      await setDoc(docRef, { settings: { notifications: { weeklyDigest: val } } });
+                    } else {
+                      await updateDoc(docRef, { 'settings.notifications.weeklyDigest': val });
+                    }
+                    if (val) {
+                      const granted = await NotificationService.requestNotificationPermission();
+                      if (!granted) return;
+                      let body = 'Your weekly summary is ready.';
+                      try {
+                        let childToUse = activeChildId || null;
+                        if (!childToUse) {
+                          const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+                          const childIds = userSnap.exists() ? userSnap.data()?.children || [] : [];
+                          if (Array.isArray(childIds) && childIds.length) childToUse = childIds[0];
+                        }
+                        if (childToUse) {
+                          const s = await summaryRepository.getLatestSummary(childToUse);
+                          if (s?.text) body = s.text;
+                        }
+                      } catch {}
+                      const id = await NotificationService.scheduleWeeklyDigestNotification(body);
+                      await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': id });
+                    } else {
+                      const data = snap.exists() ? snap.data() : {};
+                      const id = data?.settings?.notifications?.weeklyNotificationId;
+                      if (id) {
+                        await NotificationService.cancelScheduledNotification(id);
+                        await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': null });
+                      }
+                      setTestNotifId(null);
+                    }
+                  } catch (e) {
+                    console.error('save weeklyDigest', e);
+                  }
+                }}
+              />
+            </View>
+
+            {/* Inline test button when enabled */}
+            {weeklyDigest && (
+              <TouchableOpacity
+                onPress={testNotifId ? cancelTestNotification : sendTestNotification}
+                activeOpacity={0.9}
+                style={styles.inlineBtn}
+              >
+                <LinearGradient
+                  colors={darkMode ? gradients.primaryDark : gradients.primaryLight}
+                  style={styles.inlineGrad}
+                >
+                  <Text style={styles.inlineText}>
+                    {testNotifId ? 'Cancel Test Notification' : 'Send Test Notification (2m)'}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+          </Card>
+
+          {/* ---------- 5) Digest Controls (Collapsible) ---------- */}
+          <Card>
+            <TouchableOpacity onPress={toggleDigestOpen} style={styles.rowNav} activeOpacity={0.8}>
+              <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Digest Controls</Text>
+              {digestOpen ? (
+                <ChevronDown size={18} color={currentTheme.textSecondary} />
+              ) : (
+                <ChevronRight size={18} color={currentTheme.textSecondary} />
+              )}
+            </TouchableOpacity>
+
+            {digestOpen && (
+              <View style={{ marginTop: 10, gap: 10 }}>
+                <TouchableOpacity onPress={showThrottle} activeOpacity={0.9} style={styles.inlineBtn}>
+                  <LinearGradient colors={darkMode ? gradients.primaryDark : gradients.primaryLight} style={styles.inlineGrad}>
+                    <Text style={styles.inlineText}>Show Digest Throttle</Text>
                   </LinearGradient>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  onPress={() => { setMfaEnrollOpen(false); setOtpauthUrl(null); setTotpCode(''); }}
-                  disabled={mfaBusy}
-                  style={[styles.dualBtn, { opacity: mfaBusy ? 0.6 : 1 }]}
-                  activeOpacity={0.9}
-                >
-                  <LinearGradient colors={darkMode ? gradients.primaryDark : gradients.primaryLight} style={styles.dualGrad}>
-                    <Text style={styles.dualText}>Cancel</Text>
+                <TouchableOpacity onPress={clearThrottle} activeOpacity={0.9} style={styles.inlineBtn}>
+                  <LinearGradient colors={darkMode ? gradients.warnDark : gradients.warnLight} style={styles.inlineGrad}>
+                    <Text style={styles.inlineText}>Clear Digest Throttle</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={forceSendDigest} activeOpacity={0.9} style={styles.inlineBtn}>
+                  <LinearGradient colors={darkMode ? gradients.primaryDark : gradients.primaryLight} style={styles.inlineGrad}>
+                    <Text style={styles.inlineText}>Force Send Digest</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
-            </View>
-          )}
-        </Card>
+            )}
+          </Card>
 
-        {/* ---------- 3) Caregiver ---------- */}
-        <SectionTitle icon={<Users size={18} color={currentTheme.textPrimary} />} text="Caregiver" />
-        <Card>
-          {role === 'parent' ? (
-            <TouchableOpacity
-              onPress={() => navigation.navigate('ManageCaregivers')}
-              style={styles.rowNav}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Manage Caregivers</Text>
-              <ChevronRight size={18} color={currentTheme.textSecondary} />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              onPress={() => navigation.navigate('AcceptInvite')}
-              style={styles.rowNav}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Enter Invite Code</Text>
-              <ChevronRight size={18} color={currentTheme.textSecondary} />
-            </TouchableOpacity>
-          )}
-        </Card>
+          {/* ---------- Restore Data ---------- */}
+          <SectionTitle 
+            icon={<RefreshCcw size={18} color={currentTheme.textPrimary} />} 
+            text="Restore Data" 
+          />
 
-        {/* ---------- 4) Weekly Digest ---------- */}
-        <SectionTitle icon={<Bell size={18} color={currentTheme.textPrimary} />} text="Notifications" />
-        <Card>
-          <View style={styles.row}>
-            <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Weekly Digest Notifications</Text>
-            <Switch
-              value={weeklyDigest}
-              onValueChange={async (val) => {
-                setWeeklyDigest(val);
-                const currentUser = auth.currentUser;
-                if (!currentUser) return;
-                const docRef = doc(db, 'users', currentUser.uid);
-                try {
-                  const snap = await getDoc(docRef);
-                  if (!snap.exists()) {
-                    await setDoc(docRef, { settings: { notifications: { weeklyDigest: val } } });
-                  } else {
-                    await updateDoc(docRef, { 'settings.notifications.weeklyDigest': val });
-                  }
-                  if (val) {
-                    const granted = await NotificationService.requestNotificationPermission();
-                    if (!granted) return;
-                    let body = 'Your weekly summary is ready.';
-                    try {
-                      let childToUse = activeChildId || null;
-                      if (!childToUse) {
-                        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-                        const childIds = userSnap.exists() ? userSnap.data()?.children || [] : [];
-                        if (Array.isArray(childIds) && childIds.length) childToUse = childIds[0];
-                      }
-                      if (childToUse) {
-                        const s = await summaryRepository.getLatestSummary(childToUse);
-                        if (s?.text) body = s.text;
-                      }
-                    } catch {}
-                    const id = await NotificationService.scheduleWeeklyDigestNotification(body);
-                    await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': id });
-                  } else {
-                    const data = snap.exists() ? snap.data() : {};
-                    const id = data?.settings?.notifications?.weeklyNotificationId;
-                    if (id) {
-                      await NotificationService.cancelScheduledNotification(id);
-                      await updateDoc(docRef, { 'settings.notifications.weeklyNotificationId': null });
-                    }
-                    setTestNotifId(null);
-                  }
-                } catch (e) {
-                  console.error('save weeklyDigest', e);
-                }
-              }}
-            />
-          </View>
-
-          {/* Inline test button when enabled */}
-          {weeklyDigest && (
+          <Card>
             <TouchableOpacity
-              onPress={testNotifId ? cancelTestNotification : sendTestNotification}
               activeOpacity={0.9}
-              style={styles.inlineBtn}
+              onPress={handleRestoreBackup}
+              disabled={restoreLoading}
+              style={{ opacity: restoreLoading ? 0.7 : 1 }}
             >
               <LinearGradient
-                colors={darkMode ? gradients.primaryDark : gradients.primaryLight}
-                style={styles.inlineGrad}
+                colors={darkMode ? gradients.warnDark : gradients.warnLight}
+                style={styles.fullWidthGradient}
               >
-                <Text style={styles.inlineText}>
-                  {testNotifId ? 'Cancel Test Notification' : 'Send Test Notification (2m)'}
-                </Text>
+                {restoreLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.fullWidthText}>Restore Data</Text>
+                )}
               </LinearGradient>
             </TouchableOpacity>
-          )}
-        </Card>
+          </Card>
 
-        {/* ---------- 5) Digest Controls (Collapsible) ---------- */}
-        <Card>
-          <TouchableOpacity onPress={toggleDigestOpen} style={styles.rowNav} activeOpacity={0.8}>
-            <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Digest Controls</Text>
-            {digestOpen ? (
-              <ChevronDown size={18} color={currentTheme.textSecondary} />
-            ) : (
-              <ChevronRight size={18} color={currentTheme.textSecondary} />
-            )}
-          </TouchableOpacity>
-
-          {digestOpen && (
-            <View style={{ marginTop: 10, gap: 10 }}>
-              <TouchableOpacity onPress={showThrottle} activeOpacity={0.9} style={styles.inlineBtn}>
-                <LinearGradient colors={darkMode ? gradients.primaryDark : gradients.primaryLight} style={styles.inlineGrad}>
-                  <Text style={styles.inlineText}>Show Digest Throttle</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={clearThrottle} activeOpacity={0.9} style={styles.inlineBtn}>
-                <LinearGradient colors={darkMode ? gradients.warnDark : gradients.warnLight} style={styles.inlineGrad}>
-                  <Text style={styles.inlineText}>Clear Digest Throttle</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={forceSendDigest} activeOpacity={0.9} style={styles.inlineBtn}>
-                <LinearGradient colors={darkMode ? gradients.primaryDark : gradients.primaryLight} style={styles.inlineGrad}>
-                  <Text style={styles.inlineText}>Force Send Digest</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          )}
-        </Card>
-
-		{/* ---------- Restore Data ---------- */}
-		<SectionTitle 
-		  icon={<RefreshCcw size={18} color={currentTheme.textPrimary} />} 
-		  text="Restore Data" 
-		/>
-
-		<Card>
-		  <TouchableOpacity
-			activeOpacity={0.9}
-			onPress={handleRestoreBackup}
-			disabled={restoreLoading}
-			style={{ opacity: restoreLoading ? 0.7 : 1 }}
-		  >
-			<LinearGradient
-			  colors={darkMode ? gradients.warnDark : gradients.warnLight}
-			  style={styles.fullWidthGradient}
-			>
-			  {restoreLoading ? (
-				<ActivityIndicator color="#fff" />
-			  ) : (
-				<Text style={styles.fullWidthText}>Restore Data</Text>
-			  )}
-			</LinearGradient>
-		  </TouchableOpacity>
-		</Card>
-
-        {/* ---------- 6) Change Password ---------- */}
-        <SectionTitle icon={<Fingerprint size={18} color={currentTheme.textPrimary} />} text="Change Password" />
-        <Card>
-          {['Current Password', 'New Password', 'Confirm New Password'].map((ph, i) => (
-            <LinearGradient
-              key={i}
-              colors={darkMode ? gradients.inputDark : gradients.inputLight}
-              style={styles.inputWrap}
+          {/* ---------- 6) Change Password ---------- */}
+          <SectionTitle icon={<Lock size={18} color={currentTheme.textPrimary} />} text="Security" />
+          <Card>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('ChangePassword')}
+              style={styles.rowNav}
+              activeOpacity={0.8}
             >
-              <TextInput
-                placeholder={ph}
-                placeholderTextColor={darkMode ? '#b5b8bf' : '#7C8B9A'}
-                secureTextEntry
-                style={styles.input}
-              />
-            </LinearGradient>
-          ))}
+              <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Change Password</Text>
+              <ChevronRight size={18} color={currentTheme.textSecondary} />
+            </TouchableOpacity>
+          </Card>
 
-          <TouchableOpacity activeOpacity={0.9} style={styles.fullWidthButton}>
-            <LinearGradient colors={darkMode ? gradients.warnDark : gradients.warnLight} style={styles.fullWidthGradient}>
-              <Text style={styles.fullWidthText}>Reset Password</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </Card>
-      </ScrollView>
+          {/* Bottom padding for scrolling */}
+          <View style={{ height: 80 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ThemedBackground>
-	
-      
-
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-     flexGrow: 1,
-      padding: 18, 
-      gap: 14, 
-      paddingTop: 12
-    },
+    flexGrow: 1,
+    padding: 18, 
+    gap: 14, 
+    paddingTop: 12,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

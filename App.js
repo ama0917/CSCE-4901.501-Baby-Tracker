@@ -26,6 +26,7 @@ import RemindersScreen from './screens/RemindersScreen';
 import MfaEnterCode from './screens/MfaEnterCode';
 import MemoriesScreen from './screens/MemoriesScreen';
 import ChangePasswordScreen from './screens/ChangePasswordScreen';
+import CalendarScreen from './screens/CalendarScreen';
 
 const Stack = createStackNavigator();
 
@@ -86,6 +87,7 @@ export default function App() {
             <Stack.Screen name="RemindersScreen" component={RemindersScreen} />
             <Stack.Screen name="MemoriesScreen" component={MemoriesScreen} />
             <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+            <Stack.Screen name="CalendarScreen" component={CalendarScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AcceptInvite" component={AcceptInvite} options={{ title: 'Accept Invite' }} />
             <Stack.Screen name="InviteCaregiver" component={InviteCaregiver} options={{ headerShown: true, title: 'Invite Caregiver' }} />
             <Stack.Screen name="ManageCaregivers" component={ManageCaregivers} options={{ title: 'Manage Caregivers' }} />

@@ -2,7 +2,7 @@
 // IMPROVED SUMMARY CARDS COMPONENT
 // ============================================================================
 
-const EnhancedSummaryCard = ({ item, metric, activeTab }) => {
+const EnhancedSummaryCard = ({ item, metric, activeTab, childAge, hasAIConsent }) => {
   const getTrendIcon = (trend) => {
     switch(trend) {
       case 'up': return 'trending-up';
@@ -27,6 +27,11 @@ const EnhancedSummaryCard = ({ item, metric, activeTab }) => {
     if (!benchmark) return '#888';
     return parseFloat(avg) >= benchmark ? '#4CAF50' : '#FF9800';
   };
+
+  // Get AI-based recommendation if enabled
+  const aiRecommendation = hasAIConsent && childAge 
+    ? getAgeBasedRecommendation(item.key, item.avg, childAge)
+    : null;
 
   return (
     <View style={styles.enhancedSummaryCard}>
@@ -72,7 +77,34 @@ const EnhancedSummaryCard = ({ item, metric, activeTab }) => {
         )}
       </View>
 
-      {item.details && (
+      {/* AI Recommendation Badge */}
+      {aiRecommendation && (
+        <View style={[
+          styles.aiRecommendationBadge,
+          { 
+            backgroundColor: aiRecommendation.color + '15',
+            borderLeftColor: aiRecommendation.color
+          }
+        ]}>
+          <Ionicons 
+            name={aiRecommendation.icon} 
+            size={14} 
+            color={aiRecommendation.color} 
+          />
+          <View style={{ flex: 1, marginLeft: 6 }}>
+            <Text style={[styles.aiRecommendationText, { color: aiRecommendation.color }]}>
+              {aiRecommendation.message}
+            </Text>
+            {aiRecommendation.advice && (
+              <Text style={styles.aiRecommendationAdvice}>
+                {aiRecommendation.advice}
+              </Text>
+            )}
+          </View>
+        </View>
+      )}
+
+      {item.details && !aiRecommendation && (
         <Text style={styles.cardDetails}>
           {item.details}
         </Text>

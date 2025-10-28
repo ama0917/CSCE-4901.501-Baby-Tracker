@@ -6,6 +6,9 @@ from backup_service import start_automatic_backup, restore_backup
 
 app = Flask(__name__)
 
+from flask_cors import CORS
+CORS(app)
+
 # 🔹 Absolute path to serviceAccountKey.json
 SERVICE_ACCOUNT_PATH = r"C:\Users\cneno\Downloads\CSCE-4901.501-Baby-Tracker-main\CSCE-4901.501-Baby-Tracker-main\backend\serviceAccountKey.json"
 
@@ -43,24 +46,33 @@ def download_backup():
 def restore_backup_route():
     try:
         data = request.get_json(silent=True)
-        if not data or "user_id" not in data:
-            # Allow fallback for testing if user_id not sent
-            user_id = "default_user"
-            print("[Warning] No user_id provided, using default_user")
-        else:
-            user_id = data["user_id"]
 
-        3print(f"[Flask] Restore backup requested for user_id: {user_id}")
-        print(f"[Flask] Restore backup requested.")
+        # 🔹 Validate that user_id is provided
+        if not data or "user_id" not in data or not data["user_id"].strip():
+            return jsonify({
+                "success": False,
+                "error": "Missing 'user_id'. Cannot restore backup."
+            }), 400
+
+        user_id = data["user_id"].strip()
+        print(f"[Flask] Restore backup requested for user_id: {user_id}")
+
+        # 🔹 Call the restore function from backup_service
         restore_backup(user_id)
-        #print(f"[Flask] Backup restored successfully for user_id: {user_id}")
-        print(f"[Flask] Backup restored successfully!")
-        
-        return jsonify({"success": True, "message": f"Backup restored for user {user_id}"})
+        print(f"[Flask] Backup restored successfully for user '{user_id}'")
+
+        return jsonify({
+            "success": True,
+            "message": "Backup restored successfully."
+        })
+
     except Exception as e:
         # 🔹 Print full error to terminal for debugging
         print("[Error] Exception during restore-backup:", e, flush=True)
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 # --- Background Tasks ---
 
@@ -79,4 +91,6 @@ if __name__ == "__main__":
     start_background_tasks()
     # Use 0.0.0.0 if you want LAN access from phone, or 127.0.0.1 for localhost only
     app.run(debug=True, host='0.0.0.0', port=5001, use_reloader=False)
+
+
 

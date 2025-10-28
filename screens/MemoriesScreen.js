@@ -15,6 +15,8 @@ import {
   Animated,
   TextInput,
   KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -141,9 +143,12 @@ export default function MemoriesScreen() {
       });              
 
       if (!result.canceled && result.assets[0]) {
-        setPendingAsset(result.assets[0]);
-        setCaptionText('');
-        setShowCaptionModal(true);
+        const asset = result.assets[0];
+        setTimeout(() => {
+          setPendingAsset(asset);
+          setCaptionText('');
+          setShowCaptionModal(true);
+        }, 200); // small delay to prevent UI freeze
       }
     } catch (error) {
       console.error('Camera error:', error);
@@ -270,25 +275,25 @@ export default function MemoriesScreen() {
     });
   };
 
-const CaptionModal = () => (
+  const CaptionModal = () => (
     <Modal visible={showCaptionModal} transparent animationType="slide">
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.captionModalContainer}
+        style={styles.modalBackdrop}
       >
-        <View style={styles.modalBackdrop}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={[styles.captionModalContent, { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }]}>
             <Text style={[styles.captionModalTitle, { color: darkMode ? '#fff' : '#2E3A59' }]}>
               Add a Caption
             </Text>
-            
+
             <TextInput
               style={[
                 styles.captionInput,
-                { 
+                {
                   backgroundColor: darkMode ? '#2c2c2c' : '#f5f5f5',
                   color: darkMode ? '#fff' : '#2E3A59'
-                }
+                },
               ]}
               placeholder="Describe this memory... (optional)"
               placeholderTextColor={darkMode ? '#999' : '#666'}
@@ -296,9 +301,9 @@ const CaptionModal = () => (
               onChangeText={setCaptionText}
               multiline
               maxLength={200}
-              autoFocus={false}
+              autoFocus
             />
-            
+
             <Text style={[styles.characterCount, { color: darkMode ? '#999' : '#666' }]}>
               {captionText.length}/200
             </Text>
@@ -311,23 +316,18 @@ const CaptionModal = () => (
                   setCaptionText('');
                   setPendingAsset(null);
                 }}
-                activeOpacity={0.8}
               >
                 <Text style={[styles.captionModalButtonText, { color: darkMode ? '#fff' : '#2E3A59' }]}>
                   Cancel
                 </Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={styles.captionModalButton}
                 onPress={() => saveMemory(captionText)}
-                activeOpacity={0.8}
                 disabled={isUploading}
               >
-                <LinearGradient
-                  colors={['#E1BEE7', '#CE93D8']}
-                  style={styles.captionSaveGradient}
-                >
+                <LinearGradient colors={['#E1BEE7', '#CE93D8']} style={styles.captionSaveGradient}>
                   {isUploading ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
@@ -337,79 +337,84 @@ const CaptionModal = () => (
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </Modal>
   );
 
-  const MemoryCard = ({ memory }) => (
-    <TouchableOpacity
-      style={styles.memoryCard}
-      onPress={() => {
-        setSelectedMemory(memory);
-        setShowFullScreen(true);
-      }}
-      activeOpacity={0.8}
-    >
-      <View style={styles.memoryImageContainer}>
-        {memory.type === 'image' ? (
-          <Image source={{ uri: memory.uri }} style={styles.memoryImage} />
-        ) : (
-          <View style={styles.videoContainer}>
-            <Image 
-              source={{ uri: memory.uri }} 
-              style={styles.memoryImage}
-              onError={() => {}}
-            />
-            <View style={styles.playButton}>
-              <Play size={24} color="#fff" fill="#fff" />
+
+  const MemoryCard = ({ memory, index }) => {
+    // Random slight rotation for scrapbook effect
+    const rotations = ['-2deg', '1deg', '-1deg', '2deg', '0deg', '-1.5deg', '1.5deg'];
+    const rotation = rotations[index % rotations.length];
+    
+    return (
+      <TouchableOpacity
+        style={[styles.memoryCard, { transform: [{ rotate: rotation }] }]}
+        onPress={() => {
+          setSelectedMemory(memory);
+          setShowFullScreen(true);
+        }}
+        activeOpacity={0.8}
+      >
+        {/* Decorative corner tape effect */}
+        <View style={styles.tapeTopLeft} />
+        <View style={styles.tapeTopRight} />
+        
+        <View style={styles.memoryImageContainer}>
+          {memory.type === 'image' ? (
+            <Image source={{ uri: memory.uri }} style={styles.memoryImage} />
+          ) : (
+            <View style={styles.videoContainer}>
+              <Image 
+                source={{ uri: memory.uri }} 
+                style={styles.memoryImage}
+                onError={() => {}}
+              />
+              <View style={styles.playButton}>
+                <Play size={20} color="#E1BEE7" fill="#E1BEE7" />
+              </View>
             </View>
-          </View>
-        )}
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.8)']}
-          style={styles.memoryGradient}
-        >
-          {memory.caption ? (
-            <Text style={styles.memoryCaption} numberOfLines={2}>
-              {memory.caption}
+          )}
+          <View style={styles.memoryGradient}>
+            {memory.caption ? (
+              <Text style={styles.memoryCaption} numberOfLines={3}>
+                {memory.caption}
+              </Text>
+            ) : null}
+            <Text style={styles.memoryDate}>
+              {formatDate(memory.createdAt)}
             </Text>
-          ) : null}
-          <Text style={styles.memoryDate}>
-            {formatDate(memory.createdAt)}
-          </Text>
-        </LinearGradient>
-      </View>
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={(e) => {
-          e.stopPropagation();
-          deleteMemory(memory);
-        }}
-        activeOpacity={0.7}
-      >
-        <Trash2 size={16} color="#fff" />
+          </View>
+        </View>
+        
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            deleteMemory(memory);
+          }}
+          activeOpacity={0.7}
+        >
+          <Trash2 size={16} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.editButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            setCaptionText(memory.caption || '');
+            setEditingCaption(memory.id);
+          }}
+          activeOpacity={0.7}
+        >
+          <Edit3 size={16} color="#fff" />
+        </TouchableOpacity>
       </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.editButton}
-        onPress={(e) => {
-          e.stopPropagation();
-          setCaptionText(memory.caption || '');
-          setEditingCaption(memory.id);
-        }}
-        activeOpacity={0.7}
-      >
-        <Edit3 size={16} color="#fff" />
-      </TouchableOpacity>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   const EditCaptionModal = () => (
     <Modal visible={editingCaption !== null} transparent animationType="slide">
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.captionModalContainer}
-      >
         <TouchableOpacity 
           style={styles.modalBackdrop}
           activeOpacity={1}
@@ -475,7 +480,6 @@ const CaptionModal = () => (
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
-      </KeyboardAvoidingView>
     </Modal>
   );
 
@@ -556,33 +560,36 @@ const CaptionModal = () => (
             disabled={isUploading}
           >
             <LinearGradient
-              colors={['#E1BEE7', '#FFCDD2']}
+              colors={darkMode ? ['#E1BEE7', '#CE93D8'] : ['#FFE5EC', '#FFC1E3']}
               style={styles.headerButtonGradient}
             >
               {isUploading ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Plus size={20} color="#fff" />
+                <Plus size={20} color={darkMode ? '#fff' : '#E91E63'} />
               )}
             </LinearGradient>
           </TouchableOpacity>
-        </View>
+                  </View>
 
         {isLoading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={darkMode ? '#fff' : '#2E3A59'} />
+            <ActivityIndicator size="large" color={darkMode ? '#E1BEE7' : '#CE93D8'} />
             <Text style={[styles.loadingText, { color: darkMode ? '#ccc' : '#666' }]}>
               Loading memories...
             </Text>
           </View>
         ) : memories.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Camera size={64} color={darkMode ? '#666' : '#ccc'} />
+            <View style={styles.emptyScrapbookIcon}>
+              <Camera size={64} color={darkMode ? '#666' : '#E1BEE7'} />
+              <Text style={styles.emptyScrapbookDeco}></Text>
+            </View>
             <Text style={[styles.emptyText, { color: darkMode ? '#ccc' : '#666' }]}>
-              No memories yet
+              Your Scrapbook is Empty
             </Text>
             <Text style={[styles.emptySubtext, { color: darkMode ? '#999' : '#999' }]}>
-              Tap the + button to add your first memory
+              Start creating beautiful memories by tapping the + button above
             </Text>
           </View>
         ) : (
@@ -591,11 +598,11 @@ const CaptionModal = () => (
             contentContainerStyle={styles.memoriesContent}
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.memoriesGrid}>
-              {memories.map((memory) => (
-                <MemoryCard key={memory.id} memory={memory} />
-              ))}
-            </View>
+          <View style={styles.memoriesGrid}>
+            {memories.map((memory, index) => (
+              <MemoryCard key={memory.id} memory={memory} index={index} />
+            ))}
+          </View>
           </ScrollView>
         )}
       </Animated.View>
@@ -631,9 +638,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '700',
     textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Noteworthy-Bold' : 'sans-serif-medium',
   },
   loadingContainer: {
     flex: 1,
@@ -643,6 +651,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
+    fontFamily: Platform.OS === 'ios' ? 'Noteworthy' : 'sans-serif',
   },
   emptyContainer: {
     flex: 1,
@@ -655,11 +664,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 20,
     marginBottom: 8,
+    fontFamily: Platform.OS === 'ios' ? 'Noteworthy-Bold' : 'sans-serif-medium',
   },
   emptySubtext: {
     fontSize: 16,
     textAlign: 'center',
     lineHeight: 22,
+    fontFamily: Platform.OS === 'ios' ? 'Noteworthy' : 'sans-serif',
   },
   memoriesContainer: {
     flex: 1,
@@ -675,21 +686,26 @@ const styles = StyleSheet.create({
   },
   memoryCard: {
     width: (width - 50) / 2,
-    marginBottom: 15,
-    borderRadius: 16,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
+    marginBottom: 20,
+    borderRadius: 0,
     position: 'relative',
+    backgroundColor: '#fff',
+    // Scrapbook paper effect
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 8,
+    transform: [{ rotate: '0deg' }],
   },
   memoryImageContainer: {
     width: '100%',
     height: 200,
-    borderRadius: 16,
     overflow: 'hidden',
     position: 'relative',
+    borderWidth: 8,
+    borderColor: '#fff',
+    backgroundColor: '#f5f5f5',
   },
   memoryImage: {
     width: '100%',
@@ -703,80 +719,112 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: '50%',
     left: '50%',
-    marginTop: -20,
-    marginLeft: -20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    marginTop: -25,
+    marginLeft: -25,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255,255,255,0.9)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#E1BEE7',
   },
   memoryGradient: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    minHeight: 60,
+    minHeight: 80,
     justifyContent: 'flex-end',
     paddingHorizontal: 12,
     paddingBottom: 12,
-    paddingTop: 20,
+    paddingTop: 30,
+    backgroundColor: 'transparent',
   },
   memoryCaption: {
-    color: '#fff',
-    fontSize: 13,
+    color: '#2E3A59',
+    fontSize: 12,
     fontWeight: '600',
-    marginBottom: 4,
-    lineHeight: 18,
+    marginBottom: 6,
+    lineHeight: 16,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    padding: 8,
+    borderRadius: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Noteworthy' : 'sans-serif',
+    borderLeftWidth: 3,
+    borderLeftColor: '#E1BEE7',
   },
   memoryDate: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 11,
+    color: '#666',
+    fontSize: 10,
     fontWeight: '500',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    padding: 6,
+    borderRadius: 4,
+    marginTop: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    textAlign: 'center',
   },
   deleteButton: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(244, 67, 54, 0.9)',
+    top: -8,
+    right: -8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F44336',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
   },
   editButton: {
     position: 'absolute',
-    top: 8,
-    right: 48,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(33, 150, 243, 0.9)',
+    top: -8,
+    left: -8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#2196F3',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
   },
   captionModalContainer: {
     flex: 1,
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   captionModalContent: {
     width: width * 0.85,
     borderRadius: 20,
-    padding: 24,
+    padding: 28,
     elevation: 10,
+    borderWidth: 4,
+    borderColor: '#E1BEE7',
   },
   captionModalTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
     marginBottom: 20,
     textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Noteworthy-Bold' : 'sans-serif-medium',
   },
   captionInput: {
     borderRadius: 12,
@@ -785,11 +833,15 @@ const styles = StyleSheet.create({
     minHeight: 120,
     textAlignVertical: 'top',
     marginBottom: 8,
+    borderWidth: 2,
+    borderColor: '#E1BEE7',
+    fontFamily: Platform.OS === 'ios' ? 'Noteworthy' : 'sans-serif',
   },
   characterCount: {
     fontSize: 12,
     textAlign: 'right',
     marginBottom: 20,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   captionModalButtons: {
     flexDirection: 'row',
@@ -806,6 +858,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 14,
+    borderWidth: 2,
+    borderColor: '#BDBDBD',
   },
   captionSaveGradient: {
     paddingVertical: 14,
@@ -816,6 +870,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+    fontFamily: Platform.OS === 'ios' ? 'Noteworthy-Bold' : 'sans-serif-medium',
   },
   fullScreenContainer: {
     flex: 1,
@@ -830,10 +885,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   fullScreenContent: {
     flex: 1,
@@ -842,30 +899,78 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   fullScreenImage: {
-    width: width,
-    height: height * 0.7,
+    width: width * 0.9,
+    height: height * 0.6,
+    borderRadius: 8,
+    borderWidth: 12,
+    borderColor: '#fff',
   },
   fullScreenVideo: {
-    width: width,
-    height: height * 0.7,
+    width: width * 0.9,
+    height: height * 0.6,
+    borderRadius: 8,
+    borderWidth: 12,
+    borderColor: '#fff',
   },
   fullScreenCaptionContainer: {
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: 12,
-    padding: 16,
+    padding: 20,
     marginTop: 20,
-    maxWidth: width * 0.9,
+    maxWidth: width * 0.85,
+    borderWidth: 3,
+    borderColor: '#E1BEE7',
   },
   fullScreenCaption: {
-    color: '#fff',
+    color: '#2E3A59',
     fontSize: 16,
     lineHeight: 24,
     textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Noteworthy' : 'sans-serif',
   },
   fullScreenDate: {
-    color: 'rgba(255,255,255,0.8)',
+    color: 'rgba(255,255,255,0.9)',
     fontSize: 14,
-    marginTop: 12,
+    marginTop: 16,
     textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  tapeTopLeft: {
+    position: 'absolute',
+    top: -5,
+    left: 15,
+    width: 40,
+    height: 20,
+    backgroundColor: 'rgba(255, 223, 186, 0.7)',
+    transform: [{ rotate: '-45deg' }],
+    zIndex: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(218, 165, 32, 0.3)',
+  },
+  tapeTopRight: {
+    position: 'absolute',
+    top: -5,
+    right: 15,
+    width: 40,
+    height: 20,
+    backgroundColor: 'rgba(255, 223, 186, 0.7)',
+    transform: [{ rotate: '45deg' }],
+    zIndex: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(218, 165, 32, 0.3)',
+  },
+  emptyScrapbookIcon: {
+  position: 'relative',
+  marginBottom: 10,
+  },
+  emptyScrapbookDeco: {
+    position: 'absolute',
+    top: -10,
+    right: -20,
+    fontSize: 32,
   },
 });

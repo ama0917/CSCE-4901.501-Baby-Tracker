@@ -13,7 +13,7 @@ import {
   doc,            // for permission snapshot
   onSnapshot,     // for permission snapshot
 } from 'firebase/firestore';
-import { Bell, ArrowLeft, Settings, Sparkles, TrendingUp, Activity, Image as ImageIcon } from 'lucide-react-native';
+import { Bell, ArrowLeft, Settings, Sparkles, TrendingUp, Activity, Image as ImageIcon, Calendar, Edit2, Trash2 } from 'lucide-react-native';
 import { app } from '../firebaseConfig';
 import { useDarkMode } from '../screens/DarkMode';
 import ThemedBackground from '../screens/ThemedBackground';
@@ -59,6 +59,7 @@ export default function ChildDashboard() {
   const [history, setHistory] = useState([]);
   const [childInfo, setChildInfo] = useState(null);
   const [infoVisible, setInfoVisible] = useState(false);
+  const [expandedLogId, setExpandedLogId] = useState(null);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -145,18 +146,23 @@ export default function ChildDashboard() {
       const diaperLogsQuery = query(
         collection(db, 'diaperLogs'),
         where('childId', '==', childId),
-        ...(isCaregiver ? [where('logDate', '==', getTodayStr())] : []), // caregiver scoped to today
+        ...(isCaregiver ? [where('logDate', '==', getTodayStr())] : []),
         orderBy('timestamp', 'desc'),
         limit(5)
       );
       const diaperSnapshot = await getDocs(diaperLogsQuery);
-      const diaperLogs = diaperSnapshot.docs.map((d) => ({
-        id: d.id,
-        type: 'Diaper Change',
-        subtype: d.data().stoolType,
-        time: formatTime(d.data().timestamp?.toDate()) || 'Unknown',
-        timestamp: d.data().timestamp?.toDate() || new Date(0),
-      }));
+      const diaperLogs = diaperSnapshot.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          type: 'Diaper Change',
+          subtype: data.stoolType,
+          time: formatTime(data.timestamp?.toDate()) || 'Unknown',
+          timestamp: data.timestamp?.toDate() || new Date(0),
+          createdBy: data.createdBy || null,
+          collection: 'diaperLogs',
+        };
+      });
 
       // Feeding logs
       const feedingLogsQuery = query(
@@ -167,36 +173,108 @@ export default function ChildDashboard() {
         limit(5)
       );
       const feedingSnapshot = await getDocs(feedingLogsQuery);
-      const feedLogs = feedingSnapshot.docs.map((d) => ({
-        id: d.id,
-        type: 'Feeding',
-        subtype: d.data().feedType,
-        time: formatTime(d.data().timestamp?.toDate()) || 'Unknown',
-        timestamp: d.data().timestamp?.toDate() || new Date(0),
-      }));
+      const feedLogs = feedingSnapshot.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          type: 'Feeding',
+          subtype: data.feedType,
+          amount: data.amount ? `${data.amount} ${data.amountUnit || ''}` : '',
+          notes: data.notes || '',
+          time: formatTime(data.timestamp?.toDate()) || 'Unknown',
+          timestamp: data.timestamp?.toDate() || new Date(0),
+          createdBy: data.createdBy || null,
+          collection: 'feedLogs',
+        };
+      });
 
       // Sleep logs
       const sleepLogsQuery = query(
         collection(db, 'sleepLogs'),
         where('childId', '==', childId),
-        ...(isCaregiver ? [where('logDate', '==', getTodayStr())] : []), 
+        ...(isCaregiver ? [where('logDate', '==', getTodayStr())] : []),
         orderBy('timestamp', 'desc'),
         limit(5)
       );
       const sleepSnapshot = await getDocs(sleepLogsQuery);
-      const sleepLogs = sleepSnapshot.docs.map((d) => ({
-        id: d.id,
-        type: 'Sleep',
-        subtype: formatDuration(d.data().duration),
-        time: formatTime(d.data().timestamp?.toDate()) || 'Unknown',
-        timestamp: d.data().timestamp?.toDate() || new Date(0),
-      }));
+      const sleepLogs = sleepSnapshot.docs.map((d) => {
+        const data = d.data();
+        const incomplete = data.incomplete || false;
+        return {
+          id: d.id,
+          type: 'Sleep',
+          subtype: incomplete ? 'Still sleeping...' : formatDuration(data.duration),
+          sleepType: data.sleepType || '',
+          incomplete: incomplete,
+          time: formatTime(data.timestamp?.toDate()) || 'Unknown',
+          timestamp: data.timestamp?.toDate() || new Date(0),
+          createdBy: data.createdBy || null,
+          collection: 'sleepLogs',
+        };
+      });
 
       const combinedLogs = [...diaperLogs, ...feedLogs, ...sleepLogs].sort((a, b) => b.timestamp - a.timestamp);
       setHistory(combinedLogs.slice(0, 5));
     } catch (error) {
       console.error('Error fetching data:', error);
       Alert.alert('Error', 'Unable to fetch data.');
+    }
+  };
+
+  const canModifyLog = (log) => {
+    // Parents can modify all logs
+    if (isOwner) return true;
+    // Caregivers can only modify their own logs
+    return log.createdBy === uid;
+  };
+
+  const handleDeleteLog = async (log) => {
+    if (!canModifyLog(log)) {
+      Alert.alert('Permission Denied', 'You can only delete logs you created.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Log',
+      'Are you sure you want to delete this log?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { deleteDoc, doc } = await import('firebase/firestore');
+              await deleteDoc(doc(db, log.collection, log.id));
+              Alert.alert('Success', 'Log deleted successfully');
+              fetchChildData(); // Refresh
+            } catch (error) {
+              console.error('Error deleting log:', error);
+              Alert.alert('Error', 'Failed to delete log');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleEditLog = (log) => {
+    if (!canModifyLog(log)) {
+      Alert.alert('Permission Denied', 'You can only edit logs you created.');
+      return;
+    }
+
+    // Navigate to appropriate form
+    switch (log.collection) {
+      case 'feedLogs':
+        navigation.navigate('FeedingForm', { childId, name, editingLogId: log.id });
+        break;
+      case 'diaperLogs':
+        navigation.navigate('DiaperChangeForm', { childId, name, editingLogId: log.id });
+        break;
+      case 'sleepLogs':
+        navigation.navigate('SleepingForm', { childId, name, editingLogId: log.id });
+        break;
     }
   };
 
@@ -401,7 +479,7 @@ export default function ChildDashboard() {
             )}
           </View>
 
-          {/* Reports + Reminders */}
+          {/* Reports + Reminders + Memories + Calendar */}
           <View style={styles.actionButtonsContainer}>
             {/* Only show Reports button if user is the child's parent (owner) */}
             {isOwner && (
@@ -417,7 +495,7 @@ export default function ChildDashboard() {
                   end={{ x: 1, y: 0 }}
                 >
                   <TrendingUp size={18} color="#fff" strokeWidth={2} />
-                  <Text style={styles.actionButtonText}>View Reports</Text>
+                  <Text style={styles.actionButtonText}>Reports</Text>
                 </LinearGradient>
               </TouchableOpacity>
             )}
@@ -438,21 +516,57 @@ export default function ChildDashboard() {
                 <Text style={styles.actionButtonText}>Reminders</Text>
               </LinearGradient>
             </TouchableOpacity>
+
             {/* Memories button - only for parents */}
-          
+            {/* {isOwner && (
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => navigation.navigate('MemoriesScreen', { childId, name })}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={darkMode ? ['#E1BEE7', '#CE93D8'] : ['#E1BEE7', '#FFCDD2']}
+                  style={styles.actionButtonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <ImageIcon size={18} color="#fff" strokeWidth={2} />
+                  <Text style={styles.actionButtonText}>Memories</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )} */}
+
+            {/* Calendar button - only for parents */}
+            {/* {isOwner && (
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => navigation.navigate('CalendarScreen', { childId, name })}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={darkMode ? ['#8e2de2', '#4a00e0'] : ['#A5D6A7', '#81D4FA']}
+                  style={styles.actionButtonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <Calendar size={18} color="#fff" strokeWidth={2} />
+                  <Text style={styles.actionButtonText}>Calendar</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )} */}
           </View>
 
 
           {/* History */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : '#617195ff' }]}>Recent Activity</Text>
+              <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : '#2E3A59' }]}>Recent Activity</Text>
               <View style={styles.historyBadge}>
                 <Text style={styles.historyBadgeText}>{history.length}</Text>
               </View>
             </View>
 
-            <View style={[styles.historyContainer, { backgroundColor: darkMode ? '#262525ff' : '#fff' }]}>
+            <View style={[styles.historyContainer, { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }]}>
               {history.length > 0 ? (
                 history.map((item, index) => (
                   <View key={index} style={styles.historyItem}>
@@ -460,31 +574,89 @@ export default function ChildDashboard() {
                       <LinearGradient
                         colors={
                           item.type === 'Feeding'
-                            ? ['#81D4FA', '#B39DDB']
+                            ? darkMode ? darkModeGradients.feeding : ['#81D4FA', '#B39DDB']
                             : item.type === 'Diaper Change'
-                            ? ['#F8BBD9', '#FFB74D']
-                            : ['#A5D6A7', '#81D4FA']
+                            ? darkMode ? darkModeGradients.diaper : ['#F8BBD9', '#FFB74D']
+                            : darkMode ? darkModeGradients.sleep : ['#A5D6A7', '#81D4FA']
                         }
                         style={styles.historyIconGradient}
                       >
                         <Image source={getActivityIcon(item.type)} style={styles.historyIcon} />
                       </LinearGradient>
                     </View>
+                    
                     <View style={styles.historyContent}>
-                      <Text style={styles.historyText}>{item.type}</Text>
-                      <Text style={styles.historyTime}>{item.time}</Text>
-                      {item.subtype && <Text style={styles.historySubtext}>{item.subtype}</Text>}
+                      <View style={styles.historyTextRow}>
+                        <Text style={[styles.historyText, { color: darkMode ? '#fff' : '#2E3A59' }]}>
+                          {item.type}
+                        </Text>
+                        {canModifyLog(item) && (
+                          <View style={styles.historyActions}>
+                            <TouchableOpacity
+                              onPress={() => handleEditLog(item)}
+                              style={styles.historyActionButton}
+                              activeOpacity={0.7}
+                            >
+                              <Edit2 size={14} color={darkMode ? '#64B5F6' : '#2196F3'} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleDeleteLog(item)}
+                              style={styles.historyActionButton}
+                              activeOpacity={0.7}
+                            >
+                              <Trash2 size={14} color={darkMode ? '#EF5350' : '#F44336'} />
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                      
+                      <Text style={[styles.historyTime, { color: darkMode ? '#B0BEC5' : '#7C8B9A' }]}>
+                        {item.time}
+                      </Text>
+                      
+                      {item.subtype && (
+                        <Text style={[styles.historySubtext, { color: darkMode ? '#90A4AE' : '#A0A0A0' }]}>
+                          {item.type === 'Sleep' && item.incomplete}
+                          {item.type === 'Sleep' && item.sleepType && `${item.sleepType} - `}
+                          {item.subtype}
+                        </Text>
+                      )}
+                      
+                      {item.amount && (
+                        <Text style={[styles.historySubtext, { color: darkMode ? '#90A4AE' : '#A0A0A0' }]}>
+                          Amount: {item.amount}
+                        </Text>
+                      )}
+                      
+                      {item.notes && (
+                        <TouchableOpacity
+                          onPress={() => setExpandedLogId(expandedLogId === item.id ? null : item.id)}
+                          activeOpacity={0.7}
+                        >
+                          <Text 
+                            style={[styles.historyNotes, { color: darkMode ? '#81D4FA' : '#2196F3' }]}
+                            numberOfLines={expandedLogId === item.id ? undefined : 2}
+                          >
+                            Notes: {item.notes}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                 ))
               ) : (
                 <View style={styles.emptyHistory}>
-                  <Text style={styles.emptyHistoryText}>No activities logged yet</Text>
-                  <Text style={styles.emptyHistorySubtext}>Start tracking your baby's activities above</Text>
+                  <Text style={[styles.emptyHistoryText, { color: darkMode ? '#B0BEC5' : '#7C8B9A' }]}>
+                    No activities logged yet
+                  </Text>
+                  <Text style={[styles.emptyHistorySubtext, { color: darkMode ? '#90A4AE' : '#A0A0A0' }]}>
+                    Start tracking your baby's activities above
+                  </Text>
                 </View>
               )}
             </View>
           </View>
+
         </ScrollView>
       </Animated.View>
     </ThemedBackground>
@@ -762,5 +934,24 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
+  },
+  historyTextRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 4,
+  },
+  historyActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  historyActionButton: {
+    padding: 4,
+  },
+  historyNotes: {
+    fontSize: 12,
+    marginTop: 4,
+    fontStyle: 'italic',
+    lineHeight: 16,
   },
 });

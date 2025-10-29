@@ -20,6 +20,7 @@ import useUserRole from './useUserRole';
 import * as Clipboard from 'expo-clipboard';
 import { RefreshCcw } from 'lucide-react-native';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
+import * as Network from 'expo-network';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -379,45 +380,63 @@ export default function SettingsScreen() {
   
 // --- Restore Backup Handler ---
 const handleRestoreBackup = async () => {
-  console.log('Restore button pressed');
+	  console.log('Restore button pressed ✅');
 
-  // Get the current logged-in user from your Firebase config
-  const user = auth.currentUser; // no parentheses if auth is from firebaseConfig
-  const actualUserId = user?.uid;
+	  const authInstance = getAuth();
+	  const user = authInstance.currentUser;
+	  const actualUserId = user?.uid;
 
-  console.log('Current user:', user);
-  console.log('Actual user ID:', actualUserId);
+	  if (!actualUserId) {
+		Alert.alert('Error', 'User ID not found. Cannot restore backup.');
+		return;
+	  }
 
-  if (!actualUserId) {
-    Alert.alert('Error', 'User ID not found. Cannot restore backup.');
-    return;
-  }
+	  setRestoreLoading(true);
 
-  setRestoreLoading(true);
+	  try {
+		// Try to detect local IP
+		const networkState = await Network.getNetworkStateAsync();
+		const ipInfo = await Network.getIpAddressAsync();
+		const deviceIp = ipInfo || networkState?.ipAddress || '127.0.0.1';
+		console.log('Detected device IP:', deviceIp);
 
-  try {
-    const response = await fetch('http://192.168.1.68:5001/restore-backup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: actualUserId }) // send actual user ID
-    });
+		// Use detected IP if available, fallback to known dev IPs
+		let backendUrl = `http://${deviceIp}:5001/restore-backup`;
 
-    const data = await response.json();
-    console.log('Restore response:', data); // debug output
+		// Fallback if local IP is not usable (e.g. 0.0.0.0)
+		if (
+		  deviceIp === '0.0.0.0' ||
+		  deviceIp.startsWith('127.') ||
+		  deviceIp.startsWith('169.')
+		) {
+		  
+		  backendUrl = 'http://10.220.25.149:5001/restore-backup'; // change this fallback to your laptop IP if needed
+		  console.log('Fallback URL in use:', backendUrl);
+		}
 
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || 'Backup restore failed.');
-    }
+		console.log('Restoring backup using endpoint:', backendUrl);
 
-    Alert.alert('Backup restored', 'Backup restored successfully.');
+		const response = await fetch(backendUrl, {
+		  method: 'POST',
+		  headers: { 'Content-Type': 'application/json' },
+		  body: JSON.stringify({ user_id: actualUserId }),
+		});
 
-  } catch (e) {
-    console.error('Restore error:', e); // debug output
-    Alert.alert('Error', e.message || 'Could not restore backup.');
-  } finally {
-    setRestoreLoading(false);
-  }
-};
+		const data = await response.json();
+		console.log('Restore response:', data);
+
+		if (!response.ok || !data.success) {
+		  throw new Error(data.error || 'Backup restore failed.');
+		}
+
+		Alert.alert('Backup restored', 'Backup restored successfully.');
+	  } catch (e) {
+		console.error('Restore error:', e);
+		Alert.alert('Error', e.message || 'Could not restore backup.');
+	  } finally {
+		setRestoreLoading(false);
+	  }
+	};
 
   return (
     <ThemedBackground>

@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef  } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, StatusBar, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Animated, Pressable } from 'react-native';
 import { getFirestore, collection, query, onSnapshot, where } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { Settings, Edit3, UserPlus } from 'lucide-react-native';
@@ -97,12 +99,28 @@ const HomeScreen = () => {
 
     return () => unsubscribes.forEach(unsub => unsub());
   }, []);
+  
+      // ---- micro-interaction state ----
+    const scalesRef = useRef({});
+
+    const animateScale = (id, toValue) => {
+      if (!scalesRef.current[id]) {
+        scalesRef.current[id] = new Animated.Value(1);
+      }
+      Animated.spring(scalesRef.current[id], {
+        toValue,
+        useNativeDriver: true,
+        speed: 20,
+        bounciness: 6,
+      }).start();
+    };
 
 
   const toggleEditButtons =() => setShowEditButtons(prev => !prev);
     return (
     <ThemedBackground>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} translucent />
+      <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.innerContainer}>
           {/* Header */}
@@ -115,6 +133,7 @@ const HomeScreen = () => {
               <Settings size={24} color={darkMode ? '#fff' : '#7C8B9A'} strokeWidth={1.5} />
             </TouchableOpacity>
           </View>
+         
 
           {/* Title */}
           <View style={styles.titleSection}>
@@ -130,32 +149,43 @@ const HomeScreen = () => {
           <View style={styles.profilesContainer}>
             {profiles.length > 0 ? (
               profiles.map((profile) => (
-                <View key={profile.id} style={styles.profileCard}>
-                  <TouchableOpacity
-                    style={styles.profileButton}
-                    onPress={() => 
-                      navigation.navigate('ChildDashboard', {
-                        childId: profile.id,
-                        name: profile.name?.split(' ')[0] || profile.firstName || 'Child',
-                        image: profile.image || profile.photoURL, // supporting both field names
-                      })
-                    }
-                    activeOpacity={0.8}
+               <View key={profile.id} style={styles.profileCard}>
+               <Animated.View
+                style={[
+                  { transform: [{ scale: scalesRef.current[profile.id] || 1 }] },
+                  { width: '100%' }, 
+                ]}
+              >
+                <Pressable
+                  onPressIn={() => animateScale(profile.id, 0.96)}
+                  onPressOut={() => animateScale(profile.id, 1)}
+                  onPress={() =>
+                    navigation.navigate('ChildDashboard', {
+                      childId: profile.id,
+                      name: profile.name?.split(' ')[0] || profile.firstName || 'Child',
+                      image: profile.image || profile.photoURL,
+                    })
+                  }
+                  android_ripple={{ color: 'rgba(0,0,0,0.05)', borderless: true }}
+                  style={({ pressed }) => [styles.profileButton, pressed && { opacity: 0.95 }]}
+                >
+                  <LinearGradient
+                    colors={darkMode ? neonGradients.profile : ['#E3F2FD', '#F3E5F5']}
+                    style={styles.profileGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
                   >
-                    <LinearGradient
-                      colors={darkMode ? neonGradients.profile : ['#E3F2FD', '#F3E5F5']}
-                      style={styles.profileGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                    >
-                      <View style={styles.avatarContainer}>
+                    <View style={styles.avatarContainer}>
+                      <LinearGradient
+                        colors={darkMode ? ['#7AA7FF', '#C9A7FF'] : ['#9AD0FF', '#FBC2EB']}
+                        style={styles.avatarRing}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      >
                         {(profile.image || profile.photoURL) ? (
                           <Image
                             source={{ uri: profile.image || profile.photoURL }}
-                            style={[
-                              styles.avatarImage,
-                              { borderColor: darkMode ? '#fff' : '#2E3A59' }
-                            ]}
+                            style={styles.avatarImage}
                             onError={(e) => console.log('Image load error:', e.nativeEvent.error)}
                           />
                         ) : (
@@ -170,32 +200,35 @@ const HomeScreen = () => {
                             </LinearGradient>
                           </View>
                         )}
-                      </View>
-                      <Text style={[styles.profileName, { color: darkMode ? '#fff' : '#2E3A59' }]}>
-                        {profile.name}
-                        {!profile.isOwner && ' 👥'}
-                      </Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-
-                  {showEditButtons && profile.isOwner && (
-                    <TouchableOpacity
-                      style={styles.editButton}
-                      onPress={() => navigation.navigate('EditChild', { childId: profile.id })}
-                      activeOpacity={0.8}
-                    >
-                      <LinearGradient
-                        colors={darkMode ? neonGradients.edit : ['#FFE0B2', '#FFCCBC']}
-                        style={styles.editGradient}
-                      >
-                        <Edit3 size={16} color={darkMode ? '#fff' : '#E65100'} strokeWidth={2} />
-                        <Text style={[styles.editText, { color: darkMode ? '#fff' : '#E65100' }]}>
-                          Edit Profile
-                        </Text>
                       </LinearGradient>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                    </View>
+
+                    <Text style={[styles.profileName, { color: darkMode ? '#fff' : '#2E3A59' }]} numberOfLines={2}>
+                      {profile.name}
+                      {!profile.isOwner && ' 👥'}
+                    </Text>
+                  </LinearGradient>
+                </Pressable>
+              </Animated.View>
+
+              {showEditButtons && profile.isOwner && (
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => navigation.navigate('EditChild', { childId: profile.id })}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={darkMode ? neonGradients.edit : ['#FFE0B2', '#FFCCBC']}
+                    style={styles.editGradient}
+                  >
+                    <Edit3 size={16} color={darkMode ? '#fff' : '#E65100'} strokeWidth={2} />
+                    <Text style={[styles.editText, { color: darkMode ? '#fff' : '#E65100' }]}>
+                      Edit Profile
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+            </View>
               ))
             ) : (
               <Text
@@ -278,54 +311,76 @@ const HomeScreen = () => {
 
               </View>
             </ScrollView>
+             </SafeAreaView>
           </ThemedBackground>
         );
         };
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
+const SP = 16;
+const styles = StyleSheet.create({ 
+  safeArea: {
+  backgroundColor: 'transparent',
+  paddingTop: Platform.OS === 'ios' ? 6 : 12, 
+},
+  container: { 
+    flex: 1,
+
+   },
   scrollContainer: {
     flexGrow: 1,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    paddingBottom: 28,
   },
   innerContainer: {
-    padding: 30,
-    paddingTop: Platform.OS === 'ios' ? 60 : 30,
+  paddingHorizontal: SP * 1.5,
+  paddingBottom: SP * 2,
+  maxWidth: 520,           
+  alignSelf: 'center',
+  width: '100%',
   },
   header:
    { 
     flexDirection: 'row',
      justifyContent: 'space-between', 
      alignItems: 'center',
-     marginBottom: 30 
+     paddingHorizontal: 20,
+     marginTop: 15, 
     },
   headerTitle: 
   {
-    fontSize: 20, 
-    fontWeight: '600', 
+    fontSize: 22, 
+    fontWeight: '800', 
     textAlign: 'center', 
-    flex: 1, right: 8
+    flex: 1
    },
   logoImageSmall:
    { 
-    width: 80,
-     height: 80, 
-     resizeMode: 'contain'
-     },
+    width: 28,
+     height: 28, 
+     resizeMode: 'contain',
+    
+    },
   logoContainer: 
   { 
-    position: 'relative' 
+    width: 32, 
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+
   },
   titleSection: 
-  { alignItems: 'center', 
-    marginBottom: 40 
+  {
+     alignItems: 'center', 
+     marginTop: 10,
+     marginBottom: 16,
+
   },
   title:
    { 
-    fontSize: 28,
+    fontSize: 25,
      fontWeight: '700', 
      textAlign: 'center',
-      marginBottom: 8 
+     marginTop: 15,
+     marginBottom: 8 
     },
   subtitle:
    { 
@@ -334,13 +389,18 @@ const styles = StyleSheet.create({
    },
   profilesContainer: 
   { 
-    alignItems: 'center',
-     marginBottom: 40 
-    },
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center', 
+      rowGap: SP * 1.5,
+      columnGap: SP,
+      marginTop: SP,
+  },
   profileCard:
    { 
-    alignItems: 'center', 
-    marginBottom: 20 
+      flexBasis: '45%',
+      maxWidth: '45%',         
+      alignItems: 'center',
   },
   profileButton: {
     borderRadius: 20,
@@ -350,49 +410,70 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   profileGradient: {
-    paddingVertical: 24,
-    paddingHorizontal: 32,
-    borderRadius: 20,
+    paddingVertical: 22,
+    paddingHorizontal: 26,
+    borderRadius: 22,
     alignItems: 'center',
-    minWidth: 160,
+    minWidth: 0,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
+  },
+  avatarRing: 
+  {
+      padding: 3,             
+      borderRadius: 44,      
+      alignItems: 'center',
+      justifyContent: 'center',
   },
   avatarContainer: 
   { 
-    marginBottom: 12
+      marginBottom: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
    },
   avatarImage: 
   {
-     width: 80,
-      height: 80, 
-      borderRadius: 40, 
-      borderWidth: 3,
-      backgroundColor: '#f0f0f0',
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.55)',
     },
   defaultAvatar: 
   { 
-    width: 80, 
-    height: 80, 
-    borderRadius: 40
+    width: 70, 
+    height: 76, 
+    borderRadius: 38,
    },
   defaultAvatarGradient: 
   { 
-    width: 80, 
-    height: 80, 
-    borderRadius: 40, 
+    width: 76, 
+    height: 76, 
+    borderRadius: 38, 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
   avatarInitial:
    { 
-    fontSize: 32, 
+    fontSize: 30, 
     fontWeight: '700', 
     color: 'white' 
   },
   profileName: 
   { 
-    fontSize: 18, 
-    fontWeight: '600',
-     textAlign: 'center' 
+  fontSize: 16,
+  fontWeight: '700',
+  textAlign: 'center',
+  marginTop: 8,
+  lineHeight: 20,        
+  maxWidth: 160, 
     },
   editButton: 
   { 

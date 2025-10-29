@@ -16,7 +16,7 @@ import NotificationService from '../src/notifications/notificationService';
 
 // Neon gradients for dark mode
 const neonGradients = {
-  profile: ['#6491ebff', '#7676dbff'],
+  profile: ['#6e98edff', '#7171c1ff'],
   button1: ['#5aececff', '#62a8e5ff'],
   button2: ['#7ed36fff', '#d1e487ff'],
   edit: ['#faaa72ff', '#f68dc0ff'],
@@ -120,8 +120,8 @@ const HomeScreen = () => {
     return (
     <ThemedBackground>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} translucent />
-      <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="never">
         <View style={styles.innerContainer}>
           {/* Header */}
           <View style={styles.header}>
@@ -328,11 +328,11 @@ const styles = StyleSheet.create({
    },
   scrollContainer: {
     flexGrow: 1,
-    paddingBottom: 28,
+    paddingBottom: 0,
   },
   innerContainer: {
   paddingHorizontal: SP * 1.5,
-  paddingBottom: SP * 2,
+  paddingBottom: 0,
   maxWidth: 520,           
   alignSelf: 'center',
   width: '100%',
@@ -354,8 +354,8 @@ const styles = StyleSheet.create({
    },
   logoImageSmall:
    { 
-    width: 28,
-     height: 28, 
+    width: 70,
+     height: 70, 
      resizeMode: 'contain',
     
     },

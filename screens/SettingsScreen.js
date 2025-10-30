@@ -80,20 +80,33 @@ export default function SettingsScreen() {
       navigation.navigate('WelcomeTour', { from: 'settings' });
     };
 
-    const handleResetTour = async () => {
-      try {
-        const user = getAuth().currentUser;
-        if (!user) {
-          Alert.alert('Not signed in', 'Please sign in to reset the tour.');
-          return;
+ const handleResetTour = async () => {
+  Alert.alert(
+    "Reset App Tour",
+    "You’ll see the welcome tour again on your next login.",
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Reset",
+        style: "default",
+        onPress: async () => {
+          try {
+            const user = getAuth().currentUser;
+            if (!user) {
+              Alert.alert('Not signed in', 'Please sign in to reset the tour.');
+              return;
+            }
+            await updateDoc(doc(db, 'users', user.uid), { hasSeenWelcome: false });
+            Alert.alert("Success", "Tour will show again next time you log in!");
+          } catch (e) {
+            console.error(e);
+            Alert.alert("Error", "Could not reset tour flag.");
+          }
         }
-        await updateDoc(doc(db, 'users', user.uid), { hasSeenWelcome: false });
-        Alert.alert('Done', 'You’ll see the welcome tour the next time you log in.');
-      } catch (e) {
-        console.error('reset tour flag', e);
-        Alert.alert('Error', 'Could not reset the tour flag.');
       }
-    };
+    ]
+  );
+};
 
   // ---------- MFA: Start ----------
   const handleStartTotp = async () => {
@@ -517,16 +530,19 @@ const handleRestoreBackup = async () => {
             </TouchableOpacity>
 
             <View style={{ height: 10 }} />
-
             <TouchableOpacity
               onPress={handleResetTour}
-              style={styles.rowNav}
-              activeOpacity={0.8}
+              activeOpacity={0.9}
+              style={styles.tourButton}
             >
-              <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>
-                Reset “Seen Tour” (show on next login)
-              </Text>
-              <ChevronRight size={18} color={currentTheme.textSecondary} />
+              <LinearGradient
+                colors={darkMode ? gradients.primaryDark : gradients.primaryLight}
+                style={styles.tourButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.tourButtonText}>Reset “Seen Tour”</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </Card>
 
@@ -1012,4 +1028,23 @@ rowText: {
     fontSize: 15, 
     color: '#333',
    },
+  tourButton: {
+  borderRadius: 14,
+  overflow: 'hidden',
+  alignSelf: 'center',
+  width: '100%',
+  marginTop: 4,
+},
+tourButtonGradient: {
+  paddingVertical: 14,
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: 14,
+},
+tourButtonText: {
+  color: '#fff',
+  fontWeight: '700',
+  fontSize: 15,
+  letterSpacing: 0.3,
+},
 });

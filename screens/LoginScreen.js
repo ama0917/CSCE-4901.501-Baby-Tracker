@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   Text, 
   TextInput, 
@@ -16,10 +17,10 @@ import {
   Dimensions,
   StatusBar
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { 
   Baby, 
   Camera, 
@@ -267,7 +268,9 @@ export default function LoginScreen() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFocused, setIsFocused] = useState({ email: false, password: false });
+  const [errorText, setErrorText] = useState('');
 
+  const shakeX = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const logoScale = useRef(new Animated.Value(0.8)).current;
@@ -294,6 +297,16 @@ export default function LoginScreen() {
     ]).start();
   }, []);
 
+    const shake = () => {
+    Animated.sequence([
+      Animated.timing(shakeX, { toValue: 8, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: -8, duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 6, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: -6, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 0, duration: 40, useNativeDriver: true }),
+    ]).start();
+  };
+
   const animateButton = () => {
     Animated.sequence([
       Animated.spring(buttonScale, {
@@ -309,29 +322,44 @@ export default function LoginScreen() {
     ]).start();
   };
 
-  const checkIfNewUser = async (user) => {
-    try {
-      const db = getFirestore();
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (!userDoc.exists()) {
-        await setDoc(userDocRef, {
-          email: user.email,
-          createdAt: new Date(),
-          isNewUser: false
-        });
-        return true;
+      const mapAuthError = (code) => {
+      switch (code) {
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential':
+          return 'Incorrect email or password.';
+        case 'auth/user-not-found':
+          return 'No account found with that email.';
+        case 'auth/invalid-email':
+          return 'Please enter a valid email address.';
+        case 'auth/too-many-requests':
+          return 'Too many attempts. Please wait a moment and try again.';
+        case 'auth/user-disabled':
+          return 'This account has been disabled.';
+        case 'auth/network-request-failed':
+          return 'Network error. Check your connection and try again.';
+        default:
+          return 'Unable to sign in right now. Please try again.';
       }
-      
-      const userData = userDoc.data();
-      return userData.isNewUser !== false;
-    } catch (error) {
-      console.error('Error checking user status:', error);
-      return false;
-    }
-  };
+    };
 
+const ensureUserDocAndNeedsWelcome = async (user) => {
+  const db = getFirestore();
+  const ref = doc(db, 'users', user.uid);
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) {
+    // brand-new user → they should see the welcome once
+    await setDoc(ref, {
+      email: user.email,
+      createdAt: new Date(),
+      hasSeenWelcome: false,
+    });
+    return true; // needs welcome now
+  }
+
+  const data = snap.data();
+  return data.hasSeenWelcome !== true;
+}
   const handleLogin = async () => {
     animateButton();
     
@@ -354,51 +382,60 @@ export default function LoginScreen() {
       await auth.currentUser.reload();
       console.log('[MFA] factors after token refresh =', (auth.currentUser?.multiFactor?.enrolledFactors || []).length);
       // END OF TESTING BLOCK
-      
-      // Check if new user for welcome screen
-      const isNewUser = await checkIfNewUser(userCredential.user);
-      
-      if (isNewUser) {
-        setShowWelcome(true);
-      } else {
-        navigation.navigate('Home');
-      }
-    } catch (error) {
-      // MFA challenge path
-      if (isTotpChallenge(error)) {
+     
+    // Check if user needs to see the welcome once
+        const needsWelcome = await ensureUserDocAndNeedsWelcome(userCredential.user);
+
+        if (needsWelcome) {
+          navigation.navigate('WelcomeTour', { firstRun: true, from: 'login'});
+        } else {
+          navigation.navigate('Home');
+        }
+
+      } catch (error) {
+        // MFA challenge path stays the same
+        if (isTotpChallenge(error)) {
+          setIsLoading(false);
+          navigation.navigate('MfaEnterCode', { mfaError: error });
+          return;
+        }
+
+        console.log('Firebase login error:', error?.code);
+        const msg = mapAuthError(error?.code);
+        setErrorText(msg);
+
+        // Visually highlight the correct field
+        if (error.code === 'auth/invalid-email' || error.code === 'auth/user-not-found') {
+          // Invalid email or no user — highlight email input
+          setIsFocused({ email: true, password: false });
+        } else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+          // Wrong password — shake password input
+          setIsFocused({ email: false, password: true });
+          shake();
+        } else {
+          setIsFocused({ email: false, password: false });
+        }
+      } finally {
         setIsLoading(false);
-        navigation.navigate('MfaEnterCode', { mfaError: error });
-        return;
       }
-      
-      console.error(error);
-      let errorMessage = 'Login failed. Please try again.';
-      
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = 'No account found with this email.';
-      } else if (error.code === 'auth/wrong-password') {
-        errorMessage = 'Incorrect password.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Invalid email address.';
-      }
-      
-      Alert.alert('Login Failed', errorMessage);
-    } finally {
-      setIsLoading(false);
+    };
+
+  const handleWelcomeComplete = async () => {
+  try {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (user) {
+      const db = getFirestore();
+      await updateDoc(doc(db, 'users', user.uid), { hasSeenWelcome: true });
     }
-  };
-
-  const handleWelcomeComplete = () => {
-    setShowWelcome(false);
-    navigation.navigate('Home');
-  };
-
-  if (showWelcome) {
-    return <WelcomeScreen onComplete={handleWelcomeComplete} />;
+  } catch (e) {
+    console.log('Failed to set hasSeenWelcome:', e);
   }
+};
 
   return (
     <LinearGradient colors={['#B2EBF2', '#FCE4EC', '#F3E5F5']} style={styles.container}>
+         <SafeAreaView style={{ flex: 1 }}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -440,13 +477,20 @@ export default function LoginScreen() {
 
               <Text style={styles.title}>Welcome Back</Text>
               <Text style={styles.subtitle}>Sign in to continue your journey</Text>
+              {!!errorText && (
+                  <View style={styles.errorBanner}>
+                    <Lock size={16} color="#B3261E" />
+                    <Text style={styles.errorText}>{errorText}</Text>
+                  </View>
+                )}
 
               {/* Form Section */}
               <View style={styles.formContainer}>
                 {/* Email Input */}
                 <View style={[
                   styles.inputContainer,
-                  isFocused.email && styles.inputContainerFocused
+                  isFocused.email && styles.inputContainerFocused,
+                  (errorText && (errorText.includes('email') || errorText.includes('account'))) && styles.inputContainerError,
                 ]}>
                   <Mail size={20} color={isFocused.email ? '#81D4FA' : '#B0BEC5'} strokeWidth={1.5} />
                   <TextInput
@@ -454,7 +498,7 @@ export default function LoginScreen() {
                     placeholder="Email"
                     placeholderTextColor="#B0BEC5"
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={(t) => { setEmail(t); if (errorText) setErrorText(''); }}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
@@ -464,9 +508,11 @@ export default function LoginScreen() {
                 </View>
 
                 {/* Password Input */}
+                <Animated.View style={{ transform: [{ translateX: shakeX }] }}>
                 <View style={[
                   styles.inputContainer,
-                  isFocused.password && styles.inputContainerFocused
+                  isFocused.password && styles.inputContainerFocused,
+                    !!errorText && styles.inputContainerError,
                 ]}>
                   <Lock size={20} color={isFocused.password ? '#81D4FA' : '#B0BEC5'} strokeWidth={1.5} />
                   <TextInput
@@ -474,7 +520,7 @@ export default function LoginScreen() {
                     placeholder="Password"
                     placeholderTextColor="#B0BEC5"
                     value={password}
-                    onChangeText={setPassword}
+                    onChangeText={(t) => { setPassword(t); if (errorText) setErrorText(''); }}
                     secureTextEntry={!showPassword}
                     autoCorrect={false}
                     onFocus={() => setIsFocused({ ...isFocused, password: true })}
@@ -490,6 +536,7 @@ export default function LoginScreen() {
                     }
                   </TouchableOpacity>
                 </View>
+                </Animated.View>
 
                 {/* Forgot Password */}
                 <TouchableOpacity 
@@ -534,6 +581,7 @@ export default function LoginScreen() {
           </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
+      </SafeAreaView>
     </LinearGradient>
   );
 }
@@ -541,7 +589,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   welcomeContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FCE4EC',
   },
   skipButton: {
     position: 'absolute',
@@ -560,7 +608,7 @@ const styles = StyleSheet.create({
   },
   slide: {
     width: width,
-    height: height,
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
@@ -783,4 +831,25 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
   },  
+  errorBanner: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: 'rgba(179, 38, 30, 0.10)',   // soft red background
+  borderColor: 'rgba(179, 38, 30, 0.35)',
+  borderWidth: 1,
+  paddingVertical: 10,
+  paddingHorizontal: 12,
+  borderRadius: 12,
+  marginBottom: 16,
+},
+errorText: {
+  color: '#B3261E',
+  fontSize: 14,
+  fontWeight: '600',
+  flexShrink: 1,
+   marginLeft: 8
+},
+inputContainerError: {
+  borderColor: '#B3261E',
+}
 });

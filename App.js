@@ -27,12 +27,20 @@ import MfaEnterCode from './screens/MfaEnterCode';
 import MemoriesScreen from './screens/MemoriesScreen';
 import ChangePasswordScreen from './screens/ChangePasswordScreen';
 import CalendarScreen from './screens/CalendarScreen';
+import { LogBox } from 'react-native';
+import WelcomeTour from './screens/WelcomeTour';
 
 const Stack = createStackNavigator();
 
 export default function App() {
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState(null);
+
+  // Ignore Firebase auth warnings/errors
+    LogBox.ignoreLogs([
+      'FirebaseError:',
+      'auth/',
+    ]);
 
   useEffect(() => {
     try {
@@ -78,6 +86,7 @@ export default function App() {
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="ChildDashboard" component={ChildDashboard} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="WelcomeTour" component={WelcomeTour} options={{ headerShown: false }} />
             <Stack.Screen name="AddChild" component={AddChildScreen} />
             <Stack.Screen name="ReportsScreen" component={ReportsScreen} />
             <Stack.Screen name="FeedingForm" component={FeedingForm} />

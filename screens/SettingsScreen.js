@@ -7,7 +7,7 @@ import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { useDarkMode } from '../screens/DarkMode';
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db, app } from '../firebaseConfig';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import NotificationService from '../src/notifications/notificationService';
 import { summaryRepository } from '../src/data/summaryRepository';
 import { useActiveChild } from '../src/contexts/ActiveChildContext';
@@ -74,6 +74,26 @@ export default function SettingsScreen() {
       return { activeChildId: null, activeChildName: null };
     }
   })();
+
+      // --- App Tour handlers ---
+    const handleViewTour = () => {
+      navigation.navigate('WelcomeTour', { from: 'settings' });
+    };
+
+    const handleResetTour = async () => {
+      try {
+        const user = getAuth().currentUser;
+        if (!user) {
+          Alert.alert('Not signed in', 'Please sign in to reset the tour.');
+          return;
+        }
+        await updateDoc(doc(db, 'users', user.uid), { hasSeenWelcome: false });
+        Alert.alert('Done', 'You’ll see the welcome tour the next time you log in.');
+      } catch (e) {
+        console.error('reset tour flag', e);
+        Alert.alert('Error', 'Could not reset the tour flag.');
+      }
+    };
 
   // ---------- MFA: Start ----------
   const handleStartTotp = async () => {
@@ -481,6 +501,33 @@ const handleRestoreBackup = async () => {
               <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Dark Mode</Text>
               <Switch value={darkMode} onValueChange={setDarkMode} />
             </View>
+          </Card>
+          {/* ---------- App Tour ---------- */}
+          <SectionTitle text="App Tour" />
+          <Card>
+            <TouchableOpacity
+              onPress={handleViewTour}
+              style={styles.rowNav}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>
+                View App Tour
+              </Text>
+              <ChevronRight size={18} color={currentTheme.textSecondary} />
+            </TouchableOpacity>
+
+            <View style={{ height: 10 }} />
+
+            <TouchableOpacity
+              onPress={handleResetTour}
+              style={styles.rowNav}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>
+                Reset “Seen Tour” (show on next login)
+              </Text>
+              <ChevronRight size={18} color={currentTheme.textSecondary} />
+            </TouchableOpacity>
           </Card>
 
           {/* ---------- 2) MFA ---------- */}

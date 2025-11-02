@@ -411,58 +411,82 @@ export default function SettingsScreen() {
     setDigestOpen(v => !v);
   };
   
-// --- Restore Backup Handler ---
-const handleRestoreBackup = async () => {
+	// --- Restore Backup Handler (Auto-detect IP) ---
+	const handleRestoreBackup = async () => {
 	  console.log('Restore button pressed ✅');
 
-	  const authInstance = getAuth();
-	  const user = authInstance.currentUser;
-	  const actualUserId = user?.uid;
-
-	  if (!actualUserId) {
-		Alert.alert('Error', 'User ID not found. Cannot restore backup.');
+	  const user = getAuth().currentUser;
+	  if (!user?.uid) {
+		Alert.alert('Error', 'User not signed in. Cannot restore backup.');
 		return;
 	  }
 
 	  setRestoreLoading(true);
 
 	  try {
-		// Try to detect local IP
-		const networkState = await Network.getNetworkStateAsync();
-		const ipInfo = await Network.getIpAddressAsync();
-		const deviceIp = ipInfo || networkState?.ipAddress || '127.0.0.1';
-		console.log('Detected device IP:', deviceIp);
+		// List of possible local IPs to try
+		const possibleIps = [];
 
-		// Use detected IP if available, fallback to known dev IPs
-		let backendUrl = `http://${deviceIp}:5001/restore-backup`;
-
-		// Fallback if local IP is not usable (e.g. 0.0.0.0)
-		if (
-		  deviceIp === '0.0.0.0' ||
-		  deviceIp.startsWith('127.') ||
-		  deviceIp.startsWith('169.')
-		) {
-		  
-		  backendUrl = 'http://10.220.25.149:5001/restore-backup'; // change this fallback to your laptop IP if needed
-		  console.log('Fallback URL in use:', backendUrl);
+		// Try to detect current IP
+		try {
+		  const networkState = await Network.getNetworkStateAsync();
+		  const ip = await Network.getIpAddressAsync();
+		  if (ip) possibleIps.push(ip);
+		} catch (err) {
+		  console.warn('Could not detect network IP:', err);
 		}
 
-		console.log('Restoring backup using endpoint:', backendUrl);
+		// Common local network ranges
+		possibleIps.push('192.168.1.68'); // replace with your dev machine if known
+		possibleIps.push('192.168.0.68');
+		possibleIps.push('10.0.0.68');
+		possibleIps.push('10.220.25.68');
+		possibleIps.push('127.0.0.1'); // fallback
 
-		const response = await fetch(backendUrl, {
-		  method: 'POST',
-		  headers: { 'Content-Type': 'application/json' },
-		  body: JSON.stringify({ user_id: actualUserId }),
-		});
+		console.log('Trying IPs in order:', possibleIps);
 
-		const data = await response.json();
-		console.log('Restore response:', data);
+		let success = false;
+		let lastError = null;
 
-		if (!response.ok || !data.success) {
-		  throw new Error(data.error || 'Backup restore failed.');
+		for (const ip of possibleIps) {
+		  const url = `http://${ip}:5001/restore-backup`;
+		  console.log('Trying backend URL:', url);
+
+		  try {
+			// Fetch with timeout (5 seconds)
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+			const response = await fetch(url, {
+			  method: 'POST',
+			  headers: { 'Content-Type': 'application/json' },
+			  body: JSON.stringify({ user_id: user.uid }),
+			  signal: controller.signal,
+			});
+
+			clearTimeout(timeoutId);
+
+			if (!response.ok) {
+			  const data = await response.json().catch(() => ({}));
+			  throw new Error(data.error || `Server returned status ${response.status}`);
+			}
+
+			const data = await response.json();
+			if (!data.success) throw new Error(data.error || 'Backup restore failed.');
+
+			console.log('Restore succeeded with IP:', ip, 'Response:', data);
+			Alert.alert('Backup restored', 'Backup restored successfully.');
+			success = true;
+			break; // stop trying further IPs
+		  } catch (err) {
+			console.warn('Failed with IP', ip, err.message || err);
+			lastError = err;
+		  }
 		}
 
-		Alert.alert('Backup restored', 'Backup restored successfully.');
+		if (!success) {
+		  throw lastError || new Error('All attempts to connect failed.');
+		}
 	  } catch (e) {
 		console.error('Restore error:', e);
 		Alert.alert('Error', e.message || 'Could not restore backup.');
@@ -470,6 +494,7 @@ const handleRestoreBackup = async () => {
 		setRestoreLoading(false);
 	  }
 	};
+
 
   return (
     <ThemedBackground>
@@ -790,6 +815,21 @@ const handleRestoreBackup = async () => {
               </View>
             )}
           </Card>
+
+			{/* ---------- Reminders Button (Styled) ---------- */}
+			<Card>
+			  <TouchableOpacity
+				style={styles.fullWidthButton}
+				onPress={() => navigation.navigate('RegularReminders')}
+			  >
+				<LinearGradient
+				  colors={darkMode ? gradients.primaryDark : gradients.primaryLight}
+				  style={styles.fullWidthGradient}
+				>
+				  <Text style={styles.fullWidthText}>Reminders</Text>
+				</LinearGradient>
+			  </TouchableOpacity>
+			</Card>
 
           {/* ---------- Restore Data ---------- */}
           <SectionTitle 

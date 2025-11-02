@@ -791,6 +791,21 @@ const handleRestoreBackup = async () => {
             )}
           </Card>
 
+			{/* ---------- Reminders Button (Styled) ---------- */}
+			<Card>
+			  <TouchableOpacity
+				style={styles.fullWidthButton}
+				onPress={() => navigation.navigate('RegularReminders')}
+			  >
+				<LinearGradient
+				  colors={darkMode ? gradients.primaryDark : gradients.primaryLight}
+				  style={styles.fullWidthGradient}
+				>
+				  <Text style={styles.fullWidthText}>Reminders</Text>
+				</LinearGradient>
+			  </TouchableOpacity>
+			</Card>
+
           {/* ---------- Restore Data ---------- */}
           <SectionTitle 
             icon={<RefreshCcw size={18} color={currentTheme.textPrimary} />} 

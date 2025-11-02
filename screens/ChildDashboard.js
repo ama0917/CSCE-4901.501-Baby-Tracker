@@ -20,7 +20,9 @@ import ThemedBackground from '../screens/ThemedBackground';
 import useUserRole from './useUserRole';       
 import { getAuth } from 'firebase/auth'; 
 import { Info } from 'lucide-react-native';
-import { Modal } from 'react-native';      
+import { Modal, Easing } from 'react-native';      
+import { CalendarDays, Ruler, Weight, UserRound, X, Cake } from 'lucide-react-native';
+import { BlurView } from 'expo-blur';
 
 const { width } = Dimensions.get('window');
 const db = getFirestore(app);
@@ -42,6 +44,7 @@ const getTodayStr = () => {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 };
+
 
 export default function ChildDashboard() {
   const navigation = useNavigation();
@@ -83,8 +86,18 @@ export default function ChildDashboard() {
       const data = snap.data();
       setChildInfo({
         name: data.firstName ? `${data.firstName} ${data.lastName || ''}`.trim() : name,
-        birthDate: data.birthDate || null,
-        notes: data.notes || '',});
+        firstName: data.firstName || '',
+        lastName: data.lastName || '',
+        // support either birthdate (your AddChild screen) or birthDate
+        birthdate: data.birthdate || data.birthDate || null,
+        sex: data.sex || '',
+        weight: data.weight ?? null,
+        weightUnit: data.weightUnit || 'lbs',
+        height: data.height ?? null,
+        heightUnit: data.heightUnit || 'in',
+        notes: data.notes || '',
+        image: data.image || null,
+      });
       const owner = data?.userId === uid;
       const val = data?.caregiverPerms?.[uid]; // 'on' | 'log' | undefined
       setIsOwner(owner);
@@ -128,6 +141,29 @@ export default function ChildDashboard() {
       Animated.spring(buttonScales[index], { toValue: 1, useNativeDriver: true, duration: 100 }),
     ]).start();
   };
+
+  const toDate = (val) => {
+    if (!val) return null;
+    if (val?.toDate) return val.toDate();
+    const d = new Date(val);
+    return isNaN(d) ? null : d;
+    };
+
+  const formatAge = (birth) => {
+    const b = toDate(birth);
+    if (!b) return '—';
+    const t = new Date();
+    let y = t.getFullYear() - b.getFullYear();
+    let m = t.getMonth() - b.getMonth();
+    let d = t.getDate() - b.getDate();
+    if (d < 0) { m--; d += new Date(t.getFullYear(), t.getMonth(), 0).getDate(); }
+    if (m < 0) { y--; m += 12; }
+    if (y <= 0 && m <= 0) return `${d} d`;
+    if (y <= 0) return `${m} mo${m>1?'s':''}${d?` ${d} d`:''}`;
+    return `${y} yr${y>1?'s':''}${m?` ${m} mo${m>1?'s':''}`:''}`;
+  };
+
+const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
 
   const formatTime = (timestamp) => {
     const options = { hour: '2-digit', minute: '2-digit', hour12: true };
@@ -363,86 +399,143 @@ export default function ChildDashboard() {
         </View>
 
         {/* Profile */}
-        <View style={styles.profileSection}>
-          <Text style={[styles.title, { color: darkMode ? '#fff' : '#2E3A59' }]}>{name}'s Dashboard</Text>
-          <Animated.View style={[styles.profileContainer, { transform: [{ scale: profileScale }] }]}>
-            <LinearGradient
-              colors={darkMode ? darkModeGradients.profile : ['#81D4FA', '#F8BBD9']}
-              style={styles.profileGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              {image ? (
-                <Image source={{ uri: image }} style={styles.profileImage} />
-              ) : (
-                <Image source={require('../assets/default-profile.png')} style={styles.profileImage} />
-              )}
-            </LinearGradient>
-            <View style={styles.profileSparkle}>
-              <Sparkles size={16} color={darkMode ? '#ff80ff' : '#F8BBD9'} />
-            </View>
-          </Animated.View>
-          {/* Info Button */}
-          <TouchableOpacity
-            style={styles.infoButton}
-            onPress={() => setInfoVisible(true)}
-            activeOpacity={0.7}
+      <View style={styles.profileSection}>
+        <Text style={[styles.title, { color: darkMode ? '#fff' : '#2E3A59' }]}>{name}'s Dashboard</Text>
+
+        <Animated.View style={[styles.profileContainer, { transform: [{ scale: profileScale }] }]}>
+          <LinearGradient
+            colors={darkMode ? darkModeGradients.profile : ['#81D4FA', '#F8BBD9']}
+            style={styles.profileGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
           >
-            <LinearGradient
-              colors={darkMode ? ['#2a2a2a', '#444'] : ['#e0f7fa', '#b2ebf2']}
-              style={styles.infoButtonGradient}
-            >
-              <Info size={18} color={darkMode ? '#fff' : '#2E3A59'} />
-            </LinearGradient>
-          </TouchableOpacity>
+            {image ? (
+              <Image source={{ uri: image }} style={styles.profileImage} />
+            ) : (
+              <Image source={require('../assets/default-profile.png')} style={styles.profileImage} />
+            )}
+          </LinearGradient>
+          <View style={styles.profileSparkle}>
+            <Sparkles size={16} color={darkMode ? '#ff80ff' : '#F8BBD9'} />
+          </View>
+        </Animated.View>
+        {/* Info Button */}
+  <TouchableOpacity
+    style={styles.infoFab}
+    onPress={() => setInfoVisible(true)}
+    activeOpacity={0.85}
+  >
+    <LinearGradient
+      colors={darkMode ? ['#2d2f35', '#3b3f47'] : ['#81D4FA', '#F8BBD9']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.infoFabGrad}
+    >
+      <Info size={18} color="#fff" />
+    </LinearGradient>
+  </TouchableOpacity>
+</View>
 
-          <Modal
-            visible={infoVisible}
-            animationType="slide"
-            transparent
-            onRequestClose={() => setInfoVisible(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <View style={[styles.modalContainer, { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }]}>
-                <Text style={[styles.modalTitle, { color: darkMode ? '#fff' : '#2E3A59' }]}>
-                  {childInfo?.name || name}
-                </Text>
+        {/* Modern Profile Sheet */}
+        <Modal
+          visible={infoVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setInfoVisible(false)}
+        >
+          <View style={styles.sheetOverlay}>
+            <BlurView intensity={40} tint={darkMode ? 'dark' : 'light'} style={styles.blur} />
+            <TouchableOpacity style={{ flex: 1 }} onPress={() => setInfoVisible(false)} />
 
-                {childInfo?.birthDate && (
-                  <Text style={[styles.modalText, { color: darkMode ? '#ccc' : '#555' }]}>
-                    Birthday:{' '}
-                    {(() => {
-                      const b = childInfo.birthDate;
-                      if (!b) return 'Unknown';
+            <View style={[styles.sheet, { backgroundColor: darkMode ? '#17181c' : '#ffffff' }]}>
+              {/* Handle */}
+              <View style={[styles.handle, { backgroundColor: darkMode ? '#2a2c31' : '#e9edf2' }]} />
 
-                      if (b.toDate) return b.toDate().toLocaleDateString(); // Firestore Timestamp
-                      const parsed = new Date(b);
-                      return isNaN(parsed) ? 'Unknown' : parsed.toLocaleDateString();
-                    })()}
-                  </Text>
-                )}
-
-                <Text style={[styles.modalText, { color: darkMode ? '#ccc' : '#555' }]}>
-                  Notes: {childInfo?.notes ? childInfo.notes : 'No notes available.'}
-                </Text>
-
-                <TouchableOpacity
-                  onPress={() => setInfoVisible(false)}
-                  style={styles.modalCloseBtn}
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient
-                    colors={darkMode ? ['#444', '#666'] : ['#81D4FA', '#B39DDB']}
-                    style={styles.modalCloseGradient}
-                  >
-                    <Text style={{ color: '#fff', fontWeight: '700' }}>Close</Text>
+              {/* Header */}
+              <View style={styles.headerRow}>
+                <View style={styles.avatarRing}>
+                  <LinearGradient colors={darkMode ? ['#4b5563', '#374151'] : ['#81D4FA', '#F8BBD9']} style={styles.avatarGrad}>
+                    {childInfo?.image ? (
+                      <Image source={{ uri: childInfo.image }} style={styles.avatarImg} />
+                    ) : (
+                      <UserRound size={28} color="#fff" />
+                    )}
                   </LinearGradient>
+                </View>
+
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={[styles.name, { color: darkMode ? '#fff' : '#2E3A59' }]}>
+                    {childInfo?.firstName || childInfo?.name || 'Your Child'}
+                  </Text>
+
+                  {/* Age + Birthday chips */}
+                  <View style={styles.chipsRow}>
+                    <View style={[styles.chip, { backgroundColor: darkMode ? '#23262c' : '#eef7ff' }]}>
+                      <CalendarDays size={14} color={darkMode ? '#9cc9ff' : '#2f6fab'} />
+                      <Text style={[styles.chipText, { color: darkMode ? '#cfe6ff' : '#2f6fab' }]}>
+                        {formatAge(childInfo?.birthdate)}
+                      </Text>
+                    </View>
+                    {toDate(childInfo?.birthdate) && (
+                      <View style={[styles.chip, { backgroundColor: darkMode ? '#23262c' : '#f6eefe' }]}>
+                        <Cake size={14} color={darkMode ? '#e3d0ff' : '#7a3aa7'} />
+                        <Text style={[styles.chipText, { color: darkMode ? '#eddcff' : '#7a3aa7' }]}>
+                          {toDate(childInfo.birthdate).toLocaleDateString()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                <TouchableOpacity onPress={() => setInfoVisible(false)} hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}>
+                  <View style={[styles.closePill, { backgroundColor: darkMode ? '#23262c' : '#eef1f6' }]}>
+                    <X size={16} color={darkMode ? '#cfd6e4' : '#55607a'} />
+                  </View>
                 </TouchableOpacity>
               </View>
-            </View>
-          </Modal>
-        </View>
 
+              {/* Stat cards */}
+              <View style={styles.statsRow}>
+                <View style={[styles.statCard, { backgroundColor: darkMode ? '#1e2026' : '#f5f8fd', borderColor: darkMode ? '#2a2e36' : '#e6edf7' }]}>
+                  <Weight size={18} color={darkMode ? '#a3e0ff' : '#2f6fab'} />
+                  <Text style={[styles.statLabel, { color: darkMode ? '#9aa3af' : '#6b7a8c' }]}>Weight</Text>
+                  <Text style={[styles.statValue, { color: darkMode ? '#e7f5ff' : '#2E3A59' }]}>
+                    {safe(childInfo?.weight)} {safe(childInfo?.weightUnit)}
+                  </Text>
+                </View>
+
+                <View style={[styles.statCard, { backgroundColor: darkMode ? '#1e2026' : '#f5f8fd', borderColor: darkMode ? '#2a2e36' : '#e6edf7' }]}>
+                  <Ruler size={18} color={darkMode ? '#c4b5fd' : '#7a3aa7'} />
+                  <Text style={[styles.statLabel, { color: darkMode ? '#9aa3af' : '#6b7a8c' }]}>Height</Text>
+                  <Text style={[styles.statValue, { color: darkMode ? '#f1f0ff' : '#2E3A59' }]}>
+                    {safe(childInfo?.height)} {safe(childInfo?.heightUnit)}
+                  </Text>
+                </View>
+
+                <View style={[styles.statCard, { backgroundColor: darkMode ? '#1e2026' : '#f5f8fd', borderColor: darkMode ? '#2a2e36' : '#e6edf7' }]}>
+                  <UserRound size={18} color={darkMode ? '#fdcfe8' : '#b21b79'} />
+                  <Text style={[styles.statLabel, { color: darkMode ? '#9aa3af' : '#6b7a8c' }]}>Sex</Text>
+                  <Text style={[styles.statValue, { color: darkMode ? '#ffe7f7' : '#2E3A59' }]}>{safe(childInfo?.sex)}</Text>
+                </View>
+              </View>
+
+              {/* Notes */}
+              <View style={[styles.notesBox, { backgroundColor: darkMode ? '#1d1f25' : '#f8fafc', borderColor: darkMode ? '#2a2e36' : '#ebeff5' }]}>
+                <Text style={[styles.notesLabel, { color: darkMode ? '#9aa3af' : '#6b7a8c' }]}>Notes</Text>
+                <Text style={[styles.notesText, { color: darkMode ? '#e5e7eb' : '#425166' }]}>
+                  {childInfo?.notes?.trim() ? childInfo.notes : 'No notes added yet.'}
+                </Text>
+              </View>
+
+              {/* Close */}
+              <TouchableOpacity onPress={() => setInfoVisible(false)} activeOpacity={0.9} style={{ marginTop: 8 }}>
+                <LinearGradient colors={darkMode ? ['#30343c', '#3b3f47'] : ['#81D4FA', '#F8BBD9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.closeBtn}>
+                  <Text style={styles.closeText}>Close</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
         {/* Activities */}
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -890,15 +983,25 @@ const styles = StyleSheet.create({
   },
   infoButton: {
     position: 'absolute',
-    bottom: 8,
-    right: 8,
-    borderRadius: 20,
-    overflow: 'hidden',
-    elevation: 4,
+    bottom: 20,
+    right: '35%',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
   },
   infoButtonGradient: {
-    padding: 10,
-    borderRadius: 20,
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -936,10 +1039,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   historyTextRow: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginBottom: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   historyActions: {
     flexDirection: 'row',
@@ -954,4 +1057,150 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     lineHeight: 16,
   },
+  infoFab: {
+      position: 'absolute',
+      bottom: -6,   
+      right: 12,         
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'transparent',
+      zIndex: 10,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 5,
+      elevation: 8,
+  },
+  infoFabGrad: { 
+      flex: 1,
+      width: '100%',
+      height: '100%',
+      borderRadius: 21,
+      justifyContent: 'center',
+      alignItems: 'center',
+   },
+  // Sheet
+  sheetOverlay: { 
+    flex: 1,
+     justifyContent: 'flex-end',
+     },
+  blur: { ...StyleSheet.absoluteFillObject },
+  sheet: {
+    paddingTop: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  handle: { 
+    alignSelf: 'center', 
+    width: 40, height: 4, 
+    borderRadius: 2, 
+    marginBottom: 12,
+   },
+
+  headerRow: { 
+    flexDirection: 'row',
+     alignItems: 'center',
+     },
+  avatarRing: { 
+    width: 56, 
+    height: 56,
+     borderRadius: 28, 
+     overflow: 'hidden',
+     },
+  avatarGrad: { 
+    flex: 1, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+   },
+  avatarImg: { 
+    width: '100%',
+     height: '100%',
+     },
+  name: { 
+    fontSize: 20, 
+    fontWeight: '800',
+   },
+
+  chipsRow: { 
+    flexDirection: 'row', 
+    gap: 8, 
+    marginTop: 6, 
+    flexWrap: 'wrap',
+   },
+  chip: { 
+    flexDirection: 'row', 
+    alignItems: 'center',
+     gap: 6,
+      paddingHorizontal: 10,
+       paddingVertical: 6,
+        borderRadius: 999,
+       },
+  chipText: { 
+    fontSize: 13, 
+    fontWeight: '700',
+   },
+
+  statsRow: { 
+    flexDirection: 'row', 
+    gap: 10, 
+    marginTop: 16,
+   },
+  statCard: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  statLabel: { 
+    fontSize: 12, 
+    fontWeight: '700',
+     textTransform: 'uppercase',
+      letterSpacing: 0.4,
+     },
+  statValue: { 
+    fontSize: 16,
+     fontWeight: '800',
+     },
+
+  notesBox: { 
+    marginTop: 14, 
+    borderRadius: 14,
+     borderWidth: 1,
+      padding: 12 },
+  notesLabel: { 
+    fontSize: 12, 
+    fontWeight: '700', 
+    textTransform: 'uppercase',
+     letterSpacing: 0.4,
+      marginBottom: 6,
+     },
+  notesText: { 
+    fontSize: 14, 
+    lineHeight: 20 ,
+  },
+
+  closePill: { 
+    padding: 8, 
+    borderRadius: 999,
+   },
+  closeBtn: { 
+    borderRadius: 14, 
+    paddingVertical: 12, 
+    alignItems: 'center',
+   },
+  closeText: { 
+    color: '#fff', 
+    fontWeight: '800', 
+    letterSpacing: 0.3,
+   },
 });

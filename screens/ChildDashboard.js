@@ -452,7 +452,7 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
               <View style={[styles.handle, { backgroundColor: darkMode ? '#2a2c31' : '#e9edf2' }]} />
 
               {/* Header */}
-              <View style={styles.headerRow}>
+              <View style={[styles.headerRow, { justifyContent: 'center' }]}>
                 <View style={styles.avatarRing}>
                   <LinearGradient colors={darkMode ? ['#4b5563', '#374151'] : ['#81D4FA', '#F8BBD9']} style={styles.avatarGrad}>
                     {childInfo?.image ? (
@@ -487,11 +487,6 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
                   </View>
                 </View>
 
-                <TouchableOpacity onPress={() => setInfoVisible(false)} hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}>
-                  <View style={[styles.closePill, { backgroundColor: darkMode ? '#23262c' : '#eef1f6' }]}>
-                    <X size={16} color={darkMode ? '#cfd6e4' : '#55607a'} />
-                  </View>
-                </TouchableOpacity>
               </View>
 
               {/* Stat cards */}

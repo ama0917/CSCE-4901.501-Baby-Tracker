@@ -26,6 +26,7 @@ import InviteCaregiver from './screens/InviteCaregiver';
 import AcceptInvite from './screens/AcceptInvite';
 import ManageCaregivers from './screens/ManageCaregivers';
 import RegularReminders from './screens/RegularReminders';  
+import RemindersScreen from './screens/RemindersScreen';
 import MfaEnterCode from './screens/MfaEnterCode';
 import MemoriesScreen from './screens/MemoriesScreen';
 import ChangePasswordScreen from './screens/ChangePasswordScreen';
@@ -124,7 +125,7 @@ export default function App() {
               component={RegularReminders}
               options={{ headerShown: true, title: 'Reminders' }}
             />
-
+            <Stack.Screen name="RemindersScreen" component={RemindersScreen} />
             <Stack.Screen name="MemoriesScreen" component={MemoriesScreen} />
             <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
             <Stack.Screen name="CalendarScreen" component={CalendarScreen} options={{ headerShown: false }} />

@@ -17,7 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { InputAccessoryView } from 'react-native';
 import { useDarkMode } from './DarkMode';
 import { appTheme } from './ThemedBackground';
-import { uploadImage, generateImagePath } from '../src/utils/imageUpload';
+import { uploadImage, generateImagePath, deleteImage } from '../src/utils/imageUpload';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 

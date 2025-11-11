@@ -8,7 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getFirestore, collection, addDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { app } from '../firebaseConfig';
 import { getAuth } from 'firebase/auth';
 import { KeyboardAvoidingView } from 'react-native';

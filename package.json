@@ -39,7 +39,7 @@
     "expo-sharing": "~14.0.7",
     "expo-sqlite": "~15.1.4",
     "expo-status-bar": "~3.0.8",
-    "firebase": "^11.10.0",
+    "firebase": "^12.5.0",
     "firebase-admin": "^13.5.0",
     "lucide-react-native": "^0.544.0",
     "metro": "^0.83.1",

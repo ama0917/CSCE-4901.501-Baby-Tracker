@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { InputAccessoryView } from 'react-native';
 import { useDarkMode } from './DarkMode';
 import { appTheme } from './ThemedBackground';
+import { uploadImage, generateImagePath } from '../src/utils/imageUpload';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -96,6 +97,8 @@ const AddChildScreen = () => {
     }
   }, [formData.height, formData.heightUnit, updateFormData]);
 
+   const [imageUploading, setImageUploading] = useState(false);
+
   const pickImage = async () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -105,10 +108,10 @@ const AddChildScreen = () => {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.Image,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.7, // Reduced quality for faster uploads
         allowsMultipleSelection: false,
       });
 
@@ -123,6 +126,7 @@ const AddChildScreen = () => {
       Alert.alert('Error', 'Failed to pick image. Please try again.');
     }
   };
+
 
   const calculateAge = useMemo(() => {
     const today = new Date();
@@ -187,7 +191,7 @@ const AddChildScreen = () => {
         height: formData.height || null,
         heightUnit: formData.heightUnit,
         notes: formData.notes.trim(),
-        image: formData.image,
+        image: null,
         userId: currentUser.uid,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -195,21 +199,45 @@ const AddChildScreen = () => {
 
       const docRef = await addDoc(collection(db, 'children'), newProfile);
       
+      let imageUrl = null;
+      if (formData.image) {
+        try {
+          setImageUploading(true);
+          const imagePath = generateImagePath(docRef.id);
+          imageUrl = await uploadImage(formData.image, imagePath);
+          
+          // Update the document with the image URL
+          await updateDoc(doc(db, 'children', docRef.id), {
+            image: imageUrl,
+            updatedAt: new Date().toISOString(),
+          });
+        } catch (imageError) {
+          console.error('Image upload failed:', imageError);
+          Alert.alert(
+            'Image Upload Failed',
+            'Profile created but image could not be uploaded. You can add it later by editing the profile.'
+          );
+        } finally {
+          setImageUploading(false);
+        }
+      }
+
       if (Platform.OS === 'ios') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
-      
-      navigation.navigate('Home', { 
-        newProfile: { id: docRef.id, ...newProfile },
-        message: 'Child profile added successfully!'
-      });
-    } catch (error) {
-      console.error('Error adding child profile:', error);
-      Alert.alert('Error', 'Failed to save profile. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        
+        navigation.navigate('Home', { 
+          newProfile: { id: docRef.id, ...newProfile, image: imageUrl },
+          message: 'Child profile added successfully!'
+        });
+      } catch (error) {
+        console.error('Error adding child profile:', error);
+        Alert.alert('Error', 'Failed to save profile. Please try again.');
+      } finally {
+        setIsLoading(false);
+        setImageUploading(false);
+      }
+    };
 
   const handleSave = useCallback(() => {
     const validationError = validateForm();
@@ -579,28 +607,30 @@ const AddChildScreen = () => {
               </View>
 
               {/* Save Button */}
-              <TouchableOpacity 
-                style={[dynamicStyles.saveButton, isLoading && dynamicStyles.saveButtonDisabled]} 
-                onPress={handleSave}
-                disabled={isLoading}
-                activeOpacity={0.8}
+            <TouchableOpacity 
+              style={[dynamicStyles.saveButton, (isLoading || imageUploading) && dynamicStyles.saveButtonDisabled]} 
+              onPress={handleSave}
+              disabled={isLoading || imageUploading}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={['#667eea', '#667eea']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={dynamicStyles.saveButtonGradient}
               >
-                <LinearGradient
-                  colors={isLoading ? ['#667eea', '#667eea'] : ['#667eea', '#667eea']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={dynamicStyles.saveButtonGradient}
-                >
-                  {isLoading ? (
-                    <Text style={dynamicStyles.saveButtonText}>Adding...</Text>
-                  ) : (
-                    <>
-                      <MaterialCommunityIcons name="check" size={20} color="#fff" />
-                      <Text style={dynamicStyles.saveButtonText}>Add Child Profile</Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
+                {imageUploading ? (
+                  <Text style={dynamicStyles.saveButtonText}>Uploading image...</Text>
+                ) : isLoading ? (
+                  <Text style={dynamicStyles.saveButtonText}>Adding...</Text>
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="check" size={20} color="#fff" />
+                    <Text style={dynamicStyles.saveButtonText}>Add Child Profile</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>

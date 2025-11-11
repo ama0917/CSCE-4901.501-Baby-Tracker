@@ -129,9 +129,11 @@ export default function App() {
             <Stack.Screen name="MemoriesScreen" component={MemoriesScreen} />
             <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
             <Stack.Screen name="CalendarScreen" component={CalendarScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="AcceptInvite" component={AcceptInvite} options={{ title: 'Accept Invite' }} />
-            <Stack.Screen name="InviteCaregiver" component={InviteCaregiver} options={{ headerShown: true, title: 'Invite Caregiver' }} />
-            <Stack.Screen name="ManageCaregivers" component={ManageCaregivers} options={{ title: 'Manage Caregivers' }} />
+            <Stack.Screen name="AcceptInvite" component={AcceptInvite} options={{ headerShown: false,
+                presentation: 'transparentModal',
+                cardStyle: { backgroundColor: 'transparent' },}} />
+            <Stack.Screen name="InviteCaregiver" component={InviteCaregiver} options={{ headerShown: false }} />
+            <Stack.Screen name="ManageCaregivers" component={ManageCaregivers} options={{ title: 'Manage Caregivers'  }} />
           </Stack.Navigator>
         </NavigationContainer>
       </ActiveChildProvider>

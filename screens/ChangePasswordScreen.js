@@ -11,24 +11,28 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   StatusBar,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ArrowLeft, Lock, Eye, EyeOff, Sparkles } from 'lucide-react-native';
+
 import { auth } from '../firebaseConfig';
-import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
-import { ArrowLeft } from 'lucide-react-native';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, } from 'firebase/auth';
+
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { useDarkMode } from '../screens/DarkMode';
+import LogoImage from '../assets/logo.png';
 
 const gradients = {
-  cardLight: ['#f9fbff', '#ffffff'],
-  cardDark: ['#2b2e34', '#1f2126'],
-  actionLight: ['#81D4FA', '#F8BBD9'],
-  actionDark: ['#00c6ff', '#8E2DE2'],
-  warnLight: ['#FFCDD2', '#F8BBD9'],
-  warnDark: ['#ff80ab', '#ff4081'],
-  inputLight: ['#f0f2f5', '#ffffff'],
-  inputDark: ['#3a3d44', '#2d3036'],
+  cardLight: ['#FFFFFF', '#F9FBFF'],
+  cardDark: ['#020617', '#020617'],
+  inputLight: 'rgba(255,255,255,0.95)',
+  inputDark: 'rgba(15,23,42,0.95)',
+  buttonLight: ['#81D4FA', '#81D4FA'],
+  buttonDark: ['#ee93ccff', '#fa50e9ff'],
+  backLight: ['#ffffff', '#f3f4ff'],
+  backDark: ['#020617', '#111827'],
 };
 
 export default function ChangePasswordScreen() {
@@ -39,26 +43,32 @@ export default function ChangePasswordScreen() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorText, setErrorText] = useState('');
 
   const handleChangePassword = async () => {
+    setErrorText('');
+
     if (!currentPassword || !newPassword || !confirmPassword) {
-      Alert.alert('Missing Information', 'Please fill in all password fields.');
+      setErrorText('Please fill in all password fields.');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('Passwords Don\'t Match', 'New password and confirmation must match.');
+      setErrorText("New password and confirmation don't match.");
       return;
     }
 
     if (newPassword.length < 6) {
-      Alert.alert('Invalid Password', 'Password must be at least 6 characters long.');
+      setErrorText('Password must be at least 6 characters long.');
       return;
     }
 
     if (currentPassword === newPassword) {
-      Alert.alert('Same Password', 'New password must be different from your current password.');
+      setErrorText('New password must be different from your current password.');
       return;
     }
 
@@ -71,17 +81,14 @@ export default function ChangePasswordScreen() {
     try {
       setLoading(true);
 
-      // Reauthenticate user first
       const credential = EmailAuthProvider.credential(user.email, currentPassword);
       await reauthenticateWithCredential(user, credential);
-
-      // Update password
       await updatePassword(user, newPassword);
 
-      // Clear fields
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setErrorText('');
 
       Alert.alert(
         'Password Updated',
@@ -91,31 +98,86 @@ export default function ChangePasswordScreen() {
     } catch (error) {
       console.error('Password change error:', error);
 
-      let errorMessage = 'Could not update password. Please try again.';
-
+      let msg = 'Could not update password. Please try again.';
       if (error.code === 'auth/wrong-password') {
-        errorMessage = 'Current password is incorrect.';
+        msg = 'Current password is incorrect.';
       } else if (error.code === 'auth/too-many-requests') {
-        errorMessage = 'Too many attempts. Please wait a moment and try again.';
+        msg = 'Too many attempts. Please wait a moment and try again.';
       } else if (error.code === 'auth/requires-recent-login') {
-        errorMessage = 'For security, please sign out and back in to change your password.';
+        msg = 'For security, please sign out and back in to change your password.';
       } else if (error.code === 'auth/weak-password') {
-        errorMessage = 'Password must be at least 6 characters long.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Session expired. Please sign in again.';
+        msg = 'Password must be at least 6 characters long.';
       } else if (error.code === 'auth/network-request-failed') {
-        errorMessage = 'Network error. Please check your connection and try again.';
+        msg = 'Network error. Please check your connection and try again.';
       }
 
-      Alert.alert('Error', errorMessage);
+      setErrorText(msg);
     } finally {
       setLoading(false);
     }
   };
 
+  const renderPasswordRow = (
+    label,
+    value,
+    setValue,
+    visible,
+    setVisible,
+    placeholder
+  ) => (
+    <View style={styles.inputRow}>
+      <View
+        style={[
+          styles.inputContainer,
+          {
+            backgroundColor: darkMode ? gradients.inputDark : gradients.inputLight,
+            borderColor: errorText ? '#B3261E' : 'rgba(129,212,250,0.25)',
+          },
+        ]}
+      >
+        <Lock
+          size={20}
+          color={darkMode ? '#CBD5F5' : '#B0BEC5'}
+          strokeWidth={1.6}
+        />
+        <TextInput
+          style={[
+            styles.input,
+            { color: currentTheme.textPrimary,
+              letterSpacing: 0,
+              textTransform: 'none',
+             },
+          ]}
+          placeholder={placeholder || label}
+          placeholderTextColor={darkMode ? '#9CA3AF' : '#B0BEC5'}
+          secureTextEntry={!visible}
+          value={value}
+          onChangeText={setValue}
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!loading}
+        />
+        <TouchableOpacity
+          onPress={() => setVisible(!visible)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          {visible ? (
+            <EyeOff size={20} color={darkMode ? '#F9A8D4' : '#81D4FA'} strokeWidth={1.6} />
+          ) : (
+            <Eye size={20} color={darkMode ? '#9CA3AF' : '#B0BEC5'} strokeWidth={1.6} />
+          )}
+        </TouchableOpacity>
+      </View>
+      <Text style={[styles.labelText, { color: currentTheme.textSecondary }]}>
+        {label}
+      </Text>
+    </View>
+  );
+
   return (
     <ThemedBackground>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} translucent />
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
@@ -127,106 +189,113 @@ export default function ChangePasswordScreen() {
         >
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <LinearGradient
-                colors={darkMode ? ['#1f1e1eff', '#323233ff'] : gradients.cardLight}
-                style={styles.backButtonGradient}
-              >
-                <ArrowLeft size={20} color={darkMode ? '#fff' : '#2E3A59'} />
-              </LinearGradient>
-            </TouchableOpacity>
+             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+             <LinearGradient
+               colors={darkMode ? ['#1f1e1eff', '#323233ff'] : gradients.cardLight}
+               style={styles.headerButtonGradient}
+             >
+               <ArrowLeft size={20} color={darkMode ? '#fff' :' #2E3A59'} />
+             </LinearGradient>
+             </TouchableOpacity>
+
             <Text style={[styles.headerTitle, { color: currentTheme.textPrimary }]}>
               Change Password
             </Text>
-            <View style={{ width: 40 }} />
+
+            <View style={{ width: 56 }} />
           </View>
+
+          {/* Logo + title */}
+          <View style={styles.logoSection}>
+            <LinearGradient
+              colors={['#81D4FA', '#F8BBD9']}
+              style={styles.logoGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Image
+                source={LogoImage}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
+              <View style={styles.logoSparkle}>
+                <Sparkles size={20} color="#F9A8D4" />
+              </View>
+            </LinearGradient>
+
+            <Text style={[styles.title, { color: currentTheme.textPrimary }]}>
+              Keep your account secure
+            </Text>
+            <Text style={[styles.subtitle, { color: currentTheme.textSecondary }]}>
+              Update your password to protect your baby’s data.
+            </Text>
+          </View>
+
+          {/* Error banner */}
+          {!!errorText && (
+            <View style={styles.errorBanner}>
+              <Lock size={16} color="#B3261E" />
+              <Text style={styles.errorText}>{errorText}</Text>
+            </View>
+          )}
 
           {/* Card */}
           <LinearGradient
             colors={darkMode ? gradients.cardDark : gradients.cardLight}
             style={styles.card}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
           >
-            <Text style={[styles.instructions, { color: currentTheme.textSecondary }]}>
-              Enter your current password and choose a new one.
-            </Text>
+            {renderPasswordRow(
+              'Current password',
+              currentPassword,
+              setCurrentPassword,
+              showCurrent,
+              setShowCurrent,
+              'Current password'
+            )}
 
-            {/* Current Password */}
-            <LinearGradient
-              colors={darkMode ? gradients.inputDark : gradients.inputLight}
-              style={styles.inputWrap}
-            >
-              <TextInput
-                placeholder="Current Password"
-                placeholderTextColor={darkMode ? '#b5b8bf' : '#7C8B9A'}
-                secureTextEntry
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-                style={[styles.input, { color: darkMode ? '#fff' : '#333' }]}
-                returnKeyType="next"
-                autoCorrect={false}
-                autoCapitalize="none"
-                editable={!loading}
-              />
-            </LinearGradient>
+            {renderPasswordRow(
+              'New password',
+              newPassword,
+              setNewPassword,
+              showNew,
+              setShowNew,
+              'New password'
+            )}
 
-            {/* New Password */}
-            <LinearGradient
-              colors={darkMode ? gradients.inputDark : gradients.inputLight}
-              style={styles.inputWrap}
-            >
-              <TextInput
-                placeholder="New Password"
-                placeholderTextColor={darkMode ? '#b5b8bf' : '#7C8B9A'}
-                secureTextEntry
-                value={newPassword}
-                onChangeText={setNewPassword}
-                style={[styles.input, { color: darkMode ? '#fff' : '#333' }]}
-                returnKeyType="next"
-                autoCorrect={false}
-                autoCapitalize="none"
-                editable={!loading}
-              />
-            </LinearGradient>
+            {renderPasswordRow(
+              'Confirm new password',
+              confirmPassword,
+              setConfirmPassword,
+              showConfirm,
+              setShowConfirm,
+              'Confirm new password'
+            )}
 
-            {/* Confirm New Password */}
-            <LinearGradient
-              colors={darkMode ? gradients.inputDark : gradients.inputLight}
-              style={styles.inputWrap}
-            >
-              <TextInput
-                placeholder="Confirm New Password"
-                placeholderTextColor={darkMode ? '#b5b8bf' : '#7C8B9A'}
-                secureTextEntry
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                style={[styles.input, { color: darkMode ? '#fff' : '#333' }]}
-                returnKeyType="done"
-                autoCorrect={false}
-                autoCapitalize="none"
-                onSubmitEditing={handleChangePassword}
-                editable={!loading}
-              />
-            </LinearGradient>
-
-            {/* Submit Button */}
+            {/* Button */}
             <TouchableOpacity
               activeOpacity={0.9}
-              style={[styles.submitButton, { opacity: loading ? 0.6 : 1 }]}
+              style={[styles.buttonWrapper, loading && { opacity: 0.7 }]}
               onPress={handleChangePassword}
               disabled={loading}
             >
               <LinearGradient
-                colors={darkMode ? gradients.warnDark : gradients.warnLight}
-                style={styles.submitGradient}
+                colors={darkMode ? gradients.buttonDark : gradients.buttonLight}
+                style={styles.buttonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
               >
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.submitText}>Change Password</Text>
+                  <Text style={styles.buttonText}>Change Password</Text>
                 )}
               </LinearGradient>
             </TouchableOpacity>
           </LinearGradient>
+
+          <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </ThemedBackground>
@@ -236,67 +305,146 @@ export default function ChangePasswordScreen() {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    padding: 20,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight + 20 : 60,
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 70 : 40,
   },
+
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 30,
+    marginBottom: 24,
   },
-  backButton: {
-    borderRadius: 14,
-    overflow: 'hidden',
+  headerButton: { 
+    borderRadius: 14, 
+    overflow: 'hidden' 
   },
-  backButtonGradient: {
+  headerButtonGradient: {
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
+     paddingVertical: 10, 
+     borderRadius: 14, 
+     alignItems: 'center', 
+     justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 22,
     fontWeight: '700',
     letterSpacing: 0.3,
   },
-  card: {
-    borderRadius: 18,
-    padding: 20,
+
+  // Logo + headline
+  logoSection: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  logoGradient: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.15,
+    shadowRadius: 30,
+    elevation: 12,
   },
-  instructions: {
+  logoImage: {
+    width: 70,
+    height: 70,
+  },
+  logoSparkle: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  subtitle: {
     fontSize: 14,
-    marginBottom: 20,
-    lineHeight: 20,
+    textAlign: 'center',
+    maxWidth: 280,
   },
-  inputWrap: {
+
+  // Error banner
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(179,38,30,0.08)',
+    borderColor: 'rgba(179,38,30,0.35)',
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 14,
     marginBottom: 16,
-    overflow: 'hidden',
+  },
+  errorText: {
+    color: '#B3261E',
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+
+  // Card
+  card: {
+    borderRadius: 26,
+    padding: 18,
+    paddingTop: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+
+  inputRow: {
+    marginBottom: 16,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    height: 56,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+    borderWidth: 1.5,
   },
   input: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    flex: 1,
+    marginLeft: 12,
     fontSize: 16,
   },
-  submitButton: {
-    borderRadius: 14,
+  labelText: {
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
+  },
+
+  buttonWrapper: {
+    borderRadius: 22,
     overflow: 'hidden',
-    marginTop: 8,
+    marginTop: 6,
   },
-  submitGradient: {
+  buttonGradient: {
     paddingVertical: 16,
+    borderRadius: 22,
     alignItems: 'center',
-    borderRadius: 14,
+    justifyContent: 'center',
   },
-  submitText: {
-    color: '#fff',
-    fontWeight: '700',
+  buttonText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
     fontSize: 16,
+    letterSpacing: 0.4,
   },
 });

@@ -272,7 +272,6 @@ const disableTotpNoCode = async () => {
   const totpFactors = all.filter(f => f.factorId === 'totp');
 
   if (totpFactors.length === 0) {
-    // nothing to do — ensure flag off
     try { await updateDoc(doc(db, 'users', u.uid), { MFAEnabled: false }); } catch {}
     setMfa(false);
     return;
@@ -291,7 +290,7 @@ const disableTotpNoCode = async () => {
   setTotpCode('');
   setManualKey(null);
 };
-// Confirm → unenroll all TOTP (no code)
+// Confirm → unenroll all TOTP 
 // returns: 'success' | 'failed' | 'cancel'
 const promptDisableMfa = async () => {
   return await new Promise((resolve) => {
@@ -305,7 +304,7 @@ const promptDisableMfa = async () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await disableTotpNoCode();   // ← uses the helper you already defined
+              await disableTotpNoCode();  
               resolve('success');
             } catch (e) {
               console.warn('disableTotpNoCode error', e);
@@ -531,22 +530,34 @@ const promptDisableMfa = async () => {
               <Image source={require('../assets/logo.png')} style={styles.logo} />
             </View>
 
-            <TouchableOpacity style={styles.signOutButton} onPress={() => navigation.navigate('Login')}>
-              <Text style={styles.signOutText}>Sign out</Text>
+            <TouchableOpacity
+              style={[
+                styles.signOutButton,
+                darkMode && {
+                  backgroundColor: '#323233ff',      
+                  shadowOpacity: 0.2,
+                },
+              ]}
+              onPress={() => navigation.navigate('Login')}
+            >
+              <Text
+                style={[styles.signOutText, darkMode && { color: '#ffffff' } ]}>
+                Sign out
+              </Text>
             </TouchableOpacity>
           </View>
 
           {/* ---------- 1) Dark Mode ---------- */}
-          <SectionTitle icon={<Moon size={18} color={currentTheme.textPrimary} />} text="App Preferences" />
-          <Card>
+          <SectionTitle icon={<Moon size={18} color={currentTheme.textPrimary} />} text="App Preferences" color={currentTheme.textPrimary}/>
+          <Card darkMode={darkMode}> 
             <View style={styles.row}>
               <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Dark Mode</Text>
               <Switch value={darkMode} onValueChange={setDarkMode} />
             </View>
           </Card>
           {/* ---------- App Tour ---------- */}
-          <SectionTitle icon={<Handshake size={18} color={currentTheme.textPrimary} />} text="App Tour" />
-          <Card>
+          <SectionTitle icon={<Handshake size={18} color={currentTheme.textPrimary} />} text="App Tour" color={currentTheme.textPrimary}/>
+          <Card darkMode={darkMode}> 
             <TouchableOpacity
               onPress={handleViewTour}
               style={styles.rowNav}
@@ -576,8 +587,8 @@ const promptDisableMfa = async () => {
           </Card>
 
           {/* ---------- 2) MFA ---------- */}
-          <SectionTitle icon={<ShieldCheck size={18} color={currentTheme.textPrimary} />} text="Security" />
-          <Card>
+          <SectionTitle icon={<ShieldCheck size={18} color={currentTheme.textPrimary} />} text="Security" color={currentTheme.textPrimary} />
+          <Card darkMode={darkMode}> 
             <View style={styles.row}>
               <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Multi-Factor Authentication</Text>
             <Switch
@@ -731,16 +742,16 @@ const promptDisableMfa = async () => {
           </Card>
           
           {/* ---------- 3) Caregiver ---------- */}
-            <SectionTitle icon={<Users size={18} color={currentTheme.textPrimary} />} text="Caregiver" />
-            <Card>
+            <SectionTitle icon={<Users size={18} color={currentTheme.textPrimary} />} text="Caregiver" color={currentTheme.textPrimary}/>
+            <Card darkMode={darkMode}> 
               {role === 'parent' ? (
                 <TouchableOpacity
                   onPress={() => navigation.navigate('ManageCaregivers')}
                   style={styles.rowNav}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.rowText}>Manage Caregivers</Text>
-                  <ChevronRight size={18} color={currentTheme.textSecondary} />
+                  <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Manage Caregivers</Text>
+                  <ChevronRight size={18} color={currentTheme.textPrimary} />
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
@@ -748,15 +759,15 @@ const promptDisableMfa = async () => {
                   style={styles.rowNav}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.rowText}>Enter Invite Code</Text>
-                  <ChevronRight size={18} color={currentTheme.textSecondary} />
+                  <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Enter Invite Code</Text>
+                  <ChevronRight size={18} color={currentTheme.textPrimary} />
                 </TouchableOpacity>
               )}
             </Card>
 
           {/* ---------- 4) Weekly Digest ---------- */}
-          <SectionTitle icon={<Bell size={18} color={currentTheme.textPrimary} />} text="Notifications" />
-          <Card>
+          <SectionTitle icon={<Bell size={18} color={currentTheme.textPrimary} />} text="Notifications" color={currentTheme.textPrimary}/>
+          <Card darkMode={darkMode}> 
             <View style={styles.row}>
               <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Weekly Digest Notifications</Text>
               <Switch
@@ -827,7 +838,7 @@ const promptDisableMfa = async () => {
           </Card>
 
           {/* ---------- 5) Digest Controls (Collapsible) ---------- */}
-          <Card>
+         <Card darkMode={darkMode}> 
             <TouchableOpacity onPress={toggleDigestOpen} style={styles.rowNav} activeOpacity={0.8}>
               <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Digest Controls</Text>
               {digestOpen ? (
@@ -861,7 +872,7 @@ const promptDisableMfa = async () => {
           </Card>
 
 			{/* ---------- Reminders Button (Styled) ---------- */}
-			<Card>
+			<Card darkMode={darkMode}> 
 			  <TouchableOpacity
 				style={styles.fullWidthButton}
 				onPress={() => navigation.navigate('RegularReminders')}
@@ -879,9 +890,10 @@ const promptDisableMfa = async () => {
           <SectionTitle 
             icon={<RefreshCcw size={18} color={currentTheme.textPrimary} />} 
             text="Restore Data" 
+            color={currentTheme.textPrimary}
           />
 
-          <Card>
+          <Card darkMode={darkMode}> 
             <TouchableOpacity
               activeOpacity={0.9}
               onPress={handleRestoreBackup}
@@ -902,8 +914,8 @@ const promptDisableMfa = async () => {
           </Card>
 
           {/* ---------- 6) Change Password ---------- */}
-          <SectionTitle icon={<Lock size={18} color={currentTheme.textPrimary} />} text="Security" />
-          <Card>
+          <SectionTitle icon={<Lock size={18} color={currentTheme.textPrimary} />} text="Password & Account" color={currentTheme.textPrimary}/>
+          <Card darkMode={darkMode}> 
             <TouchableOpacity
               onPress={() => navigation.navigate('ChangePassword')}
               style={styles.rowNav}

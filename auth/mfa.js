@@ -10,6 +10,60 @@ import {
 // keep pending secret in-memory between steps
 const _pending = new Map();
 
+/** Start TOTP enrollment and return an otpauth:// URI for QR/Authenticator */
+export async function startTotpEnrollment(
+  user,
+  { issuer = 'BabyTracker', displayName = 'Authenticator app', accountName } = {}
+) {
+  if (!user) throw new Error('No user for TOTP enrollment start');
+
+  // 1) Fresh user, must be verified
+  await user.reload();
+  if (!user.emailVerified) {
+    const e = new Error('EMAIL_NOT_VERIFIED');
+    e.code = 'auth/email-not-verified';
+    throw e;
+  }
+
+  // 2) Create MFA session and secret
+  const session = await multiFactor(user).getSession();
+  const secret = await TotpMultiFactorGenerator.generateSecret(session);
+
+  // 3) Normalize otpauth URI from various SDK shapes OR build it
+  const acct = accountName || user.email || user.uid;
+  const enc = encodeURIComponent;
+  let otpauthUrl =
+    secret?.uri ||
+    secret?.otpauthUrl ||
+    secret?.qrCodeUrl ||
+    (typeof secret?.toString === 'function' && String(secret).startsWith('otpauth://') ? String(secret) : null);
+
+  // Some SDKs expose base32 as secret.secretKey (or secretKey)
+  const base32 =
+    secret?.secretKey ||
+    secret?.base32 || // alternative field name in some builds
+    null;
+
+  if (!otpauthUrl && base32) {
+    // Construct otpauth:// manually (SHA1/6 digits/30s are Firebase defaults)
+    const label = `${issuer}:${acct}`;
+    otpauthUrl =
+      `otpauth://totp/${enc(label)}?secret=${base32.replace(/\s+/g, '')}` +
+      `&issuer=${enc(issuer)}&algorithm=SHA1&digits=6&period=30`;
+  }
+
+  if (!otpauthUrl) {
+    // Help yourself in the console if this ever fires again
+    // eslint-disable-next-line no-console
+    console.warn('[MFA] generateSecret returned shape:', Object.keys(secret || {}));
+    throw new Error('Failed to generate TOTP secret');
+  }
+
+  // 4) Cache the secret (the whole object) for finishTotpEnrollment()
+  _pending.set(user.uid, { secret, displayName });
+
+  return { otpauthUrl };
+}
 /** Start enrollment: returns otpauth:// URI for QR/Authenticator */
 export async function finishTotpEnrollment(user, code) {
   if (!user) throw new Error('No user for TOTP enrollment finish');

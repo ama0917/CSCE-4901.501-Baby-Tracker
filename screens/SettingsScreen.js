@@ -11,7 +11,7 @@ import { getFirestore, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore
 import NotificationService from '../src/notifications/notificationService';
 import { summaryRepository } from '../src/data/summaryRepository';
 import { useActiveChild } from '../src/contexts/ActiveChildContext';
-import { ArrowLeft, ChevronDown, ChevronRight, ShieldCheck, Users, Bell, Lock } from 'lucide-react-native';
+import { Moon, Handshake, ArrowLeft, ChevronDown, ChevronRight, ShieldCheck, Users, Bell, Lock } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { startTotpEnrollment, finishTotpEnrollment } from '../auth/mfa';
 import { getAuth, sendEmailVerification, multiFactor } from 'firebase/auth';
@@ -21,6 +21,9 @@ import * as Clipboard from 'expo-clipboard';
 import { RefreshCcw } from 'lucide-react-native';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import * as Network from 'expo-network';
+import { Keyboard, InputAccessoryView, Button } from 'react-native'; // iOS accessory
+
+
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -46,6 +49,25 @@ const gradients = {
   inputLight: ['#f0f2f5', '#ffffff'],
   inputDark: ['#3a3d44', '#2d3036'],
 };
+const Card = React.memo(function Card({ children, darkMode }) {
+  return (
+    <LinearGradient
+      colors={darkMode ? ['#2b2e34', '#1f2126'] : ['#f9fbff', '#ffffff']}
+      style={styles.card}
+    >
+      {children}
+    </LinearGradient>
+  );
+});
+
+const SectionTitle = React.memo(function SectionTitle({ icon, text, color }) {
+  return (
+    <View style={styles.sectionTitleRow}>
+      {icon}
+      <Text style={[styles.sectionTitle, { color }]}>{text}</Text>
+    </View>
+  );
+});
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
@@ -65,7 +87,12 @@ export default function SettingsScreen() {
   const [manualKey, setManualKey] = useState(null);
   const [restoreLoading, setRestoreLoading] = useState(false);
 
+  const totpInputRef = React.useRef(null);
+  const [totpFocused, setTotpFocused] = useState(false);
+
   const [digestOpen, setDigestOpen] = useState(false);
+
+  const accessoryId = 'totpAccessory';
 
   const { activeChildId, activeChildName } = (() => {
     try {
@@ -74,6 +101,13 @@ export default function SettingsScreen() {
       return { activeChildId: null, activeChildName: null };
     }
   })();
+
+    useEffect(() => {
+    if (mfaEnrollOpen) {
+      const t = setTimeout(() => totpInputRef.current?.focus(), 100);
+      return () => clearTimeout(t);
+    }
+  }, [mfaEnrollOpen]);
 
       // --- App Tour handlers ---
     const handleViewTour = () => {
@@ -109,94 +143,94 @@ export default function SettingsScreen() {
 };
 
   // ---------- MFA: Start ----------
-  const handleStartTotp = async () => {
-    const user = getAuth().currentUser;
-    if (!user) {
-      Alert.alert('Not signed in', 'Please sign in again and try enabling MFA.');
-      return;
-    }
-    try {
-      setMfaBusy(true);
-      await user.reload();
-      if (!user.emailVerified) {
-        Alert.alert(
-          'Verify your email',
-          'You need to verify your email before enabling two-step verification.',
-          [
-            { text: 'Not now' },
-            {
-              text: 'Resend email',
-              onPress: async () => {
-                try {
-                  await sendEmailVerification(user);
-                  Alert.alert('Sent', 'Verification email sent. Check your inbox, then try again.');
-                } catch (e) {
-                  Alert.alert('Error', e?.message ?? 'Could not send verification email.');
-                }
-              },
-            },
-          ]
-        );
+    const handleStartTotp = async () => {
+      const user = getAuth().currentUser;
+      if (!user) {
+        Alert.alert('Not signed in', 'Please sign in again and try enabling MFA.');
         return;
       }
-
-      const res = await startTotpEnrollment(user, {
-        issuer: 'BabyTracker',
-        displayName: 'Authenticator app',
-      });
-      setOtpauthUrl(res.otpauthUrl);
-
-      // Try to extract manual key for users without QR scan
       try {
-        const u = new URL(res.otpauthUrl);
-        setManualKey(u.searchParams.get('secret'));
-      } catch {
-        const m = res.otpauthUrl.match(/[?&]secret=([^&]+)/i);
-        setManualKey(m ? decodeURIComponent(m[1]) : null);
+        setMfaBusy(true);
+        await user.reload();
+        if (!user.emailVerified) {
+          Alert.alert(
+            'Verify your email',
+            'You need to verify your email before enabling two-step verification.',
+            [
+              { text: 'Not now' },
+              {
+                text: 'Resend email',
+                onPress: async () => {
+                  try { await sendEmailVerification(user); Alert.alert('Sent', 'Verification email sent.'); }
+                  catch (e) { Alert.alert('Error', e?.message ?? 'Could not send verification email.'); }
+                },
+              },
+            ]
+          );
+          return;
+        }
+
+        // Some builds return { otpauthUrl }, others return an object with .otpauthUrl.
+        const res = await startTotpEnrollment(user, { issuer: 'BabyTracker', displayName: 'Authenticator app' });
+        const url = res?.otpauthUrl || res; // be robust
+        setOtpauthUrl(url);
+
+        // Parse manual key for fallback entry
+        try {
+          let secret = null;
+          try { secret = new URL(url).searchParams.get('secret'); }
+          catch {
+            const m = String(url).match(/[?&]secret=([^&]+)/i);
+            secret = m ? decodeURIComponent(m[1]) : null;
+          }
+          setManualKey(secret);
+        } catch { setManualKey(null); }
+
+        setMfaEnrollOpen(true);
+      } catch (err) {
+        console.warn('startTotpEnrollment error', err);
+        Alert.alert('Couldn’t start two-step verification', 'Please try again. If this keeps happening, sign out and back in.');
+      } finally {
+        setMfaBusy(false);
       }
+    };
 
-      setMfaEnrollOpen(true);
-    } catch (err) {
-      console.warn('startTotpEnrollment error', err);
-      Alert.alert('Couldn’t start two-step verification', 'Please try again.');
-    } finally {
-      setMfaBusy(false);
-    }
-  };
-
-  // ---------- MFA: Finish ----------
-  const handleFinishTotp = async () => {
-    const user = getAuth().currentUser;
-    if (!user) return;
-    if (!/^\d{6}$/.test(totpCode.trim())) {
-      Alert.alert('Invalid code', 'Enter the 6-digit code from your authenticator app.');
-      return;
-    }
-    try {
-      setMfaBusy(true);
-      await finishTotpEnrollment(user, totpCode.trim());
+    const hasEnrolledTotp = async (user) => {
+      if (!user) return false;
       await user.reload();
-
-      const userRef = doc(db, 'users', user.uid);
-      const snap = await getDoc(userRef);
-      if (!snap.exists()) {
-        await setDoc(userRef, { MFAEnabled: true }, { merge: true });
-      } else {
-        await updateDoc(userRef, { MFAEnabled: true });
+      const factors = (multiFactor(user).enrolledFactors || []).filter(f => f.factorId === 'totp');
+      return factors.length > 0;
+    };
+  // ---------- MFA: Finish ----------
+    const handleFinishTotp = async () => {
+      const user = getAuth().currentUser;
+      if (!user) return;
+      if (!/^\d{6}$/.test(totpCode.trim())) {
+        Alert.alert('Invalid code', 'Enter the 6-digit code from your authenticator app.');
+        return;
       }
+      try {
+        setMfaBusy(true);
+        await finishTotpEnrollment(user, totpCode.trim());
+        await user.reload();
 
-      setMfa(true);
-      setMfaEnrollOpen(false);
-      setOtpauthUrl(null);
-      setTotpCode('');
-      Alert.alert('Two-step verification is on', 'Your authenticator app is now linked to your account.');
-    } catch (err) {
-      console.warn('finishTotpEnrollment error', err);
-      Alert.alert('That code didn’t work', 'Enter the current 6-digit code and try again.');
-    } finally {
-      setMfaBusy(false);
-    }
-  };
+        const userRef = doc(db, 'users', user.uid);
+        const snap = await getDoc(userRef);
+        if (!snap.exists()) await setDoc(userRef, { MFAEnabled: true }, { merge: true });
+        else await updateDoc(userRef, { MFAEnabled: true });
+
+        setMfa(true);
+        setMfaEnrollOpen(false);
+        setOtpauthUrl(null);
+        setTotpCode('');
+        Alert.alert('Two-step verification is on', 'Your authenticator app is now linked to your account.');
+      } catch (err) {
+        console.warn('finishTotpEnrollment error', err);
+        Alert.alert('That code didn’t work', 'Open your authenticator app and enter the current 6-digit code, then try again.');
+      } finally {
+        setMfaBusy(false);
+      }
+    };
 
   // ---------- MFA: Disable ----------
   const disableTotpServerSide = async () => {
@@ -210,97 +244,82 @@ export default function SettingsScreen() {
     return res?.data;
   };
 
-  const handleDisableTotp = async () => {
+const getEnrolledTotpCount = async (user) => {
+  await user.reload();
+  const factors = (multiFactor(user).enrolledFactors || []);
+  return factors.filter(f => f.factorId === 'totp').length;
+};
+
+const cancelInProgressEnrollment = async () => {
+  setMfaEnrollOpen(false);
+  setOtpauthUrl(null);
+  setTotpCode('');
+  setManualKey(null);
+  setMfa(false);
+  const u = auth.currentUser;
+  if (u) {
+    try { await updateDoc(doc(db, 'users', u.uid), { MFAEnabled: false }); } catch {}
+  }
+};
+
+// Unenroll ALL TOTP factors (no code required)
+const disableTotpNoCode = async () => {
+  const u = auth.currentUser;
+  if (!u) throw new Error('Not signed in');
+  await u.reload();
+
+  const all = (multiFactor(u).enrolledFactors || []);
+  const totpFactors = all.filter(f => f.factorId === 'totp');
+
+  if (totpFactors.length === 0) {
+    // nothing to do — ensure flag off
+    try { await updateDoc(doc(db, 'users', u.uid), { MFAEnabled: false }); } catch {}
+    setMfa(false);
+    return;
+  }
+
+  for (const f of totpFactors) {
+    await multiFactor(u).unenroll(f);
+  }
+  await u.reload();
+  try { await updateDoc(doc(db, 'users', u.uid), { MFAEnabled: false }); } catch {}
+
+  // reset local UI
+  setMfa(false);
+  setMfaEnrollOpen(false);
+  setOtpauthUrl(null);
+  setTotpCode('');
+  setManualKey(null);
+};
+// Confirm → unenroll all TOTP (no code)
+// returns: 'success' | 'failed' | 'cancel'
+const promptDisableMfa = async () => {
+  return await new Promise((resolve) => {
     Alert.alert(
-      'Disable Two-Step Verification',
-      'Enter your 6-digit authenticator code to confirm disabling MFA.',
+      'Turn off two-step verification?',
+      'This will remove your authenticator app from this account.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve('cancel') },
         {
-          text: 'Continue',
-          onPress: () => {
-            // Show input dialog for TOTP code
-            Alert.prompt(
-              'Enter Code',
-              'Enter the 6-digit code from your authenticator app',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Disable MFA',
-                  style: 'destructive',
-                  onPress: async (code) => {
-                    if (!code || !/^\d{6}$/.test(code.trim())) {
-                      Alert.alert('Invalid Code', 'Please enter a 6-digit code.');
-                      return;
-                    }
-
-                    const user = auth.currentUser;
-                    if (!user) {
-                      Alert.alert('Not signed in', 'Please sign in again and try disabling MFA.');
-                      return;
-                    }
-
-                    try {
-                      setMfaBusy(true);
-                      await user.reload();
-
-                      // Verify the TOTP code first by attempting a multi-factor session
-                      const mfaSession = await multiFactor(user).getSession();
-                      
-                      const enrolledFactors = multiFactor(user).enrolledFactors || [];
-                      const totpFactors = enrolledFactors.filter(f => f.factorId === 'totp');
-
-                      if (totpFactors.length === 0) {
-                        Alert.alert('No MFA Enabled', 'You do not have two-step verification enabled.');
-                        setMfa(false);
-                        return;
-                      }
-
-                      // Unenroll all TOTP factors
-                      for (const factor of totpFactors) {
-                        await multiFactor(user).unenroll(factor);
-                      }
-
-                      await user.reload();
-
-                      // Update Firestore
-                      const userRef = doc(db, 'users', user.uid);
-                      await updateDoc(userRef, { MFAEnabled: false });
-
-                      setMfa(false);
-                      setMfaEnrollOpen(false);
-                      setOtpauthUrl(null);
-                      setTotpCode('');
-                      Alert.alert('Two-step verification disabled', 'Authenticator removed from your account.');
-                    } catch (e) {
-                      console.error('MFA disable error:', e);
-                      if (e?.code === 'auth/requires-recent-login') {
-                        Alert.alert(
-                          'Please Sign In Again',
-                          'For your security, sign out and back in to make this change.',
-                          [{ text: 'OK' }]
-                        );
-                      } else if (e?.code === 'auth/invalid-verification-code') {
-                        Alert.alert('Invalid Code', 'The code you entered is incorrect. Please try again.');
-                      } else {
-                        Alert.alert('Error', e?.message || 'Could not turn off two-step verification. Please try again.');
-                      }
-                      setMfa(true);
-                    } finally {
-                      setMfaBusy(false);
-                    }
-                  },
-                },
-              ],
-              'plain-text',
-              '',
-              'number-pad'
-            );
+          text: 'Turn off',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await disableTotpNoCode();   // ← uses the helper you already defined
+              resolve('success');
+            } catch (e) {
+              console.warn('disableTotpNoCode error', e);
+              Alert.alert('Couldn’t turn off', e?.message || 'Please try again.');
+              resolve('failed');
+            }
           },
         },
       ]
     );
-  };
+  });
+};
+
+
 
   // ---------- Notifications helpers ----------
   const sendTestNotification = async () => {
@@ -390,21 +409,7 @@ export default function SettingsScreen() {
   }, []);
 
   // ---------- UI helpers ----------
-  const Card = ({ children }) => (
-    <LinearGradient
-      colors={darkMode ? gradients.cardDark : gradients.cardLight}
-      style={styles.card}
-    >
-      {children}
-    </LinearGradient>
-  );
 
-  const SectionTitle = ({ icon, text }) => (
-    <View style={styles.sectionTitleRow}>
-      {icon}
-      <Text style={[styles.sectionTitle, { color: currentTheme.textPrimary }]}>{text}</Text>
-    </View>
-  );
 
   const toggleDigestOpen = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -413,7 +418,7 @@ export default function SettingsScreen() {
   
 	// --- Restore Backup Handler (Auto-detect IP) ---
 	const handleRestoreBackup = async () => {
-	  console.log('Restore button pressed ✅');
+	  console.log('Restore button pressed ');
 
 	  const user = getAuth().currentUser;
 	  if (!user?.uid) {
@@ -500,16 +505,15 @@ export default function SettingsScreen() {
     <ThemedBackground>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} translucent />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        behavior={Platform.OS === 'ios' ? 'position' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0} 
         style={{ flex: 1 }}
-        enabled={Platform.OS === 'ios'}
       >
       <ScrollView 
         contentContainerStyle={styles.container} 
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="always"
-        keyboardDismissMode="on-drag"
+        keyboardDismissMode="none"
         nestedScrollEnabled={true}
       >
           {/* Header */}
@@ -533,7 +537,7 @@ export default function SettingsScreen() {
           </View>
 
           {/* ---------- 1) Dark Mode ---------- */}
-          <SectionTitle text="App Preferences" />
+          <SectionTitle icon={<Moon size={18} color={currentTheme.textPrimary} />} text="App Preferences" />
           <Card>
             <View style={styles.row}>
               <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Dark Mode</Text>
@@ -541,7 +545,7 @@ export default function SettingsScreen() {
             </View>
           </Card>
           {/* ---------- App Tour ---------- */}
-          <SectionTitle text="App Tour" />
+          <SectionTitle icon={<Handshake size={18} color={currentTheme.textPrimary} />} text="App Tour" />
           <Card>
             <TouchableOpacity
               onPress={handleViewTour}
@@ -576,139 +580,179 @@ export default function SettingsScreen() {
           <Card>
             <View style={styles.row}>
               <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Multi-Factor Authentication</Text>
-              <Switch
-                value={mfa}
-                onValueChange={async (val) => {
-                  if (!val) {
-                    // Disabling MFA
-                    await handleDisableTotp();
-                  } else {
-                    // Enabling MFA - just set the flag, enrollment happens when they tap setup button
-                    setMfa(val);
-                    const user = auth.currentUser;
-                    if (user) {
-                      try { 
-                        await updateDoc(doc(db, 'users', user.uid), { MFAEnabled: true }); 
-                      } catch (e) {
-                        console.error('Error updating MFA flag:', e);
-                      }
-                    }
+            <Switch
+              value={mfa}
+              onValueChange={async (val) => {
+                const user = auth.currentUser;
+
+                if (!val) {
+                  if (!user) { setMfa(false); return; }
+
+                  // If not enrolled, just cancel setup and flip OFF
+                  const enrolled = await hasEnrolledTotp(user);
+                  if (!enrolled) {
+                    await cancelInProgressEnrollment(); // optional reuse
+                    return;
                   }
-                }}
-              />
+
+                  // If enrolled, confirm and unenroll (no code)
+                  const outcome = await promptDisableMfa(); // 'success' | 'failed' | 'cancel'
+                  if (outcome === 'success') setMfa(false);
+                  else setMfa(true); // keep ON if canceled/failed
+                  return;
+                }
+
+                // Turning ON → set flag; user taps the "Set up Authenticator" button next
+                setMfa(true);
+                if (user) { try { await updateDoc(doc(db, 'users', user.uid), { MFAEnabled: true }); } catch {} }
+              }}
+            />
+
             </View>
 
             {/* MFA Enrollment block */}
-            {mfa && !mfaEnrollOpen && (
-              <TouchableOpacity
-                onPress={handleStartTotp}
-                disabled={mfaBusy}
-                activeOpacity={0.9}
-                style={styles.fullWidthButton}
-              >
-                <LinearGradient
+
+          {mfa && !mfaEnrollOpen && (
+            <TouchableOpacity
+              onPress={handleStartTotp}
+              disabled={mfaBusy}
+              activeOpacity={0.9}
+              style={styles.fullWidthButton}
+            >
+              <LinearGradient
                   colors={darkMode ? gradients.primaryDark : gradients.primaryLight}
                   style={styles.fullWidthGradient}
                 >
                   {mfaBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.fullWidthText}>Set up Authenticator (TOTP)</Text>}
                 </LinearGradient>
-              </TouchableOpacity>
-            )}
+          </TouchableOpacity>
+        )}
+                {Platform.OS === 'ios' && (
+          <InputAccessoryView nativeID={accessoryId}>
+            <View style={{ alignItems: 'flex-end', padding: 8, backgroundColor: '#EFEFF4' }}>
+              <Button title="Done" onPress={() => totpInputRef.current?.blur()} />
+            </View>
+          </InputAccessoryView>
+        )}
 
-            {mfa && mfaEnrollOpen && (
-              <View style={{ marginTop: 12, alignItems: 'center' }}>
-                <Text style={[styles.helperText, { color: currentTheme.textSecondary }]}>
-                  Scan this QR code or enter the setup key in your authenticator app, then enter the 6-digit code below.
+        {mfa && mfaEnrollOpen && (
+          <View style={{ marginTop: 12, alignItems: 'center' }}>
+            <Text style={[styles.helperText, { textAlign: 'center' }]}>
+              Scan this QR code or enter the setup key in your authenticator app, then enter the 6-digit code below.
+            </Text>
+
+              {otpauthUrl ? (
+                <View style={styles.qrBox}><QRCode value={otpauthUrl} size={180} /></View>
+              ) : (
+                <Text style={styles.helperText}>Generating QR…</Text>
+              )}
+
+            {!!manualKey && (
+              <View style={styles.manualBox}>
+                <Text style={[styles.manualLabel, { color: currentTheme.textSecondary }]}>
+                  Can’t scan the QR code?
                 </Text>
 
-                {otpauthUrl ? (
-                  <View style={styles.qrBox}>
-                    <QRCode value={otpauthUrl} size={180} />
-                  </View>
-                ) : (
-                  <Text style={[styles.helperText, { color: currentTheme.textSecondary }]}>Generating QR…</Text>
-                )}
+                <Text style={[styles.manualKeyText, { color: currentTheme.textPrimary }]}>
+                  {manualKey}
+                </Text>
 
-                {!!manualKey && (
-                  <TouchableOpacity
-                    onPress={async () => {
-                      try {
-                        await Clipboard.setStringAsync(manualKey);
-                        Alert.alert('Copied', 'Setup key copied to clipboard.');
-                      } catch (e) {
-                        Alert.alert('Copy failed', e?.message || 'Please try again.');
-                      }
-                    }}
-                    style={styles.copyKey}
-                    activeOpacity={0.9}
-                  >
-                    <Text style={styles.copyKeyText}>Copy setup key</Text>
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity
+                  onPress={async () => {
+                    try {
+                      await Clipboard.setStringAsync(manualKey);
+                      Alert.alert('Copied', 'Setup key copied to clipboard.');
+                    } catch (e) {
+                      Alert.alert('Copy failed', e?.message || 'Please try again.');
+                    }
+                  }}
+                  style={styles.manualCopyBtn}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.manualCopyText}>Copy Setup Key</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-                <TextInput
-                  placeholder="123456"
-                  placeholderTextColor={currentTheme.textSecondary}
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  value={totpCode}
-                  onChangeText={(t) => setTotpCode(t.replace(/\D/g, ''))}
-                  style={[
-                    styles.codeInput,
-                    { borderColor: darkMode ? '#5b5f66' : '#e6d6ef' }
-                  ]}
-                />
+              <TextInput
+                ref={totpInputRef}
+                style={styles.codeInput}
+                placeholder="123456"
+                keyboardType="number-pad"
+                inputMode="numeric"
+                maxLength={6}
+                value={totpCode}
+                onChangeText={(t) => setTotpCode(t.replace(/\D/g, ''))}
+                textContentType="oneTimeCode"
+                autoComplete="one-time-code"
+                autoCorrect={false}
+                autoCapitalize="none"
+                secureTextEntry={false}
+
+                // iOS toolbar
+                {...(Platform.OS === 'ios' ? { inputAccessoryViewID: accessoryId } : {})}
+
+                // Android "Done" dismiss
+                returnKeyType={Platform.OS === 'android' ? 'done' : undefined}
+                onSubmitEditing={() => Keyboard.dismiss()}
+              />
 
                 <View style={styles.dualRow}>
                   <TouchableOpacity
                     onPress={handleFinishTotp}
                     disabled={mfaBusy || !/^\d{6}$/.test(totpCode)}
-                    style={[styles.dualBtn, { opacity: mfaBusy || !/^\d{6}$/.test(totpCode) ? 0.6 : 1 }]}
+                    style={[styles.dualBtn, { opacity: (mfaBusy || !/^\d{6}$/.test(totpCode)) ? 0.6 : 1 }]}
                     activeOpacity={0.9}
                   >
-                    <LinearGradient colors={darkMode ? gradients.warnDark : gradients.warnLight} style={styles.dualGrad}>
+             <LinearGradient colors={darkMode ? gradients.warnDark : gradients.warnLight} style={styles.dualGrad}>
                       {mfaBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.dualText}>Confirm</Text>}
                     </LinearGradient>
-                  </TouchableOpacity>
+                          </TouchableOpacity>
 
-                  <TouchableOpacity
-                    onPress={() => { setMfaEnrollOpen(false); setOtpauthUrl(null); setTotpCode(''); }}
-                    disabled={mfaBusy}
-                    style={[styles.dualBtn, { opacity: mfaBusy ? 0.6 : 1 }]}
-                    activeOpacity={0.9}
-                  >
-                    <LinearGradient colors={darkMode ? gradients.primaryDark : gradients.primaryLight} style={styles.dualGrad}>
-                      <Text style={styles.dualText}>Cancel</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
+                      <TouchableOpacity
+                      onPress={() => { 
+                        setMfaEnrollOpen(false);
+                        setOtpauthUrl(null);
+                        setTotpCode(''); 
+                        setManualKey(null);
+                        setMfa(false);       
+                      }}
+                      disabled={mfaBusy}
+                      style={[styles.dualBtn, { opacity: mfaBusy ? 0.6 : 1 }]}
+                      activeOpacity={0.9}
+                    >
+                      <LinearGradient colors={darkMode ? gradients.primaryDark : gradients.primaryLight} style={styles.dualGrad}>
+                        <Text style={styles.dualText}>Cancel</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
                 </View>
               </View>
             )}
           </Card>
-
+          
           {/* ---------- 3) Caregiver ---------- */}
-          <SectionTitle icon={<Users size={18} color={currentTheme.textPrimary} />} text="Caregiver" />
-          <Card>
-            {role === 'parent' ? (
-              <TouchableOpacity
-                onPress={() => navigation.navigate('ManageCaregivers')}
-                style={styles.rowNav}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Manage Caregivers</Text>
-                <ChevronRight size={18} color={currentTheme.textSecondary} />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                onPress={() => navigation.navigate('AcceptInvite')}
-                style={styles.rowNav}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Enter Invite Code</Text>
-                <ChevronRight size={18} color={currentTheme.textSecondary} />
-              </TouchableOpacity>
-            )}
-          </Card>
+            <SectionTitle icon={<Users size={18} color={currentTheme.textPrimary} />} text="Caregiver" />
+            <Card>
+              {role === 'parent' ? (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('ManageCaregivers')}
+                  style={styles.rowNav}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.rowText}>Manage Caregivers</Text>
+                  <ChevronRight size={18} color={currentTheme.textSecondary} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('AcceptInvite')}
+                  style={styles.rowNav}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.rowText}>Enter Invite Code</Text>
+                  <ChevronRight size={18} color={currentTheme.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </Card>
 
           {/* ---------- 4) Weekly Digest ---------- */}
           <SectionTitle icon={<Bell size={18} color={currentTheme.textPrimary} />} text="Notifications" />
@@ -889,7 +933,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 40,
+    marginTop: 50,
     marginBottom: 10,
     paddingHorizontal: 8,
   },
@@ -1007,7 +1051,46 @@ rowText: {
     marginTop: 6,
     borderWidth: 1,
   },
+  //manual key
+  manualBox: {
+  width: '100%',
+  backgroundColor: '#fff',
+  borderRadius: 12,
+  padding: 14,
+  marginTop: 10,
+  alignItems: 'center',
+  shadowColor: '#000',
+  shadowOpacity: 0.05,
+  shadowRadius: 4,
+  elevation: 2,
+},
 
+manualLabel: {
+  fontSize: 14,
+  marginBottom: 6,
+  textAlign: 'center',
+},
+
+manualKeyText: {
+  fontSize: 18,
+  letterSpacing: 2,
+  fontWeight: '700',
+  marginBottom: 10,
+  textAlign: 'center',
+},
+
+manualCopyBtn: {
+  backgroundColor: '#81D4FA',
+  borderRadius: 8,
+  paddingVertical: 8,
+  paddingHorizontal: 14,
+},
+
+manualCopyText: {
+  color: '#fff',
+  fontWeight: '700',
+  fontSize: 14,
+},
   dualRow: { 
     flexDirection: 'row',
     gap: 10, 

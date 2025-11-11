@@ -318,14 +318,15 @@ const HomeScreen = () => {
 
 const SP = 16;
 const styles = StyleSheet.create({ 
-  safeArea: {
+safeArea: {
   backgroundColor: 'transparent',
   paddingTop: Platform.OS === 'ios' ? 6 : 12, 
 },
   container: { 
     flex: 1,
+    paddingTop: Platform.OS === 'ios' ? 60 : StatusBar.currentHeight + 20,
 
-   },
+  },
   scrollContainer: {
     flexGrow: 1,
     paddingBottom: 0,

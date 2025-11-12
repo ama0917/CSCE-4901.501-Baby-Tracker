@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { InputAccessoryView } from 'react-native';
 import { useDarkMode } from './DarkMode';
 import { appTheme } from './ThemedBackground';
+import { uploadImage, generateImagePath, deleteImage } from '../src/utils/imageUpload';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -58,6 +59,10 @@ const EditChildScreen = () => {
     { label: 'Other', icon: 'account', color: '#D7BCE8' },
   ];
 
+  const [imageUploading, setImageUploading] = useState(false);
+  const [originalImageUrl, setOriginalImageUrl] = useState(null);
+
+
   useEffect(() => {
     if (childId) {
       loadChildData();
@@ -71,7 +76,6 @@ const EditChildScreen = () => {
       
       if (docSnap.exists()) {
         const data = docSnap.data();
-        
         let birthDate = new Date();
         if (data.birthDate) {
           if (typeof data.birthDate === 'string') {
@@ -98,7 +102,10 @@ const EditChildScreen = () => {
           weightUnit: data.weightUnit || 'lbs',
           height: data.height ? String(data.height) : '',
           heightUnit: data.heightUnit || 'in',
+          image: data.image || null,
         });
+
+        setOriginalImageUrl(data.image || null);
       } else {
         Alert.alert('Error', 'Child profile not found.');
         navigation.goBack();
@@ -228,19 +235,47 @@ const EditChildScreen = () => {
     try {
       setIsLoading(true);
       
+      let imageUrl = formData.image;
+      
+      // Check if image changed
+      const imageChanged = formData.image !== originalImageUrl;
+      
+      if (imageChanged && formData.image && !formData.image.startsWith('https://')) {
+        // New local image selected - upload it
+        try {
+          setImageUploading(true);
+          const imagePath = generateImagePath(childId);
+          imageUrl = await uploadImage(formData.image, imagePath);
+          
+          // Delete old image if it exists
+          if (originalImageUrl) {
+            await deleteImage(originalImageUrl);
+          }
+        } catch (imageError) {
+          console.error('Image upload failed:', imageError);
+          Alert.alert(
+            'Image Upload Failed',
+            'Profile will be updated but the new image could not be uploaded.'
+          );
+          imageUrl = originalImageUrl; // Keep the old image
+        } finally {
+          setImageUploading(false);
+        }
+      }
+      
       const updatedProfile = {
         name: `${formData.firstName} ${formData.lastName}`.trim(),
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         sex: formData.sex,
         gender: formData.sex,
-        birthDate: formData.birthDate.toISOString(),
+        birthdate: formData.birthDate.toISOString(),
         weight: formData.weight ? parseFloat(formData.weight) : null,
         weightUnit: formData.weightUnit,
         height: formData.height ? parseFloat(formData.height) : null,
         heightUnit: formData.heightUnit,
         notes: formData.notes.trim(),
-        image: formData.image,
+        image: imageUrl,
         updatedAt: new Date().toISOString(),
       };
 
@@ -257,6 +292,7 @@ const EditChildScreen = () => {
       Alert.alert('Error', 'Failed to update profile. Please try again.');
     } finally {
       setIsLoading(false);
+      setImageUploading(false);
     }
   };
 
@@ -317,6 +353,13 @@ const EditChildScreen = () => {
           onPress: async () => {
             try {
               setIsDeleting(true);
+              
+              // Delete image from storage if it exists
+              if (formData.image) {
+                await deleteImage(formData.image);
+              }
+              
+              // Delete document
               await deleteDoc(doc(db, 'children', childId));
               
               if (Platform.OS === 'ios') {
@@ -674,18 +717,20 @@ const EditChildScreen = () => {
 
               {/* Action Buttons */}
               <TouchableOpacity 
-                style={[dynamicStyles.saveButton, isLoading && dynamicStyles.saveButtonDisabled]} 
+                style={[dynamicStyles.saveButton, (isLoading || imageUploading) && dynamicStyles.saveButtonDisabled]} 
                 onPress={handleSave}
-                disabled={isLoading}
+                disabled={isLoading || imageUploading}
                 activeOpacity={0.8}
               >
                 <LinearGradient
-                  colors={isLoading ? ['#667eea', '#667eea'] : ['#667eea', '#667eea']}
+                  colors={['#667eea', '#667eea']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={dynamicStyles.saveButtonGradient}
                 >
-                  {isLoading ? (
+                  {imageUploading ? (
+                    <Text style={dynamicStyles.saveButtonText}>Uploading image...</Text>
+                  ) : isLoading ? (
                     <Text style={dynamicStyles.saveButtonText}>Saving...</Text>
                   ) : (
                     <>

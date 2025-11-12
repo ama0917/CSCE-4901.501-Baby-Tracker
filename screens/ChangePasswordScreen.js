@@ -194,7 +194,7 @@ export default function ChangePasswordScreen() {
                colors={darkMode ? ['#1f1e1eff', '#323233ff'] : gradients.cardLight}
                style={styles.headerButtonGradient}
              >
-               <ArrowLeft size={20} color={darkMode ? '#fff' :' #2E3A59'} />
+               <ArrowLeft size={20} color={darkMode ? '#fff' :'#2E3A59'} />
              </LinearGradient>
              </TouchableOpacity>
 

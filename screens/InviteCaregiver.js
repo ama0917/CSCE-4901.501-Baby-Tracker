@@ -31,21 +31,31 @@ import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { useDarkMode } from '../screens/DarkMode';
 
 // ---------- helper: owned children (unchanged) ----------
+// ONLY return children that the current user is allowed to manage/share
 async function fetchOwnedChildren(dbRef, userUid) {
   const resultsMap = new Map(); // id -> row
 
-  const collections = ['children', 'Children']; // includes your actual: 'children'
+  const collections = ['children', 'Children'];
+
+  // Fields that really mean "this user is the owner/parent"
   const eqOwnerFields = [
+    'userId',
     'parentId',
     'createdBy',
-    'parentUid',
     'ownerUid',
     'ownerId',
-    'userId',
     'ParentUid',
     'ParentID',
   ];
-  const arrOwnerFields = ['parents', 'owners', 'caregivers', 'authorized', 'parentIds'];
+
+  // Optional legacy array fields that are PARENTS/OWNERS only
+  // (NOTE: caregivers IS INTENTIONALLY MISSING HERE)
+  const arrOwnerFields = [
+    'parents',
+    'owners',
+    'parentIds',
+    // DO NOT include: 'caregivers', 'authorized'
+  ];
 
   const addRows = (snap, coll) => {
     snap.forEach((d) => {
@@ -56,24 +66,24 @@ async function fetchOwnedChildren(dbRef, userUid) {
         name: data.name || data.childName || data.displayName || d.id,
         ...data,
       };
-      resultsMap.set(d.id, row); // de-dup
+      resultsMap.set(d.id, row);
     });
   };
 
   for (const coll of collections) {
     const colRef = collection(dbRef, coll);
 
-    // Equality matches
+    // Equality matches (definite owner relationship)
     for (const f of eqOwnerFields) {
       try {
         const snap = await getDocs(query(colRef, where(f, '==', userUid)));
         if (!snap.empty) addRows(snap, coll);
       } catch {
-        // ignore
+        // ignore field if it doesn't exist in this collection
       }
     }
 
-    // Array-contains matches
+    // Array-contains matches for true parents/owners only
     for (const f of arrOwnerFields) {
       try {
         const snap = await getDocs(query(colRef, where(f, 'array-contains', userUid)));
@@ -90,7 +100,6 @@ async function fetchOwnedChildren(dbRef, userUid) {
       (a.id || '').localeCompare(b.id || '')
   );
 }
-
 // ---------- theme resolver (matches ManageCaregivers vibe) ----------
 const resolveTheme = (darkMode) => {
   const t =

@@ -27,7 +27,6 @@ import { BlurView } from 'expo-blur';
 const { width } = Dimensions.get('window');
 const db = getFirestore(app);
 
-
 const darkModeGradients = {
   feeding: ['#00c6ff', '#0072ff'],
   diaper: ['#ff6a00', '#ee0979'],
@@ -606,7 +605,7 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
             </TouchableOpacity>
 
             {/* Memories button - only for parents */}
-            {/* {isOwner && (
+             {isOwner && (
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() => navigation.navigate('MemoriesScreen', { childId, name })}
@@ -622,10 +621,10 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
                   <Text style={styles.actionButtonText}>Memories</Text>
                 </LinearGradient>
               </TouchableOpacity>
-            )} */}
+            )} 
 
             {/* Calendar button - only for parents */}
-            {/* {isOwner && (
+             {isOwner && (
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() => navigation.navigate('CalendarScreen', { childId, name })}
@@ -641,7 +640,7 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
                   <Text style={styles.actionButtonText}>Calendar</Text>
                 </LinearGradient>
               </TouchableOpacity>
-            )} */}
+            )}
           </View>
 
 
@@ -775,8 +774,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: 
-  { width: 50, 
-    height: 50, 
+  { width: 60, 
+    height: 60, 
     resizeMode: 'contain' 
   },
   profileSection:

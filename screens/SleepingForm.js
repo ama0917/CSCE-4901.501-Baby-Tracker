@@ -357,10 +357,10 @@ const checkForDuplicates = async () => {
                     editingLogId === log.id && styles.incompleteLogCardActive
                   ]}
                 >
-                  <LinearGradient
+              <LinearGradient
                     colors={editingLogId === log.id 
                       ? ['#4CAF50', '#45a049'] 
-                      : darkMode ? ['#424242', '#303030'] : ['#fff3e0', '#ffe0b2']
+                      : darkMode ? ['#424242', '#303030'] : ['#e3f2fd88', '#BBDEFB']
                     }
                     style={styles.incompleteLogGradient}
                   >
@@ -377,7 +377,11 @@ const checkForDuplicates = async () => {
                           Started: {formatTime(log.timestamp)}
                         </Text>
                       </View>
-                      <View style={styles.incompleteLogBadge}>
+                      <View style={[styles.incompleteLogBadge, {
+                        backgroundColor: editingLogId === log.id 
+                          ? 'rgba(255, 255, 255, 0.3)'
+                          : darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(25, 118, 210, 0.15)'
+                      }]}>
                         <Text
                           style={[
                             styles.incompleteLogBadgeText,
@@ -385,7 +389,7 @@ const checkForDuplicates = async () => {
                               color:
                                 editingLogId === log.id
                                   ? '#fff'
-                                  : '#ecececff',
+                                  : darkMode ? '#fff' : '#1976D2',
                             },
                           ]}
                         >
@@ -671,7 +675,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  logo: { width: 50, height: 50, resizeMode: 'contain' },
+  logo: { width: 60, height: 60, resizeMode: 'contain' },
   title: { fontSize: 26, fontWeight: '700', textAlign: 'center', marginBottom: 20 },
   inputCard: {
     borderRadius: 20,

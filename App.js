@@ -32,6 +32,8 @@ import MemoriesScreen from './screens/MemoriesScreen';
 import ChangePasswordScreen from './screens/ChangePasswordScreen';
 import CalendarScreen from './screens/CalendarScreen';
 import WelcomeTour from './screens/WelcomeTour';
+import AddMemoryScreen from './screens/AddMemoryScreen';
+import MemoryDetailScreen from './screens/MemoryDetailScreen';
 
 const Stack = createStackNavigator();
 
@@ -126,7 +128,10 @@ export default function App() {
               options={{ headerShown: true, title: 'Reminders' }}
             />
             <Stack.Screen name="RemindersScreen" component={RemindersScreen} />
-            <Stack.Screen name="MemoriesScreen" component={MemoriesScreen} />
+            <Stack.Screen name="AddMemoryScreen" component={AddMemoryScreen} />
+            <Stack.Screen name="MemoriesScreen" component={MemoriesScreen} options={{ headerShown: false}} />
+            <Stack.Screen name="AddMemory" component={AddMemoryScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="MemoryDetail" component={MemoryDetailScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
             <Stack.Screen name="CalendarScreen" component={CalendarScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AcceptInvite" component={AcceptInvite} options={{ headerShown: false,

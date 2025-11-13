@@ -1,5 +1,6 @@
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytesResumable, getStorage, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../../firebaseConfig';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 
 /**
  * Upload image to Firebase Storage
@@ -64,4 +65,64 @@ export const generateImagePath = (childId) => {
   const timestamp = Date.now();
   const randomId = Math.random().toString(36).substring(7);
   return `children/profiles/${childId}/${timestamp}_${randomId}.jpg`;
+};
+
+/**
+ * Upload media (image or video) with progress tracking
+ */
+export const uploadMedia = async (uri, path, onProgress) => {
+  try {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    
+    const storageRef = ref(storage, path);
+    const uploadTask = uploadBytesResumable(storageRef, blob);
+    
+    return new Promise((resolve, reject) => {
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          if (onProgress) onProgress(progress);
+        },
+        (error) => {
+          console.error('Upload error:', error);
+          reject(error);
+        },
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          resolve(downloadURL);
+        }
+      );
+    });
+  } catch (error) {
+    console.error('Error uploading media:', error);
+    throw error;
+  }
+};
+
+/**
+ * Generate video thumbnail
+ */
+export const generateVideoThumbnail = async (videoUri) => {
+  try {
+    const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, {
+      time: 1000, // 1 second into video
+      quality: 0.7,
+    });
+    return uri;
+  } catch (error) {
+    console.error('Error generating thumbnail:', error);
+    return null;
+  }
+};
+
+/**
+ * Generate unique filename for memories
+ */
+export const generateMemoryPath = (childId, mediaType) => {
+  const timestamp = Date.now();
+  const randomId = Math.random().toString(36).substring(7);
+  const extension = mediaType === 'video' ? 'mp4' : 'jpg';
+  return `children/memories/${childId}/${timestamp}_${randomId}.${extension}`;
 };

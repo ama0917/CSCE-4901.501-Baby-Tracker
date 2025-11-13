@@ -33,7 +33,7 @@ import {
   Sparkles
 } from 'lucide-react-native';
 import '../firebaseConfig';
-import LogoImage from '../assets/logo.png';
+import LogoImage from '../assets/logowtext.png';
 import { isTotpChallenge } from '../auth/mfa'; 
 
 const { width, height } = Dimensions.get('window');
@@ -718,6 +718,8 @@ const styles = StyleSheet.create({
   logoContainer: {
     position: 'relative',
     marginBottom: 40,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   logoGradient: {
     width: 120,
@@ -828,8 +830,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   logoImage: {
-    width: 80,
-    height: 80,
+    width: 120,
+    height: 120,
   },  
   errorBanner: {
   flexDirection: 'row',

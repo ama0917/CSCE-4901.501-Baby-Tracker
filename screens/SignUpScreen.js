@@ -21,7 +21,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react-native';
 import { StatusBar } from 'react-native';
 import { Sparkles } from 'lucide-react-native';
-import LogoImage from '../assets/logo.png';
+import LogoImage from '../assets/logowtext.png';
 
 export default function SignUpScreen() {
   const navigation = useNavigation();
@@ -322,8 +322,8 @@ const styles = StyleSheet.create({
     elevation: 15,
   },
   logoImage: {
-    width: 60,
-    height: 60,
+    width: 120,
+    height: 120,
   },
   logoSparkle: {
     position: 'absolute',

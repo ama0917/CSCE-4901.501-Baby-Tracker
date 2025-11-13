@@ -126,7 +126,7 @@ const HomeScreen = () => {
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.logoContainer}>
-              <Image source={require('../assets/NoTitleLogo.png')} style={styles.logoImageSmall} />
+              <Image source={require('../assets/logo.png')} style={styles.logoImageSmall} />
             </View>
             <Text style={[styles.headerTitle, { color: darkMode ? '#fff' : '#2E3A59' }]}>Home</Text>
             <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>

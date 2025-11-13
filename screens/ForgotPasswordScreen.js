@@ -19,7 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 import { Mail, Sparkles } from 'lucide-react-native';
-import LogoImage from '../assets/logo.png';
+import LogoImage from '../assets/logowtext.png';
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
@@ -162,8 +162,8 @@ const styles = StyleSheet.create({
     elevation: 15,
   },
   logoImage: {
-    width: 60,
-    height: 60,
+    width: 120,
+    height: 120,
   },
   logoSparkle: {
     position: 'absolute',

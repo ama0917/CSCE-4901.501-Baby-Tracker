@@ -1,94 +1,121 @@
 import React, { useState, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
-  Alert, ScrollView, Platform, ActivityIndicator, StatusBar,
-  KeyboardAvoidingView, Keyboard
+  Alert, ScrollView, Platform, ActivityIndicator, StatusBar, FlatList,
+  KeyboardAvoidingView, Keyboard, InputAccessoryView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
-import * as VideoThumbnails from 'expo-video-thumbnails';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getFirestore, collection, addDoc, Timestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { Video } from 'expo-av';
+import NetInfo from '@react-native-community/netinfo';
 import { useDarkMode } from './DarkMode';
 import { appTheme } from './ThemedBackground';
-import { uploadMedia, generateMemoryPath, generateVideoThumbnail } from '../src/utils/imageUpload';
+import { 
+  uploadMedia, 
+  generateMemoryPath, 
+  generateVideoThumbnail 
+} from '../src/utils/imageUpload';
+import { 
+  saveToOfflineQueue, 
+  checkAndProcessQueue 
+} from '../src/utils/offlineQueue';
+
+const MAX_MEDIA_ITEMS = 3;
 
 const AddMemoryScreen = () => {
-    const navigation = useNavigation();
-    const route = useRoute();
-    const { childId, childName } = route.params;
-    const { darkMode } = useDarkMode();
-    const theme = darkMode ? appTheme.dark : appTheme.light;
-    
-    const scrollViewRef = useRef(null);
-    const descriptionInputRef = useRef(null);
+  const INPUT_ACCESSORY_VIEW_ID = 'memoryInputAccessory';
+  const navigation = useNavigation();
+  const route = useRoute();
+  const { childId, childName } = route.params;
+  const { darkMode } = useDarkMode();
+  const theme = darkMode ? appTheme.dark : appTheme.light;
+  
+  const [mediaItems, setMediaItems] = useState([]); // Array of {uri, type: 'photo'|'video'}
+  const [caption, setCaption] = useState('');
+  const [description, setDescription] = useState('');
+  const [memoryDate, setMemoryDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isOffline, setIsOffline] = useState(false);
+  
+  const scrollViewRef = useRef(null);
+  const descriptionInputRef = useRef(null);
+  
+  const db = getFirestore();
+  const auth = getAuth();
 
-    const [mediaUri, setMediaUri] = useState(null);
-    const [mediaType, setMediaType] = useState(null); // 'photo' or 'video'
-    const [caption, setCaption] = useState('');
-    const [description, setDescription] = useState('');
-    const [memoryDate, setMemoryDate] = useState(new Date());
-    const [showDatePicker, setShowDatePicker] = useState(false);
-    const [uploading, setUploading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState(0);
-    
-    const db = getFirestore();
-    const auth = getAuth();
+  const pickMedia = async (type) => {
+    if (mediaItems.length >= MAX_MEDIA_ITEMS) {
+      Alert.alert(
+        'Maximum Reached',
+        `You can only add up to ${MAX_MEDIA_ITEMS} photos or videos per memory.`
+      );
+      return;
+    }
 
-    const pickMedia = async (type) => {
-        try {
-        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permissionResult.granted) {
-            Alert.alert('Permission Required', 'Please grant media library permissions.');
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Please grant media library permissions.');
+        return;
+      }
+
+      const options = {
+        mediaTypes: type === 'photo' 
+          ? ImagePicker.MediaTypeOptions.Images 
+          : ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: true,
+        quality: 0.8,
+      };
+
+      if (type === 'photo') {
+        options.aspect = [4, 3];
+      }
+
+      if (type === 'video') {
+        options.videoMaxDuration = 120;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync(options);
+
+      if (!result.canceled) {
+        const asset = result.assets[0];
+        
+        // Validate video duration
+        if (type === 'video' && asset.duration) {
+          const durationInSeconds = asset.duration / 1000;
+          
+          if (durationInSeconds > 120) {
+            Alert.alert(
+              'Video Too Long',
+              `Please select a video that is 2 minutes or shorter.\n\nSelected: ${Math.round(durationInSeconds)} seconds`
+            );
             return;
+          }
         }
+        
+        setMediaItems([...mediaItems, { uri: asset.uri, type }]);
+      }
+    } catch (error) {
+      console.error('Error picking media:', error);
+      Alert.alert('Error', 'Failed to pick media. Please try again.');
+    }
+  };
 
-        const options = {
-            mediaTypes: type === 'photo' ? ImagePicker.MediaTypeOptions.Images : ImagePicker.MediaTypeOptions.Videos,
-            allowsEditing: true,
-            quality: 0.8,
-            videoMaxDuration: 120, // 2 minutes max (increased from 60)
-        };
-
-        if (type === 'photo') {
-            options.aspect = [4, 3];
-        }
-
-        const result = await ImagePicker.launchImageLibraryAsync(options);
-
-        if (!result.canceled) {
-            const asset = result.assets[0];
-            
-            // Check video duration
-            if (type === 'video' && asset.duration) {
-            const durationInSeconds = asset.duration / 1000;
-            if (durationInSeconds > 120) {
-                Alert.alert(
-                'Video Too Long',
-                'Please select a video that is 2 minutes or shorter.',
-                [{ text: 'OK' }]
-                );
-                return;
-            }
-            }
-            
-            setMediaUri(asset.uri);
-            setMediaType(type);
-        }
-        } catch (error) {
-        console.error('Error picking media:', error);
-        Alert.alert('Error', 'Failed to pick media. Please try again.');
-        }
-    };
+  const removeMedia = (index) => {
+    setMediaItems(mediaItems.filter((_, i) => i !== index));
+  };
 
   const handleSave = async () => {
-    if (!mediaUri) {
-      Alert.alert('Missing Media', 'Please add a photo or video first.');
+    if (mediaItems.length === 0) {
+      Alert.alert('Missing Media', 'Please add at least one photo or video.');
       return;
     }
 
@@ -97,33 +124,94 @@ const AddMemoryScreen = () => {
       return;
     }
 
+    // Check network status
+    const netInfo = await NetInfo.fetch();
+    setIsOffline(!netInfo.isConnected);
+
+    if (!netInfo.isConnected) {
+      // Save to offline queue
+      Alert.alert(
+        'No Internet Connection',
+        'Your memory will be saved locally and uploaded when you reconnect to the internet.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Save Offline',
+            onPress: async () => {
+              try {
+                setUploading(true);
+                const currentUser = auth.currentUser;
+
+                await saveToOfflineQueue({
+                  childId,
+                  userId: currentUser.uid,
+                  mediaItems,
+                  caption: caption.trim(),
+                  description: description.trim(),
+                  memoryDate: memoryDate.toISOString(),
+                });
+
+                Alert.alert(
+                  'Saved Offline',
+                  'Your memory has been saved and will upload automatically when you reconnect.',
+                  [{ text: 'OK', onPress: () => navigation.goBack() }]
+                );
+              } catch (error) {
+                console.error('Error saving offline:', error);
+                Alert.alert('Error', 'Failed to save memory offline.');
+              } finally {
+                setUploading(false);
+              }
+            }
+          }
+        ]
+      );
+      return;
+    }
+
+    // Upload normally if online
     try {
       setUploading(true);
       const currentUser = auth.currentUser;
 
-      // Upload media
-      const mediaPath = generateMemoryPath(childId, mediaType);
-      const mediaUrl = await uploadMedia(mediaUri, mediaPath, (progress) => {
-        setUploadProgress(progress);
-      });
+      // Upload all media items
+      const uploadedMedia = [];
+      let totalProgress = 0;
+      
+      for (let i = 0; i < mediaItems.length; i++) {
+        const item = mediaItems[i];
+        const baseProgress = (i / mediaItems.length) * 100;
+        
+        // Upload media
+        const mediaPath = generateMemoryPath(childId, item.type);
+        const mediaUrl = await uploadMedia(mediaPath, item.uri, (progress) => {
+          const itemProgress = (progress / mediaItems.length);
+          setUploadProgress(baseProgress + itemProgress);
+        });
 
-      // Generate thumbnail for videos
-      let thumbnailUrl = null;
-      if (mediaType === 'video') {
-        const thumbnailUri = await generateVideoThumbnail(mediaUri);
-        if (thumbnailUri) {
-          const thumbnailPath = generateMemoryPath(childId, 'photo');
-          thumbnailUrl = await uploadMedia(thumbnailUri, thumbnailPath);
+        // Generate thumbnail for videos
+        let thumbnailUrl = null;
+        if (item.type === 'video') {
+          const thumbnailUri = await generateVideoThumbnail(item.uri);
+          if (thumbnailUri) {
+            const thumbnailPath = generateMemoryPath(childId, 'photo');
+            thumbnailUrl = await uploadMedia(thumbnailPath, thumbnailUri);
+          }
         }
+
+        uploadedMedia.push({
+          mediaUrl,
+          thumbnailUrl,
+          mediaType: item.type,
+          order: i,
+        });
       }
 
       // Save to Firestore
       await addDoc(collection(db, 'memories'), {
         childId,
         userId: currentUser.uid,
-        mediaType,
-        mediaUrl,
-        thumbnailUrl,
+        media: uploadedMedia,
         caption: caption.trim(),
         description: description.trim(),
         date: Timestamp.fromDate(memoryDate),
@@ -145,13 +233,42 @@ const AddMemoryScreen = () => {
     }
   };
 
+  const renderMediaItem = ({ item, index }) => (
+    <View style={styles.mediaItemContainer}>
+      {item.type === 'photo' ? (
+        <Image source={{ uri: item.uri }} style={styles.mediaItemPreview} />
+      ) : (
+        <View style={styles.videoItemContainer}>
+          <Video
+            source={{ uri: item.uri }}
+            style={styles.mediaItemPreview}
+            resizeMode="cover"
+            shouldPlay={false}
+          />
+          <View style={styles.videoIndicator}>
+            <MaterialCommunityIcons name="play-circle" size={32} color="#fff" />
+          </View>
+        </View>
+      )}
+      <TouchableOpacity
+        style={styles.removeMediaButton}
+        onPress={() => removeMedia(index)}
+      >
+        <MaterialCommunityIcons name="close-circle" size={24} color="#fff" />
+      </TouchableOpacity>
+      <View style={styles.mediaIndexBadge}>
+        <Text style={styles.mediaIndexText}>{index + 1}</Text>
+      </View>
+    </View>
+  );
+
   return (
     <>
-      <StatusBar barStyle={darkMode ? "light-content" : "dark-content"} />
-      <LinearGradient 
+        <StatusBar barStyle={darkMode ? "light-content" : "dark-content"} />
+        <LinearGradient 
         colors={theme.backgroundGradient}
         style={styles.gradient}
-      >
+        >
         <SafeAreaView style={styles.container} edges={['top']}>
           {/* Header */}
           <View style={styles.header}>
@@ -163,19 +280,20 @@ const AddMemoryScreen = () => {
             </Text>
             <View style={{ width: 24 }} />
           </View>
-
-          <KeyboardAvoidingView
-            style={{ flex: 1, backgroundColor: 'transparent' }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            >
-            <ScrollView 
-              ref={scrollViewRef}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              {/* Media Picker */}
-              {!mediaUri ? (
+                <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                >
+                <ScrollView 
+                    ref={scrollViewRef}
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    onScrollBeginDrag={() => Keyboard.dismiss()}
+                >
+              {/* Media Picker/Gallery */}
+              {mediaItems.length === 0 ? (
                 <View style={styles.mediaPickerContainer}>
                   <TouchableOpacity
                     style={[styles.mediaOption, { backgroundColor: darkMode ? '#2c2c2c' : '#f8f9fa' }]}
@@ -201,27 +319,36 @@ const AddMemoryScreen = () => {
                   </TouchableOpacity>
                 </View>
               ) : (
-                <View style={styles.mediaPreviewContainer}>
-                  {mediaType === 'photo' ? (
-                    <Image source={{ uri: mediaUri }} style={styles.mediaPreview} />
-                  ) : (
-                    <Video
-                      source={{ uri: mediaUri }}
-                      style={styles.mediaPreview}
-                      useNativeControls
-                      resizeMode="contain"
-                      isLooping
-                    />
+                <View style={styles.mediaGalleryContainer}>
+                  <FlatList
+                    data={mediaItems}
+                    renderItem={renderMediaItem}
+                    keyExtractor={(item, index) => index.toString()}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.mediaGallery}
+                  />
+                  
+                  {mediaItems.length < MAX_MEDIA_ITEMS && (
+                    <View style={styles.addMoreContainer}>
+                      <TouchableOpacity
+                        style={[styles.addMoreButton, { backgroundColor: darkMode ? '#2c2c2c' : '#f8f9fa' }]}
+                        onPress={() => pickMedia('photo')}
+                      >
+                        <MaterialCommunityIcons name="camera-plus" size={24} color="#667eea" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.addMoreButton, { backgroundColor: darkMode ? '#2c2c2c' : '#f8f9fa' }]}
+                        onPress={() => pickMedia('video')}
+                      >
+                        <MaterialCommunityIcons name="video-plus" size={24} color="#667eea" />
+                      </TouchableOpacity>
+                    </View>
                   )}
-                  <TouchableOpacity
-                    style={styles.changeMediaButton}
-                    onPress={() => {
-                      setMediaUri(null);
-                      setMediaType(null);
-                    }}
-                  >
-                    <MaterialCommunityIcons name="close-circle" size={24} color="#fff" />
-                  </TouchableOpacity>
+                  
+                  <Text style={[styles.mediaCountText, { color: theme.textSecondary }]}>
+                    {mediaItems.length} / {MAX_MEDIA_ITEMS} items
+                  </Text>
                 </View>
               )}
 
@@ -230,32 +357,33 @@ const AddMemoryScreen = () => {
                 {/* Caption */}
                 <View style={styles.inputGroup}>
                   <Text style={[styles.label, { color: theme.textSecondary }]}>Caption *</Text>
-                  <TextInput
+                    <TextInput
                     style={[styles.input, { 
-                      backgroundColor: darkMode ? '#2c2c2c' : '#f8f9fa',
-                      borderColor: darkMode ? '#444' : '#e9ecef',
-                      color: theme.textPrimary
+                        backgroundColor: darkMode ? '#2c2c2c' : '#f8f9fa',
+                        borderColor: darkMode ? '#444' : '#e9ecef',
+                        color: theme.textPrimary
                     }]}
                     placeholder="Add a caption..."
                     placeholderTextColor={darkMode ? '#888' : '#999'}
                     value={caption}
                     onChangeText={setCaption}
                     maxLength={100}
-                    returnKeyType="next"
+                    returnKeyType="Return"
                     onSubmitEditing={() => descriptionInputRef.current?.focus()}
-                  />
+                    // REMOVED: inputAccessoryViewID={Platform.OS === 'ios' ? INPUT_ACCESSORY_VIEW_ID : undefined}
+                    />
                   <Text style={styles.charCount}>{caption.length}/100</Text>
                 </View>
 
                 {/* Description */}
                 <View style={styles.inputGroup}>
                   <Text style={[styles.label, { color: theme.textSecondary }]}>Description</Text>
-                  <TextInput
+                    <TextInput
                     ref={descriptionInputRef}
                     style={[styles.textArea, { 
-                      backgroundColor: darkMode ? '#2c2c2c' : '#f8f9fa',
-                      borderColor: darkMode ? '#444' : '#e9ecef',
-                      color: theme.textPrimary
+                        backgroundColor: darkMode ? '#2c2c2c' : '#f8f9fa',
+                        borderColor: darkMode ? '#444' : '#e9ecef',
+                        color: theme.textPrimary
                     }]}
                     placeholder="Tell the story behind this moment..."
                     placeholderTextColor={darkMode ? '#888' : '#999'}
@@ -265,13 +393,15 @@ const AddMemoryScreen = () => {
                     numberOfLines={4}
                     maxLength={500}
                     textAlignVertical="top"
+                    returnKeyType="Return"
+                    blurOnSubmit={true}
+                    onSubmitEditing={() => Keyboard.dismiss()}
                     onFocus={() => {
-                      // Scroll to description field when focused
-                      setTimeout(() => {
+                        setTimeout(() => {
                         scrollViewRef.current?.scrollToEnd({ animated: true });
-                      }, 100);
+                        }, 100);
                     }}
-                  />
+                    />
                   <Text style={styles.charCount}>{description.length}/500</Text>
                 </View>
 
@@ -342,7 +472,7 @@ const AddMemoryScreen = () => {
                     <View style={styles.uploadingContainer}>
                       <ActivityIndicator color="#fff" />
                       <Text style={styles.saveButtonText}>
-                        Uploading... {Math.round(uploadProgress)}%
+                        {isOffline ? 'Saving...' : `Uploading... ${Math.round(uploadProgress)}%`}
                       </Text>
                     </View>
                   ) : (
@@ -354,7 +484,7 @@ const AddMemoryScreen = () => {
                 </LinearGradient>
               </TouchableOpacity>
             </ScrollView>
-          </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
       </LinearGradient>
     </>
@@ -403,23 +533,82 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  mediaPreviewContainer: {
-    position: 'relative',
+  videoHint: {
+    fontSize: 11,
+    marginTop: 4,
+  },
+  mediaGalleryContainer: {
     marginBottom: 20,
+  },
+  mediaGallery: {
+    gap: 12,
+    paddingVertical: 8,
+  },
+  mediaItemContainer: {
+    position: 'relative',
+    width: 200,
+    height: 200,
     borderRadius: 16,
     overflow: 'hidden',
   },
-  mediaPreview: {
+  mediaItemPreview: {
     width: '100%',
-    aspectRatio: 4/3,
-    borderRadius: 16,
+    height: '100%',
   },
-  changeMediaButton: {
+  videoItemContainer: {
+    position: 'relative',
+  },
+  videoIndicator: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  removeMediaButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
     backgroundColor: 'rgba(0,0,0,0.6)',
     borderRadius: 20,
+  },
+  mediaIndexBadge: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    backgroundColor: '#667eea',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mediaIndexText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  addMoreContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  addMoreButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  mediaCountText: {
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: 'center',
   },
   formContainer: {
     borderRadius: 16,
@@ -466,10 +655,6 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 16,
     marginLeft: 12,
-  },
-    videoHint: {
-    fontSize: 11,
-    marginTop: 4,
   },
   dateConfirmButton: {
     backgroundColor: '#667eea',

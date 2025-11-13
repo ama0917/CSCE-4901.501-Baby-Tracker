@@ -8,6 +8,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 import { DarkModeProvider } from './screens/DarkMode';
 import { ActiveChildProvider } from './src/contexts/ActiveChildContext';
+import NetInfo from '@react-native-community/netinfo';
+import { checkAndProcessQueue, getQueueCount } from './src/utils/offlineQueue';
 
 // Screens
 import LoginScreen from './screens/LoginScreen';
@@ -34,10 +36,36 @@ import CalendarScreen from './screens/CalendarScreen';
 import WelcomeTour from './screens/WelcomeTour';
 import AddMemoryScreen from './screens/AddMemoryScreen';
 import MemoryDetailScreen from './screens/MemoryDetailScreen';
+import PediatricianFinder from './screens/PediatricianFinder';
 
 const Stack = createStackNavigator();
 
 export default function App() {
+  useEffect(() => {
+  const unsubscribe = NetInfo.addEventListener(state => {
+    if (state.isConnected) {
+      // Process queue when connection is restored
+      checkAndProcessQueue().then(({ processed, failed }) => {
+        if (processed > 0) {
+          Alert.alert(
+            'Memories Uploaded',
+            `${processed} offline ${processed === 1 ? 'memory' : 'memories'} uploaded successfully!`
+          );
+        }
+      });
+    }
+  });
+
+    getQueueCount().then(count => {
+    if (count > 0) {
+      console.log(`${count} memories pending upload`);
+    }
+  });
+
+  return () => unsubscribe();
+  }, []);
+
+
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState(null);
 
@@ -121,7 +149,6 @@ export default function App() {
             <Stack.Screen name="SleepingForm" component={SleepingForm} />
             <Stack.Screen name="EditChild" component={EditChildScreen} />
 
-            {/* Regular Reminders section */}
             <Stack.Screen
               name="RegularReminders"
               component={RegularReminders}
@@ -139,6 +166,7 @@ export default function App() {
                 cardStyle: { backgroundColor: 'transparent' },}} />
             <Stack.Screen name="InviteCaregiver" component={InviteCaregiver} options={{ headerShown: false }} />
             <Stack.Screen name="ManageCaregivers" component={ManageCaregivers} options={{ title: 'Manage Caregivers'  }} />
+            <Stack.Screen name="PediatricianFinder" component={PediatricianFinder}options={{ headerShown: false }} />
           </Stack.Navigator>
         </NavigationContainer>
       </ActiveChildProvider>

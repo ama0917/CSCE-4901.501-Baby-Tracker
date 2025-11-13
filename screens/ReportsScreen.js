@@ -35,6 +35,7 @@ import {
   MetricsGrid,
   enhancedStyles
 } from './ReportComponents';
+import OverviewTab from './OverviewTab';
 
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 const { width } = Dimensions.get('window');
@@ -827,7 +828,6 @@ const ReportPage = () => {
     fetchAllData();
   }, [childId, reportRange, isOwner, checkingPermissions]);
 
-  // EARLY RETURNS - Must come AFTER all hooks
   if (checkingPermissions) {
     return (
       <LinearGradient 
@@ -1737,54 +1737,83 @@ const renderFormattedText = (text, darkMode) => {
   });
 };
 
-  const AIPoweredSummary = ({ childId, childAge, childWeight, childHeight, sleepData, feedingData, diaperData, reportRange, activeTab: mainActiveTab, darkMode, theme }) => {
-    const [summaryCache, setSummaryCache] = useState({});
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [hasConsented, setHasConsented] = useState(false);
-    const [showConsentModal, setShowConsentModal] = useState(false);
-    const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
-    const cacheLoadedRef = useRef(false);
-    const consentCheckRef = useRef(false);
+const AIPoweredSummary = ({ 
+  childId, 
+  childAge, 
+  childWeight, 
+  childHeight, 
+  sleepData, 
+  feedingData, 
+  diaperData, 
+  reportRange, 
+  activeTab: mainActiveTab, 
+  darkMode, 
+  theme,
+  isOverviewMode = false  // NEW: flag to indicate if in overview mode
+}) => {
+  const [summaryCache, setSummaryCache] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [hasConsented, setHasConsented] = useState(false);
+  const [showConsentModal, setShowConsentModal] = useState(false);
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
+  const cacheLoadedRef = useRef(false);
+  const consentCheckRef = useRef(false);
 
-    // Load consent and cache on mount - ONLY ONCE
-    useEffect(() => {
-      if (consentCheckRef.current) return;
-      
-      const loadConsent = async () => {
-        try {
-          const consent = await AsyncStorage.getItem(`ai_consent_${childId}`);
-          setHasConsented(consent === 'true');
-          
-          const cached = await AsyncStorage.getItem(`ai_summary_cache_${childId}`);
-          if (cached) {
-            const parsedCache = JSON.parse(cached);
-            setSummaryCache(parsedCache);
-            cacheLoadedRef.current = true;
-          }
-        } catch (error) {
-          console.error('Error loading AI data:', error);
-        }
-      };
-      
-      if (childId && !cacheLoadedRef.current) {
-        consentCheckRef.current = true;
-        loadConsent();
-      }
-    }, [childId]);
-
-    const handleGenerateSummary = async (category, forceRefresh = false) => {
-
-      const cacheKey = `${reportRange}_${category}`;
-      
-      if (!forceRefresh && summaryCache[cacheKey]) {
-        return;
-      }
-
-      setIsLoading(true);
-      setError(null);
-      
+  // Load consent and cache on mount - ONLY ONCE
+  useEffect(() => {
+    if (consentCheckRef.current) return;
+    
+    const loadConsent = async () => {
       try {
+        const consent = await AsyncStorage.getItem(`ai_consent_${childId}`);
+        setHasConsented(consent === 'true');
+        
+        const cached = await AsyncStorage.getItem(`ai_summary_cache_${childId}`);
+        if (cached) {
+          const parsedCache = JSON.parse(cached);
+          setSummaryCache(parsedCache);
+          cacheLoadedRef.current = true;
+        }
+      } catch (error) {
+        console.error('Error loading AI data:', error);
+      }
+    };
+    
+    if (childId && !cacheLoadedRef.current) {
+      consentCheckRef.current = true;
+      loadConsent();
+    }
+  }, [childId]);
+
+  const handleGenerateSummary = async (category, forceRefresh = false) => {
+    const cacheKey = `${reportRange}_${category}`;
+    
+    if (!forceRefresh && summaryCache[cacheKey]) {
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // In overview mode, only generate overall summary
+      if (isOverviewMode) {
+        const overallResponse = await generateCategorizedAISummary(
+          childId, childAge, childWeight, childHeight, 
+          sleepData || [], feedingData || [], diaperData || [],
+          'Overall', reportRange
+        );
+        
+        const newCache = {
+          ...summaryCache,
+          [`${reportRange}_Overall`]: overallResponse
+        };
+        
+        setSummaryCache(newCache);
+        await AsyncStorage.setItem(`ai_summary_cache_${childId}`, JSON.stringify(newCache));
+      } else {
+        // In regular mode, generate both overall and category-specific
         const [overallResponse, categoryResponse] = await Promise.all([
           generateCategorizedAISummary(
             childId, childAge, childWeight, childHeight, 
@@ -1806,116 +1835,122 @@ const renderFormattedText = (text, darkMode) => {
         
         setSummaryCache(newCache);
         await AsyncStorage.setItem(`ai_summary_cache_${childId}`, JSON.stringify(newCache));
-      } catch (error) {
-        console.error('Error in handleGenerateSummary:', error);
-        setError('Unable to generate AI insights at this time. Please try again later.');
-      } finally {
-        setIsLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('Error in handleGenerateSummary:', error);
+      setError('Unable to generate AI insights at this time. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const handleConsent = async () => {
-      setShowConsentModal(false);
-      
-      try {
-        await AsyncStorage.setItem(`ai_consent_${childId}`, 'true');
-        setHasConsented(true);
-        setTimeout(() => {
-          handleGenerateSummary(mainActiveTab);
-        }, 300);
-      } catch (error) {
-        console.error('Error saving consent:', error);
-        Alert.alert('Error', 'Failed to save consent preference');
+  const handleConsent = async () => {
+    setShowConsentModal(false);
+    
+    try {
+      await AsyncStorage.setItem(`ai_consent_${childId}`, 'true');
+      setHasConsented(true);
+      setTimeout(() => {
+        handleGenerateSummary(isOverviewMode ? 'Overall' : mainActiveTab);
+      }, 300);
+    } catch (error) {
+      console.error('Error saving consent:', error);
+      Alert.alert('Error', 'Failed to save consent preference');
+    }
+  };
+
+  const handleRevokeConsent = async () => {
+    try {
+      await AsyncStorage.multiRemove([
+        `ai_consent_${childId}`,
+        `ai_summary_cache_${childId}`
+      ]);
+      setHasConsented(false);
+      setSummaryCache({});
+      setShowRevokeConfirm(false);
+      Alert.alert('Success', 'AI Insights access has been revoked');
+    } catch (error) {
+      console.error('Error revoking consent:', error);
+      Alert.alert('Error', 'Failed to revoke consent');
+    }
+  };
+
+  useEffect(() => {
+    if (!hasConsented || !cacheLoadedRef.current) return;
+    
+    const cacheKey = isOverviewMode 
+      ? `${reportRange}_Overall`
+      : `${reportRange}_${mainActiveTab}`;
+    
+    const shouldLoad = !summaryCache[cacheKey] && 
+                      (sleepData?.length > 0 || feedingData?.length > 0 || diaperData?.length > 0);
+    
+    if (shouldLoad) {
+      handleGenerateSummary(isOverviewMode ? 'Overall' : mainActiveTab);
+    }
+  }, [reportRange]);
+
+  if (!childId) return null;
+
+  const currentCacheKey = isOverviewMode 
+    ? `${reportRange}_Overall`
+    : `${reportRange}_${mainActiveTab}`;
+  const overallCacheKey = `${reportRange}_Overall`;
+
+  return (
+    <View style={[
+      styles.aiSummaryContainer,
+      isOverviewMode && styles.aiSummaryContainerCompact,
+      {
+        backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+        borderColor: darkMode ? '#404040' : '#e8eaf6'
       }
-    };
+    ]}>
+      {showConsentModal && !showRevokeConfirm && (
+        <ConsentModal 
+          onConsent={handleConsent}
+          onDecline={() => setShowConsentModal(false)}
+        />
+      )}
 
-    const handleRevokeConsent = async () => {
-      try {
-        await AsyncStorage.multiRemove([
-          `ai_consent_${childId}`,
-          `ai_summary_cache_${childId}`
-        ]);
-        setHasConsented(false);
-        setSummaryCache({});
-        setShowRevokeConfirm(false);
-        Alert.alert('Success', 'AI Insights access has been revoked');
-      } catch (error) {
-        console.error('Error revoking consent:', error);
-        Alert.alert('Error', 'Failed to revoke consent');
-      }
-    };
-
-    useEffect(() => {
-      if (!hasConsented || !cacheLoadedRef.current) return;
-      
-      const cacheKey = `${reportRange}_${mainActiveTab}`;
-      const shouldLoad = !summaryCache[cacheKey] && 
-                        (sleepData?.length > 0 || feedingData?.length > 0 || diaperData?.length > 0);
-      
-      if (shouldLoad) {
-        handleGenerateSummary(mainActiveTab);
-      }
-    }, [reportRange]);
-
-    if (!childId) return null;
-
-    const currentCacheKey = `${reportRange}_${mainActiveTab}`;
-    const overallCacheKey = `${reportRange}_Overall`;
-
-    return (
-      <View style={[
-        styles.aiSummaryContainer,
-        {
-          backgroundColor: darkMode ? '#2a2a2a' : '#fff',
-          borderColor: darkMode ? '#404040' : '#e8eaf6'
-        }
-      ]}>
-        {showConsentModal && !showRevokeConfirm && (
-          <ConsentModal 
-            onConsent={handleConsent}
-            onDecline={() => setShowConsentModal(false)}
-          />
-        )}
-
-        {showRevokeConfirm && !showConsentModal && (
-          <Modal transparent visible={true} animationType="fade">
-            <View style={styles.consentModalOverlay}>
-              <View style={[styles.consentModalContainer, { maxHeight: '40%' }]}>
-                <View style={styles.consentModalHeader}>
-                  <Ionicons name="warning-outline" size={32} color="#f44336" />
-                  <Text style={styles.consentModalTitle}>Revoke AI Access?</Text>
-                </View>
-                
-                <View style={{ padding: 20 }}>
-                  <Text style={styles.consentModalText}>
-                    This will disable AI-powered insights and delete your consent preference. You can re-enable it anytime.
-                  </Text>
-                </View>
-                
-                <View style={styles.consentModalActions}>
-                  <TouchableOpacity 
-                    style={styles.consentDeclineButton} 
-                    onPress={() => setShowRevokeConfirm(false)}
-                  >
-                    <Text style={styles.consentDeclineText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.consentAcceptButton, { backgroundColor: '#f44336' }]} 
-                    onPress={handleRevokeConsent}
-                  >
-                    <Text style={styles.consentAcceptText}>Revoke Access</Text>
-                  </TouchableOpacity>
-                </View>
+      {showRevokeConfirm && !showConsentModal && (
+        <Modal transparent visible={true} animationType="fade">
+          <View style={styles.consentModalOverlay}>
+            <View style={[styles.consentModalContainer, { maxHeight: '40%' }]}>
+              <View style={styles.consentModalHeader}>
+                <Ionicons name="warning-outline" size={32} color="#f44336" />
+                <Text style={styles.consentModalTitle}>Revoke AI Access?</Text>
+              </View>
+              
+              <View style={{ padding: 20 }}>
+                <Text style={styles.consentModalText}>
+                  This will disable AI-powered insights and delete your consent preference. You can re-enable it anytime.
+                </Text>
+              </View>
+              
+              <View style={styles.consentModalActions}>
+                <TouchableOpacity 
+                  style={styles.consentDeclineButton} 
+                  onPress={() => setShowRevokeConfirm(false)}
+                >
+                  <Text style={styles.consentDeclineText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.consentAcceptButton, { backgroundColor: '#f44336' }]} 
+                  onPress={handleRevokeConsent}
+                >
+                  <Text style={styles.consentAcceptText}>Revoke Access</Text>
+                </TouchableOpacity>
               </View>
             </View>
-          </Modal>
-        )}
+          </View>
+        </Modal>
+      )}
 
+      {!isOverviewMode && (
         <View style={styles.aiSummaryHeaderRow}>
           <View style={styles.aiSummaryHeaderLeft}>
-            <View style={styles.aiIconBadge}>
-              <Ionicons name="sparkles" size={18} color="#FFF" />
-            </View>
+            <Ionicons name="sparkles" size={20} color="#1976d2" style={{ marginRight: 8 }} />
             <View>
               <Text style={[styles.aiSummaryTitle, { color: darkMode ? '#fff' : '#333' }]}>
                 AI Insights
@@ -1953,132 +1988,149 @@ const renderFormattedText = (text, darkMode) => {
             )}
           </View>
         </View>
+      )}
 
-        {!hasConsented && !showConsentModal && (
-          <TouchableOpacity 
-            style={styles.consentPromptButton}
-            onPress={() => setShowConsentModal(true)}
-          >
-            <Ionicons name="lock-closed-outline" size={16} color="#FFF" />
-            <Text style={styles.consentPromptText}>Enable AI Insights</Text>
-          </TouchableOpacity>
-        )}
+      {!hasConsented && !showConsentModal && (
+        <TouchableOpacity 
+          style={styles.consentPromptButton}
+          onPress={() => setShowConsentModal(true)}
+        >
+          <Ionicons name="lock-closed-outline" size={16} color="#FFF" />
+          <Text style={styles.consentPromptText}>Enable AI Insights</Text>
+        </TouchableOpacity>
+      )}
 
-        {hasConsented && (
-          <>
-            {isLoading && (
-              <View style={styles.aiLoadingContainer}>
-                <ActivityIndicator size="small" color="#1976d2" />
-                <Text style={[styles.aiLoadingText, { color: darkMode ? '#bbb' : '#666' }]}>
-                  Analyzing patterns...
-                </Text>
-              </View>
-            )}
-            
-            {error && (
-              <View style={[
-                styles.aiErrorContainer,
-                { backgroundColor: darkMode ? '#5f2f2f' : '#ffebee' }
+      {hasConsented && (
+        <>
+          {isLoading && (
+            <View style={styles.aiLoadingContainer}>
+              <ActivityIndicator size="small" color="#1976d2" />
+              <Text style={[styles.aiLoadingText, { color: darkMode ? '#bbb' : '#666' }]}>
+                Analyzing patterns...
+              </Text>
+            </View>
+          )}
+          
+          {error && (
+            <View style={[
+              styles.aiErrorContainer,
+              { backgroundColor: darkMode ? '#5f2f2f' : '#ffebee' }
+            ]}>
+              <Ionicons name="alert-circle" size={20} color={darkMode ? '#ff6b6b' : '#d32f2f'} />
+              <Text style={[
+                styles.aiErrorText,
+                { color: darkMode ? '#ff9999' : '#d32f2f' }
               ]}>
-                <Ionicons name="alert-circle" size={20} color={darkMode ? '#ff6b6b' : '#d32f2f'} />
-                <Text style={[
-                  styles.aiErrorText,
-                  { color: darkMode ? '#ff9999' : '#d32f2f' }
+                {error}
+              </Text>
+            </View>
+          )}
+          
+          {!isLoading && !error && summaryCache[currentCacheKey] && (
+            <View style={styles.aiContentContainer}>
+              {/* Show only category-specific insight in overview mode */}
+              {isOverviewMode ? (
+                <View style={[
+                  styles.aiInsightCard,
+                  { backgroundColor: darkMode ? '#1f1f1f' : '#fafafa' }
                 ]}>
-                  {error}
-                </Text>
-              </View>
-            )}
-            
-            {!isLoading && !error && (summaryCache[overallCacheKey] || summaryCache[currentCacheKey]) && (
-              <View style={styles.aiContentContainer}>
-                {summaryCache[overallCacheKey] && (
-                  <View style={[
-                    styles.aiInsightCard,
-                    { backgroundColor: darkMode ? '#1f1f1f' : '#fafafa' }
-                  ]}>
+                  <View style={styles.aiInsightContent}>
+                    {renderFormattedText(summaryCache[currentCacheKey], darkMode)}
+                  </View>
+                </View>
+              ) : (
+                <>
+                  {/* Show overall summary only if not viewing overall category */}
+                  {summaryCache[overallCacheKey] && mainActiveTab !== 'Overall' && (
                     <View style={[
-                      styles.aiInsightCardHeader,
-                      { borderBottomColor: darkMode ? '#404040' : '#e0e0e0' }
+                      styles.aiInsightCard,
+                      { backgroundColor: darkMode ? '#1f1f1f' : '#fafafa' }
                     ]}>
-                      <View style={styles.aiInsightHeaderLeft}>
-                        <Ionicons name="stats-chart" size={18} color="#1976d2" />
-                        <Text style={[
-                          styles.aiInsightCardTitle,
-                          { color: darkMode ? '#fff' : '#333' }
-                        ]}>
-                          Overall Summary
-                        </Text>
-                      </View>
                       <View style={[
-                        styles.aiInsightBadge,
-                        { backgroundColor: darkMode ? '#1a3a52' : '#e3f2fd' }
+                        styles.aiInsightCardHeader,
+                        { borderBottomColor: darkMode ? '#404040' : '#e0e0e0' }
                       ]}>
-                        <Text style={[
-                          styles.aiInsightBadgeText,
-                          { color: darkMode ? '#64b5f6' : '#1976d2' }
+                        <View style={styles.aiInsightHeaderLeft}>
+                          <Ionicons name="stats-chart" size={18} color="#1976d2" />
+                          <Text style={[
+                            styles.aiInsightCardTitle,
+                            { color: darkMode ? '#fff' : '#333' }
+                          ]}>
+                            Overall Summary
+                          </Text>
+                        </View>
+                        <View style={[
+                          styles.aiInsightBadge,
+                          { backgroundColor: darkMode ? '#1a3a52' : '#e3f2fd' }
                         ]}>
-                          {reportRange}
-                        </Text>
+                          <Text style={[
+                            styles.aiInsightBadgeText,
+                            { color: darkMode ? '#64b5f6' : '#1976d2' }
+                          ]}>
+                            {reportRange}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.aiInsightContent}>
+                        {renderFormattedText(summaryCache[overallCacheKey], darkMode)}
                       </View>
                     </View>
-                    <View style={styles.aiInsightContent}>
-                      {renderFormattedText(summaryCache[overallCacheKey], darkMode)}
-                    </View>
-                  </View>
-                )}
-                
-                {summaryCache[currentCacheKey] && (
-                  <View style={[
-                    styles.aiInsightCard,
-                    { backgroundColor: darkMode ? '#1f1f1f' : '#fafafa' }
-                  ]}>
+                  )}
+                  
+                  {/* Show category-specific insight */}
+                  {summaryCache[currentCacheKey] && mainActiveTab !== 'Overall' && (
                     <View style={[
-                      styles.aiInsightCardHeader,
-                      { borderBottomColor: darkMode ? '#404040' : '#e0e0e0' }
+                      styles.aiInsightCard,
+                      { backgroundColor: darkMode ? '#1f1f1f' : '#fafafa' }
                     ]}>
-                      <View style={styles.aiInsightHeaderLeft}>
-                        <Ionicons 
-                          name={
-                            mainActiveTab === 'Sleep' ? 'bed' :
-                            mainActiveTab === 'Feeding' ? 'restaurant' :
-                            'water'
-                          } 
-                          size={18} 
-                          color="#1976d2"
-                        />
-                        <Text style={[
-                          styles.aiInsightCardTitle,
-                          { color: darkMode ? '#fff' : '#333' }
-                        ]}>
-                          {mainActiveTab} Deep Dive
-                        </Text>
+                      <View style={[
+                        styles.aiInsightCardHeader,
+                        { borderBottomColor: darkMode ? '#404040' : '#e0e0e0' }
+                      ]}>
+                        <View style={styles.aiInsightHeaderLeft}>
+                          <Ionicons 
+                            name={
+                              mainActiveTab === 'Sleep' ? 'bed' :
+                              mainActiveTab === 'Feeding' ? 'restaurant' :
+                              'water'
+                            } 
+                            size={18} 
+                            color="#1976d2"
+                          />
+                          <Text style={[
+                            styles.aiInsightCardTitle,
+                            { color: darkMode ? '#fff' : '#333' }
+                          ]}>
+                            {mainActiveTab} Deep Dive
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.aiInsightContent}>
+                        {renderFormattedText(summaryCache[currentCacheKey], darkMode)}
                       </View>
                     </View>
-                    <View style={styles.aiInsightContent}>
-                      {renderFormattedText(summaryCache[currentCacheKey], darkMode)}
-                    </View>
-                  </View>
-                )}
-              </View>
-            )}
-            
-            {!isLoading && !error && !summaryCache[overallCacheKey] && !summaryCache[currentCacheKey] && (
-              <View style={styles.noDataContainer}>
-                <Ionicons name="analytics-outline" size={40} color={darkMode ? '#555' : '#ccc'} />
-                <Text style={[
-                  styles.noDataText,
-                  { color: darkMode ? '#aaa' : '#666' }
-                ]}>
-                  Tap refresh to get personalized insights
-                </Text>
-              </View>
-            )}
-          </>
-        )}
-      </View>
-    );
-  };
+                  )}
+                </>
+              )}
+            </View>
+          )}
+          
+          {!isLoading && !error && !summaryCache[currentCacheKey] && (
+            <View style={styles.noDataContainer}>
+              <Ionicons name="analytics-outline" size={40} color={darkMode ? '#555' : '#ccc'} />
+              <Text style={[
+                styles.noDataText,
+                { color: darkMode ? '#aaa' : '#666' }
+              ]}>
+                Tap refresh to get personalized insights
+              </Text>
+            </View>
+          )}
+        </>
+      )}
+    </View>
+  );
+};
 
   // Fetch sleep data
 const fetchSleepData = async (startTimestamp, endTimestamp) => {
@@ -3663,8 +3715,16 @@ const renderCharts = () => {
 
       <Text style={[styles.title, { color: theme.textPrimary }]}>{`${name || 'Child'}'s Reports`}</Text>
 
-        {/* Time period toggle */}
+      {/* Time period toggle - now includes Overview */}
       <View style={[styles.toggleContainer, { backgroundColor: darkMode ? '#2c2c2c' : '#f0f0f0' }]}>
+        <TouchableOpacity
+          style={[styles.toggleButton, reportRange === 'Overview' && [styles.activeToggle, { backgroundColor: darkMode ? '#444' : '#fff' }]]}
+          onPress={() => setReportRange('Overview')}
+        >
+          <Text style={[styles.toggleText, reportRange === 'Overview' && { color: theme.textPrimary }]}>
+            Overview
+          </Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={[styles.toggleButton, reportRange === 'Weekly' && [styles.activeToggle, { backgroundColor: darkMode ? '#444' : '#fff' }]]}
           onPress={() => setReportRange('Weekly')}
@@ -3673,25 +3733,25 @@ const renderCharts = () => {
             Week
           </Text>
         </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.toggleButton, reportRange === 'Monthly' && [styles.activeToggle, { backgroundColor: darkMode ? '#444' : '#fff' }]]}
-            onPress={() => setReportRange('Monthly')}
-          >
-            <Text style={[styles.toggleText, reportRange === 'Monthly' && { color: theme.textPrimary }]}>
-              Month
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.toggleButton, reportRange === 'Annual' &&[styles.activeToggle, { backgroundColor: darkMode ? '#444' : '#fff' }]]}
-            onPress={() => setReportRange('Annual')}
-          >
-            <Text style={[styles.toggleText, reportRange === 'Annual' && { color: theme.textPrimary }]}>
-              Year
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={[styles.toggleButton, reportRange === 'Monthly' && [styles.activeToggle, { backgroundColor: darkMode ? '#444' : '#fff' }]]}
+          onPress={() => setReportRange('Monthly')}
+        >
+          <Text style={[styles.toggleText, reportRange === 'Monthly' && { color: theme.textPrimary }]}>
+            Month
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.toggleButton, reportRange === 'Annual' && [styles.activeToggle, { backgroundColor: darkMode ? '#444' : '#fff' }]]}
+          onPress={() => setReportRange('Annual')}
+        >
+          <Text style={[styles.toggleText, reportRange === 'Annual' && { color: theme.textPrimary }]}>
+            Year
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-        
+      {reportRange !== 'Overview' && (
         <View style={[styles.tabContainer, { backgroundColor: darkMode ? '#2c2c2c' : '#fff' }]}>
           <TouchableOpacity
             style={[styles.tabButton, activeTab === 'Sleep' && [styles.activeTab, { backgroundColor: darkMode ? '#3c3c3c' : '#E3F2FD' }]]}
@@ -3733,33 +3793,53 @@ const renderCharts = () => {
             </Text>
           </TouchableOpacity>
         </View>
+      )}
 
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
-          {/* Weekly summary card */}
-          {childId && !isLoading && childData && (
-            <AIPoweredSummary 
-              childId={childId} 
-              childAge={childData.age} 
-              childWeight={childData.weight} 
-              childHeight={childData.height}
-              sleepData={sleepData || []}
-              feedingData={feedingData || []}
-              diaperData={diaperData || []}
-              reportRange={reportRange}
-              activeTab={activeTab}
-              darkMode={darkMode}
-              theme={theme}
-            />
-          )}
-          {renderCharts()}
-        </ScrollView>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+        {/* Show Overview Tab or regular content */}
+        {reportRange === 'Overview' ? (
+          <OverviewTab
+            childId={childId}
+            name={name}
+            darkMode={darkMode}
+            theme={theme}
+            sleepData={sleepData}
+            feedingData={feedingData}
+            diaperData={diaperData}
+            childData={childData}
+            AIPoweredSummary={AIPoweredSummary}
+          />
+        ) : (
+          <>
+            {/* Weekly summary card */}
+            {childId && !isLoading && childData && (
+              <AIPoweredSummary 
+                childId={childId} 
+                childAge={childData.age} 
+                childWeight={childData.weight} 
+                childHeight={childData.height}
+                sleepData={sleepData || []}
+                feedingData={feedingData || []}
+                diaperData={diaperData || []}
+                reportRange={reportRange}
+                activeTab={activeTab}
+                darkMode={darkMode}
+                theme={theme}
+              />
+            )}
+            {renderCharts()}
+          </>
+        )}
+      </ScrollView>
 
-      <ExportReportSection 
-        exportReportAsPDF={exportReportAsPDF} 
-        exportReportAsExcel={exportReportAsExcel}
-        darkMode={darkMode}
-        theme={theme}
-      />
+      {reportRange !== 'Overview' && (
+        <ExportReportSection 
+          exportReportAsPDF={exportReportAsPDF} 
+          exportReportAsExcel={exportReportAsExcel}
+          darkMode={darkMode}
+          theme={theme}
+        />
+      )}
       </SafeAreaView>
     </LinearGradient>
   );
@@ -3820,12 +3900,6 @@ const renderCharts = () => {
             </Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity 
-          style={styles.exportButton}
-          onPress={exportReportAsPDF}
-        >
-          <Text style={styles.exportButtonText}>Share Report</Text>
-        </TouchableOpacity>
       </View>
     );
   };
@@ -4307,6 +4381,14 @@ aiSummaryContainer: {
   elevation: 4,
   borderWidth: 1,
   borderColor: '#e8eaf6',
+},
+aiSummaryContainerCompact: {
+  padding: 0,
+  backgroundColor: 'transparent',
+  shadowOpacity: 0,
+  elevation: 0,
+  borderWidth: 0,
+  marginBottom: 0,
 },
 aiSummaryHeaderRow: {
   flexDirection: 'row',

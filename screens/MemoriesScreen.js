@@ -125,12 +125,25 @@ const MemoriesScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete media from storage
-              if (memory.mediaUrl) {
-                await deleteImage(memory.mediaUrl);
-              }
-              if (memory.thumbnailUrl) {
-                await deleteImage(memory.thumbnailUrl);
+              // Handle both old single media and new multi-media formats
+              if (memory.media && Array.isArray(memory.media)) {
+                // Delete all media items
+                for (const mediaItem of memory.media) {
+                  if (mediaItem.mediaUrl) {
+                    await deleteImage(mediaItem.mediaUrl);
+                  }
+                  if (mediaItem.thumbnailUrl) {
+                    await deleteImage(mediaItem.thumbnailUrl);
+                  }
+                }
+              } else {
+                // Old format - single media
+                if (memory.mediaUrl) {
+                  await deleteImage(memory.mediaUrl);
+                }
+                if (memory.thumbnailUrl) {
+                  await deleteImage(memory.thumbnailUrl);
+                }
               }
               
               // Delete document
@@ -153,60 +166,81 @@ const MemoriesScreen = () => {
     setTimeout(() => setRefreshing(false), 1000);
   };
 
-  const renderMemoryItem = ({ item }) => (
-    <TouchableOpacity
-      style={[styles.memoryCard, { backgroundColor: darkMode ? '#2c2c2c' : '#fff' }]}
-      onPress={() => navigation.navigate('MemoryDetail', { memory: item, childName })}
-      activeOpacity={0.9}
-    >
-      {/* Media Preview */}
-      <View style={styles.mediaContainer}>
-        {item.mediaType === 'video' ? (
-          <>
-            <Image 
-              source={{ uri: item.thumbnailUrl || item.mediaUrl }} 
-              style={styles.mediaImage}
-            />
-            <View style={styles.videoOverlay}>
-              <MaterialCommunityIcons name="play-circle" size={48} color="rgba(255,255,255,0.9)" />
-            </View>
-          </>
-        ) : (
-          <Image source={{ uri: item.mediaUrl }} style={styles.mediaImage} />
-        )}
-      </View>
+  const renderMemoryItem = ({ item }) => {
+    // Handle both old single media and new multi-media formats
+    const firstMedia = item.media 
+      ? item.media.sort((a, b) => a.order - b.order)[0]
+      : {
+          mediaUrl: item.mediaUrl,
+          thumbnailUrl: item.thumbnailUrl,
+          mediaType: item.mediaType
+        };
+    
+    const mediaCount = item.media ? item.media.length : 1;
 
-      {/* Content */}
-      <View style={styles.contentContainer}>
-        <Text style={[styles.caption, { color: theme.textPrimary }]} numberOfLines={2}>
-          {item.caption}
-        </Text>
-        {item.description && (
-          <Text style={[styles.description, { color: theme.textSecondary }]} numberOfLines={2}>
-            {item.description}
-          </Text>
-        )}
-        <View style={styles.metaContainer}>
-          <MaterialCommunityIcons name="calendar" size={14} color={theme.textSecondary} />
-          <Text style={[styles.date, { color: theme.textSecondary }]}>
-            {item.date?.toDate().toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric'
-            })}
-          </Text>
-        </View>
-      </View>
-
-      {/* Delete Button */}
+    return (
       <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => handleDeleteMemory(item)}
+        style={[styles.memoryCard, { backgroundColor: darkMode ? '#2c2c2c' : '#fff' }]}
+        onPress={() => navigation.navigate('MemoryDetail', { memory: item, childName })}
+        activeOpacity={0.9}
       >
-        <MaterialCommunityIcons name="delete-outline" size={20} color="#ff5252" />
+        {/* Media Preview */}
+        <View style={styles.mediaContainer}>
+          {firstMedia.mediaType === 'video' ? (
+            <>
+              <Image 
+                source={{ uri: firstMedia.thumbnailUrl || firstMedia.mediaUrl }} 
+                style={styles.mediaImage}
+              />
+              <View style={styles.videoOverlay}>
+                <MaterialCommunityIcons name="play-circle" size={48} color="rgba(255,255,255,0.9)" />
+              </View>
+            </>
+          ) : (
+            <Image source={{ uri: firstMedia.mediaUrl }} style={styles.mediaImage} />
+          )}
+          
+          {/* Multi-media indicator */}
+          {mediaCount > 1 && (
+            <View style={styles.multiMediaBadge}>
+              <MaterialCommunityIcons name="image-multiple" size={16} color="#fff" />
+              <Text style={styles.multiMediaText}>{mediaCount}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Content */}
+        <View style={styles.contentContainer}>
+          <Text style={[styles.caption, { color: theme.textPrimary }]} numberOfLines={2}>
+            {item.caption}
+          </Text>
+          {item.description && (
+            <Text style={[styles.description, { color: theme.textSecondary }]} numberOfLines={2}>
+              {item.description}
+            </Text>
+          )}
+          <View style={styles.metaContainer}>
+            <MaterialCommunityIcons name="calendar" size={14} color={theme.textSecondary} />
+            <Text style={[styles.date, { color: theme.textSecondary }]}>
+              {item.date?.toDate().toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+              })}
+            </Text>
+          </View>
+        </View>
+
+        {/* Delete Button */}
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => handleDeleteMemory(item)}
+        >
+          <MaterialCommunityIcons name="delete-outline" size={20} color="#ff5252" />
+        </TouchableOpacity>
       </TouchableOpacity>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
@@ -271,19 +305,30 @@ const MemoriesScreen = () => {
         <SafeAreaView style={styles.container} edges={['top']}>
           {/* Header */}
           <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton} activeOpacity={0.7}>
-            <LinearGradient colors={darkMode ? darkModeGradients.card : ['#fff', '#f5f5f5']} style={styles.headerButtonGradient}>
-              <ArrowLeft size={20} color={darkMode ? '#fff' : '#2E3A59'} />
-            </LinearGradient>
-          </TouchableOpacity>
-            <View style={styles.headerTitleContainer}>
-              <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>
-                Memories
-              </Text>
-              <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
-                {childName}
-              </Text>
-            </View>
+            <TouchableOpacity 
+              onPress={() => navigation.goBack()} 
+              style={styles.headerButton} 
+              activeOpacity={0.7}
+            >
+              <LinearGradient 
+                colors={darkMode ? darkModeGradients.card : ['#fff', '#f5f5f5']} 
+                style={styles.headerButtonGradient}
+              >
+                <ArrowLeft size={20} color={darkMode ? '#fff' : '#2E3A59'} />
+                </LinearGradient>
+                </TouchableOpacity>
+                
+                <View style={styles.headerTitleContainer}>
+                  <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>
+                    Memories
+                  </Text>
+                  <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
+                    {childName}
+                  </Text>
+                </View>
+                
+                {/* Spacer to balance the back button for perfect centering */}
+                <View style={styles.headerButtonSpacer} />
           </View>
 
           {/* Memories List */}
@@ -342,7 +387,6 @@ const styles = StyleSheet.create({
   headerTitleContainer: {
     flex: 1,
     alignItems: 'center',
-    marginRight: 40
   },
   headerTitle: {
     fontSize: 18,
@@ -490,6 +534,27 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  headerButtonSpacer: {
+    width: 44,
+    height: 44,
+  },
+  multiMediaBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  multiMediaText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

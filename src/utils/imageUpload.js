@@ -1,4 +1,4 @@
-import { ref, uploadBytesResumable, getStorage, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytesResumable, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../../firebaseConfig';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 
@@ -69,11 +69,19 @@ export const generateImagePath = (childId) => {
 
 /**
  * Upload media (image or video) with progress tracking
+ * FIXED: Correct parameter order (path, uri, onProgress)
  */
-export const uploadMedia = async (uri, path, onProgress) => {
+export const uploadMedia = async (path, uri, onProgress) => {
   try {
+    console.log('Uploading media:', { path, uri: uri.substring(0, 50) });
+    
     const response = await fetch(uri);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch file: ${response.status}`);
+    }
+    
     const blob = await response.blob();
+    console.log('Blob created, size:', blob.size);
     
     const storageRef = ref(storage, path);
     const uploadTask = uploadBytesResumable(storageRef, blob);
@@ -83,6 +91,7 @@ export const uploadMedia = async (uri, path, onProgress) => {
         'state_changed',
         (snapshot) => {
           const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          console.log('Upload progress:', progress.toFixed(2) + '%');
           if (onProgress) onProgress(progress);
         },
         (error) => {
@@ -90,8 +99,14 @@ export const uploadMedia = async (uri, path, onProgress) => {
           reject(error);
         },
         async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          resolve(downloadURL);
+          try {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            console.log('Upload complete, URL:', downloadURL.substring(0, 50));
+            resolve(downloadURL);
+          } catch (error) {
+            console.error('Error getting download URL:', error);
+            reject(error);
+          }
         }
       );
     });

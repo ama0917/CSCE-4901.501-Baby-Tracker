@@ -10,8 +10,8 @@ import {
   orderBy,
   limit,
   getDocs,
-  doc,            // for permission snapshot
-  onSnapshot,     // for permission snapshot
+  doc,
+  onSnapshot,
 } from 'firebase/firestore';
 import { Bell, ArrowLeft, Settings, Sparkles, TrendingUp, Activity, Image as ImageIcon, Calendar, Edit2, Trash2 } from 'lucide-react-native';
 import { app } from '../firebaseConfig';
@@ -23,6 +23,7 @@ import { Info } from 'lucide-react-native';
 import { Modal, Easing } from 'react-native';      
 import { CalendarDays, Ruler, Weight, UserRound, X, Cake } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 const { width } = Dimensions.get('window');
 const db = getFirestore(app);
@@ -623,26 +624,28 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
               </TouchableOpacity>
             )} 
 
-            {/* Calendar button - only for parents */}
-             {isOwner && (
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => navigation.navigate('CalendarScreen', { childId, name })}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={darkMode ? ['#8e2de2', '#4a00e0'] : ['#A5D6A7', '#81D4FA']}
-                  style={styles.actionButtonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                >
-                  <Calendar size={18} color="#fff" strokeWidth={2} />
-                  <Text style={styles.actionButtonText}>Calendar</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
-          </View>
+          {/* Pediatrician Finder button */}
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => {
+              console.log('Find Pediatrician button pressed!');
+              console.log('Navigating to PediatricianFinder...');
+              navigation.navigate('PediatricianFinder');
+            }}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={darkMode ? ['#e14c2bff', '#de4040ff']: ['#ed7e65ff', '#f16767ff']}
+              style={styles.actionButtonGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Ionicons name="medical" size={18} color="#fff" strokeWidth={2} />
+              <Text style={styles.actionButtonText}>Find Pediatrician</Text>
+            </LinearGradient>
+          </TouchableOpacity>
 
+          </View>
 
           {/* History */}
           <View style={styles.section}>

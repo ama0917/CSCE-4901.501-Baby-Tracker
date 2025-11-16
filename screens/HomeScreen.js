@@ -319,6 +319,7 @@ const HomeScreen = () => {
 const SP = 16;
 const styles = StyleSheet.create({ 
 safeArea: {
+  flex: 1,
   backgroundColor: 'transparent',
   paddingTop: Platform.OS === 'ios' ? 6 : 12, 
 },

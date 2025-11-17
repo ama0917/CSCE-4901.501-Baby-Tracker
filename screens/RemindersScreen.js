@@ -1678,19 +1678,19 @@ const scheduleReminder = async (reminderType, time, useAI = false) => {
     // AI-based notification
     switch (reminderType) {
       case 'feeding':
-        notificationTitle = '🍼 Feeding Time!';
+        notificationTitle = 'Feeding Time!';
         notificationBody = currentReminder.confidence === 'high'
           ? `${name} typically feeds around now based on their routine. Time for feeding!`
           : `Suggested feeding time for ${name} based on age-appropriate schedule.`;
         break;
       case 'diaper':
-        notificationTitle = '👶 Diaper Check';
+        notificationTitle = 'Diaper Check';
         notificationBody = currentReminder.confidence === 'high'
           ? `Time to check ${name}'s diaper - staying on schedule!`
           : `Recommended diaper check time for ${name}.`;
         break;
       case 'nap':
-        notificationTitle = '😴 Nap Time';
+        notificationTitle = 'Nap Time';
         notificationBody = currentReminder.confidence === 'high'
           ? `${name} is likely getting sleepy. Optimal nap time!`
           : `Suggested nap time for ${name} based on age.`;

@@ -1664,8 +1664,14 @@ const ConsentModal = ({ onConsent, onDecline }) => {
 const renderFormattedText = (text, darkMode) => {
   if (!text) return null;
   
+  // Remove any markdown headers (###, ##, #)
+  text = text.replace(/^#{1,6}\s+/gm, '');
+  
   const lines = text.split('\n');
   return lines.map((line, index) => {
+    // Skip empty lines
+    if (!line.trim()) return null;
+    
     // Bold headers with **text**
     if (line.includes('**')) {
       const parts = line.split('**');
@@ -1690,8 +1696,8 @@ const renderFormattedText = (text, darkMode) => {
       );
     }
     
-    // Bullet points
-    if (line.trim().startsWith('•') || line.trim().startsWith('-')) {
+    // Bullet points (•, -, or *)
+    if (/^[•\-\*]\s+/.test(line.trim())) {
       return (
         <View key={index} style={styles.aiBulletContainer}>
           <Text style={[
@@ -1704,21 +1710,27 @@ const renderFormattedText = (text, darkMode) => {
             styles.aiBulletText,
             { color: darkMode ? '#ddd' : '#333' }
           ]}>
-            {line.replace(/^[•\-]\s*/, '')}
+            {line.replace(/^[•\-\*]\s*/, '')}
           </Text>
         </View>
       );
     }
     
-    // Section numbers (1., 2., etc.)
-    if (/^\d+\./.test(line.trim())) {
+    // Section numbers (1., 2., etc.) - make them standalone headers
+    const numberMatch = line.match(/^(\d+)\.\s*(.+)/);
+    if (numberMatch) {
       return (
-        <Text key={index} style={[
-          styles.aiNumberedItem,
-          { color: darkMode ? '#ddd' : '#333' }
-        ]}>
-          {line}
-        </Text>
+        <View key={index} style={styles.aiNumberedSection}>
+          <View style={styles.aiNumberBadge}>
+            <Text style={styles.aiNumberBadgeText}>{numberMatch[1]}</Text>
+          </View>
+          <Text style={[
+            styles.aiNumberedTitle,
+            { color: darkMode ? '#e0e0e0' : '#333' }
+          ]}>
+            {numberMatch[2]}
+          </Text>
+        </View>
       );
     }
     
@@ -1735,7 +1747,7 @@ const renderFormattedText = (text, darkMode) => {
     }
     
     return null;
-  });
+  }).filter(Boolean);
 };
 
 const AIPoweredSummary = ({ 
@@ -2041,42 +2053,6 @@ const AIPoweredSummary = ({
                 </View>
               ) : (
                 <>
-                  {/* Show overall summary only if not viewing overall category */}
-                  {summaryCache[overallCacheKey] && mainActiveTab !== 'Overall' && (
-                    <View style={[
-                      styles.aiInsightCard,
-                      { backgroundColor: darkMode ? '#1f1f1f' : '#fafafa' }
-                    ]}>
-                      <View style={[
-                        styles.aiInsightCardHeader,
-                        { borderBottomColor: darkMode ? '#404040' : '#e0e0e0' }
-                      ]}>
-                        <View style={styles.aiInsightHeaderLeft}>
-                          <Ionicons name="stats-chart" size={18} color="#1976d2" />
-                          <Text style={[
-                            styles.aiInsightCardTitle,
-                            { color: darkMode ? '#fff' : '#333' }
-                          ]}>
-                            Overall Summary
-                          </Text>
-                        </View>
-                        <View style={[
-                          styles.aiInsightBadge,
-                          { backgroundColor: darkMode ? '#1a3a52' : '#e3f2fd' }
-                        ]}>
-                          <Text style={[
-                            styles.aiInsightBadgeText,
-                            { color: darkMode ? '#64b5f6' : '#1976d2' }
-                          ]}>
-                            {reportRange}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.aiInsightContent}>
-                        {renderFormattedText(summaryCache[overallCacheKey], darkMode)}
-                      </View>
-                    </View>
-                  )}
                   
                   {/* Show category-specific insight */}
                   {summaryCache[currentCacheKey] && mainActiveTab !== 'Overall' && (
@@ -3509,7 +3485,7 @@ const renderCharts = () => {
           <View style={styles.additionalChartContainer}>
             <TimeOfDayHeatmap
               data={processSleepTimeOfDay()}
-              title="Sleep Start Times"
+              title={`Sleep Start Times \n`}
               color="#1976d2"
               darkMode={darkMode}
             />
@@ -3520,7 +3496,7 @@ const renderCharts = () => {
           <View style={styles.additionalChartContainer}>
             <TimeOfDayHeatmap
               data={processFeedingTimeOfDay()}
-              title="Feeding Times"
+              title={`Feeding Times \n`}
               color="#FF9800"
               darkMode={darkMode}
             />
@@ -3531,7 +3507,7 @@ const renderCharts = () => {
           <View style={styles.additionalChartContainer}>
             <TimeOfDayHeatmap
               data={processDiaperTimeOfDay()}
-              title="Diaper Change Times"
+              title={`Diaper Change Times \n`}
               color="#00BCD4"
             />
           </View>
@@ -5299,6 +5275,32 @@ chartTitle: {
   fontWeight: '600',
   marginBottom: 10,
   textAlign: 'center',
+},
+aiNumberedSection: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  marginTop: 12,
+  marginBottom: 8,
+  gap: 10,
+},
+aiNumberBadge: {
+  width: 24,
+  height: 24,
+  borderRadius: 12,
+  backgroundColor: '#1976d2',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+aiNumberBadgeText: {
+  color: '#fff',
+  fontSize: 12,
+  fontWeight: '700',
+},
+aiNumberedTitle: {
+  flex: 1,
+  fontSize: 14,
+  fontWeight: '600',
+  lineHeight: 20,
 },
 });
 

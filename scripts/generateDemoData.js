@@ -1,10 +1,10 @@
-//Run w/ run generate-demo (WARNING: will take about 3-7 minutes to populate data)
+//Run w/ npm run generate-demo (WARNING: will take about 3-7 minutes to populate data)
 import { db } from '../firebaseConfig.js';
 import { collection, addDoc, Timestamp } from 'firebase/firestore';
 
 // CONFIGURATION
-const CHILD_ID = 'childID'; // Replace with actual child ID (found in firebase)
-const USER_ID = 'userID';   // Replace with actual user ID (found in firebase)
+const CHILD_ID = 'SdQUGpkbTRmKa7NXbI3D'; // Replace with actual child ID (found in firebase)
+const USER_ID = 'CJTaD4VxzSZpBLcaAuzFC1Pyw0x1';   // Replace with actual user ID (found in firebase)
 const END_DATE = new Date(); // Today
 const START_DATE = new Date(END_DATE);
 START_DATE.setFullYear(START_DATE.getFullYear() - 1); // 1 year ago

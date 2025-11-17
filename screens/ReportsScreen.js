@@ -15,6 +15,7 @@ import { ScrollView } from 'react-native';
 import * as XLSX from 'xlsx';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ArrowLeft } from 'lucide-react-native';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
@@ -3692,17 +3693,24 @@ const renderCharts = () => {
 
   return (
     <LinearGradient 
-      colors={darkMode ? ['#1f1f1f', '#2a2a2a'] : ['#B2EBF2', '#FCE4EC']} 
+      colors={darkMode ? ['#0f2027', '#05090b'] : ['#B2EBF2', '#FCE4EC']} 
       style={styles.gradient}
     >
       <SafeAreaView style={styles.container}>
-      <View style={[styles.header, { backgroundColor: darkMode ? 'transparent' : 'transparent' }]}>
-        <TouchableOpacity 
-          style={styles.backButton} 
+      <View style={styles.header}>
+        <TouchableOpacity
           onPress={() => navigation.goBack()}
+          style={styles.headerButton}
+          activeOpacity={0.9}
         >
-          <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
-          <Text style={[styles.backText, { color: theme.textPrimary }]}>Dashboard</Text>
+          <LinearGradient
+            colors={darkMode ? ['#1f1f1f', '#2c2c2c'] : ['#F8FBFF', '#EEF4FF']}
+            style={styles.headerButtonGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <ArrowLeft size={20} color={darkMode ? '#fff' : '#2E3A59'} />
+          </LinearGradient>
         </TouchableOpacity>
         <View style={styles.logoContainer}>
           <Image 
@@ -4038,14 +4046,25 @@ diaperTotalValue: enhancedStyles.diaperTotalValue,
     padding: 20,
   },
   header: {
+    marginTop: 15,
+    marginBottom: 18,
+    height: 44,
+    paddingLeft: 14,
+    paddingRight: 13,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
+   
   },
-backButton: {
-  padding: 5,
-  flexDirection: 'row',
+headerButton: {
+  borderRadius: 16,
+  overflow: 'hidden',
+},
+headerButtonGradient: {
+  width: 44,
+  height: 44,
+  borderRadius: 16,
+  justifyContent: 'center',
   alignItems: 'center',
 },
 backText: {
@@ -4061,7 +4080,7 @@ backText: {
     width: 60,
     height: 60,
     resizeMode: 'contain',
-    marginLeft: -30,
+    marginLeft: 30,
   },
   headerRightSpace: {
     width: 80, 

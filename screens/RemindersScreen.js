@@ -2183,7 +2183,7 @@ const saveReminders = async () => {
                           await setDoc(doc(db, 'reminders', childId), reminderData);
                           
                           Alert.alert(
-                            '✅ Success!', 
+                            'Success!', 
                             `Settings saved and ${totalScheduled} notification${totalScheduled !== 1 ? 's' : ''} scheduled!\n\nNotifications will be sent at your specified times.\n\nUse "Send Now" buttons to test immediately.`,
                             [{ text: 'OK', onPress: () => navigation.goBack() }]
                           );

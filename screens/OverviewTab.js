@@ -24,6 +24,8 @@ import {
 } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { app } from '../firebaseConfig';
+import OverviewAIControls from './OverviewAIControls';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const db = getFirestore(app);
 
@@ -47,6 +49,10 @@ const OverviewTab = ({
   const [showRangeModal, setShowRangeModal] = useState(false);
   const [expandedLogId, setExpandedLogId] = useState(null);
   const [displayedLogsCount, setDisplayedLogsCount] = useState(10);
+  const [aiRefreshKey, setAiRefreshKey] = useState(0);
+const handleRefreshAI = () => {
+    setAiRefreshKey(prevKey => prevKey + 1);
+  };
 
   useEffect(() => {
     if (childId) {
@@ -54,45 +60,68 @@ const OverviewTab = ({
     }
   }, [childId]);
 
-  const loadCalendarData = async () => {
-    try {
-      setIsLoadingCalendar(true);
-      
-      const startOfYear = new Date(new Date().getFullYear(), 0, 1);
-      const endOfYear = new Date(new Date().getFullYear(), 11, 31, 23, 59, 59);
+const [calendarCache, setCalendarCache] = useState(null);
+const [cacheTimestamp, setCacheTimestamp] = useState(null);
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
 
-      const collections = ['feedLogs', 'diaperLogs', 'sleepLogs'];
-      const marked = {};
-
-      for (const collectionName of collections) {
-        const q = query(
-          collection(db, collectionName),
-          where('childId', '==', childId),
-          where('timestamp', '>=', Timestamp.fromDate(startOfYear)),
-          where('timestamp', '<=', Timestamp.fromDate(endOfYear))
-        );
-
-        const snapshot = await getDocs(q);
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          const timestamp = data.timestamp?.toDate() || data.time?.toDate();
-          if (timestamp) {
-            const dateStr = timestamp.toISOString().split('T')[0];
-            if (!marked[dateStr]) {
-              marked[dateStr] = { marked: true, dotColor: darkMode ? '#64b5f6' : '#81D4FA' };
-            }
-          }
-        });
-      }
-
-      setMarkedDates(marked);
-    } catch (error) {
-      console.error('Error loading calendar data:', error);
-      Alert.alert('Error', 'Failed to load calendar data');
-    } finally {
+const loadCalendarData = async (forceRefresh = false) => {
+  try {
+    // Check if we have valid cached data
+    const now = Date.now();
+    if (!forceRefresh && calendarCache && cacheTimestamp && (now - cacheTimestamp) < CACHE_DURATION) {
+      console.log('Using cached calendar data');
+      setMarkedDates(calendarCache);
       setIsLoadingCalendar(false);
+      return;
     }
-  };
+
+    console.log('Loading fresh calendar data');
+    setIsLoadingCalendar(true);
+    
+    const startOfYear = new Date(new Date().getFullYear(), 0, 1);
+    const endOfYear = new Date(new Date().getFullYear(), 11, 31, 23, 59, 59);
+
+    const collections = [
+      { name: 'feedLogs', timeField: 'timestamp' },
+      { name: 'diaperLogs', timeField: 'time' },
+      { name: 'sleepLogs', timeField: 'timestamp' }
+    ];
+    const marked = {};
+
+    for (const { name: collectionName, timeField } of collections) {
+      const q = query(
+        collection(db, collectionName),
+        where('childId', '==', childId),
+        where(timeField, '>=', Timestamp.fromDate(startOfYear)),
+        where(timeField, '<=', Timestamp.fromDate(endOfYear))
+      );
+
+      const snapshot = await getDocs(q);
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        const timestamp = data[timeField]?.toDate();
+        if (timestamp) {
+          const dateStr = timestamp.toISOString().split('T')[0];
+          if (!marked[dateStr]) {
+            marked[dateStr] = { marked: true, dotColor: darkMode ? '#64b5f6' : '#81D4FA' };
+          }
+        }
+      });
+    }
+
+    // Cache the results
+    setCalendarCache(marked);
+    setCacheTimestamp(now);
+    setMarkedDates(marked);
+    
+    console.log('Calendar data loaded and cached');
+  } catch (error) {
+    console.error('Error loading calendar data:', error);
+    Alert.alert('Error', 'Failed to load calendar data');
+  } finally {
+    setIsLoadingCalendar(false);
+  }
+};
 
   const loadDayLogs = async (date, loadMore = false) => {
     try {
@@ -238,61 +267,70 @@ const OverviewTab = ({
   const hasMoreLogs = displayedLogsCount < dayLogs.length;
 
   return (
-    <ScrollView 
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.contentContainer}
-    >
-      {/* AI Insights Section - Streamlined */}
-      <View style={[
-        styles.aiInsightsSection,
-        { 
-          backgroundColor: darkMode ? '#1f1f1f' : '#fff',
-          borderColor: darkMode ? '#333' : '#e0e0e0'
-        }
-      ]}>
-        <View style={styles.aiInsightsHeader}>
-          <View style={styles.aiInsightsHeaderLeft}>
-            <Ionicons name="sparkles" size={20} color="#1976d2" />
-            <Text style={[styles.aiInsightsTitle, { color: theme.textPrimary }]}>
-              AI Insights
-            </Text>
-          </View>
-          
-          <TouchableOpacity 
-            style={[
-              styles.rangeSelector,
-              { 
-                backgroundColor: darkMode ? '#2c2c2c' : '#f0f0f0',
-                borderColor: darkMode ? '#404040' : '#e0e0e0'
-              }
-            ]}
-            onPress={() => setShowRangeModal(true)}
-          >
-            <Text style={[styles.rangeSelectorText, { color: theme.textPrimary }]}>
-              {aiInsightRange}
-            </Text>
-            <Ionicons name="chevron-down" size={16} color={theme.textPrimary} />
-          </TouchableOpacity>
-        </View>
+<ScrollView 
+  style={styles.container} 
+  showsVerticalScrollIndicator={false} 
+  contentContainerStyle={styles.contentContainer} 
+>
+  {/* AI Insights Section - With Refresh Button */}
+  <View style={[
+    styles.aiInsightSection, 
+    { 
+      backgroundColor: darkMode ? '#1f1f1f' : '#fff',
+      borderColor: darkMode ? '#333' : '#e0e0e0'
+    }
+  ]}>
+    <View style={styles.sectionHeader}>
+      <Ionicons name="sparkles" size={20} color={darkMode ? '#64b5f6' : '#1976d2'} />
+      <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>AI Powered Summary</Text>
+      
+      <View style={styles.aiControlButtons}>
+        {/* Range Selector Button (using existing state/modal logic) */}
+        <TouchableOpacity
+          style={[
+            styles.rangeButton,
+            { backgroundColor: darkMode ? '#333' : '#f0f0f0' }
+          ]}
+          onPress={() => setShowRangeModal(true)}
+        >
+          <Text style={[styles.rangeButtonText, { color: theme.textSecondary }]}>
+            {aiInsightRange}
+          </Text>
+          <Ionicons name="chevron-down" size={16} color={theme.textSecondary} />
+        </TouchableOpacity>
 
-        {childId && childData && (
-          <AIPoweredSummary 
-            childId={childId} 
-            childAge={childData.age} 
-            childWeight={childData.weight} 
-            childHeight={childData.height}
-            sleepData={sleepData || []}
-            feedingData={feedingData || []}
-            diaperData={diaperData || []}
-            reportRange={aiInsightRange}
-            activeTab="Overall"
-            darkMode={darkMode}
-            theme={theme}
-            isOverviewMode={true}
-          />
-        )}
+        {/* Refresh Button - THIS IS THE NEW ELEMENT */}
+        <TouchableOpacity
+          style={[
+            styles.refreshButton,
+            { backgroundColor: darkMode ? '#333' : '#f0f0f0' }
+          ]}
+          onPress={handleRefreshAI}
+        >
+          <Ionicons name="refresh" size={20} color={darkMode ? '#64b5f6' : '#1976d2'} />
+        </TouchableOpacity>
       </View>
+    </View>
+
+    {/* Render the AIPoweredSummary component */}
+    {childId && childData && (
+      <AIPoweredSummary 
+        key={aiRefreshKey} // CRUCIAL: Forces the component to re-fetch/re-render
+        childId={childId}
+        childAge={childData?.age} 
+        childWeight={childData?.weight} 
+        childHeight={childData?.height} 
+        sleepData={sleepData || []}
+        feedingData={feedingData || []}
+        diaperData={diaperData || []}
+        reportRange={aiInsightRange} // Uses 'Weekly', 'Monthly', or 'Annual'
+        activeTab={'Overall'} // Fixed context for Overview
+        darkMode={darkMode}
+        theme={theme}
+        isOverviewMode={true} // Flag for compact rendering if needed
+      />
+    )}
+  </View>
 
       {/* Range Selection Modal */}
       <Modal
@@ -702,6 +740,79 @@ const styles = StyleSheet.create({
   noLogsText: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  aiControlButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  aiControlButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  aiInsightsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+    gap: 12,
+  },
+  aiInsightSection: {
+    borderRadius: 15,
+    padding: 16,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+    borderWidth: 1,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1, 
+    marginLeft: 8,
+  },
+  aiControlButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rangeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 4,
+  },
+  rangeButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  refreshButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

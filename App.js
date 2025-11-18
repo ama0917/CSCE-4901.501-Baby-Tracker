@@ -152,7 +152,7 @@ export default function App() {
             <Stack.Screen
               name="RegularReminders"
               component={RegularReminders}
-              options={{ headerShown: true, title: 'Reminders' }}
+              options={{ headerShown: false, title: 'Reminders' }}
             />
             <Stack.Screen name="RemindersScreen" component={RemindersScreen} />
             <Stack.Screen name="AddMemoryScreen" component={AddMemoryScreen} />

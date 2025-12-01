@@ -26,12 +26,13 @@ const getTodayStr = () => {
 
 const SleepingForm = ({ navigation }) => {
   const route = useRoute();
-  const { childId, name } = route.params || {};
+  const { childId, name, editingLogId: passedEditingLogId, existingData } = route.params || {};
 
   // caregiver gating state
   const { role } = useUserRole();
   const uid = getAuth().currentUser?.uid;
   const [canLog, setCanLog] = useState(role === 'parent');
+  const [editingLogId, setEditingLogId] = useState(passedEditingLogId || null);
 
   //live permission watch; parents always true
   useEffect(() => {
@@ -47,21 +48,49 @@ const SleepingForm = ({ navigation }) => {
   }, [role, childId, uid]);
 
   // Fetch incomplete logs
-useEffect(() => {
-  if (!childId) return;
-  
-  const { query, where, getDocs, orderBy } = require('firebase/firestore');
-  const logsRef = collection(db, 'sleepLogs');
-  
-  const fetchIncompleteLogs = async () => {
-    try {
-      const q = query(
-        logsRef,
-        where('childId', '==', childId),
-        where('incomplete', '==', true)
-      );
-      
-      const snapshot = await getDocs(q);
+  useEffect(() => {
+    if (!childId) return;
+    
+    const { query, where, getDocs, orderBy } = require('firebase/firestore');
+    const logsRef = collection(db, 'sleepLogs');
+    
+    const fetchIncompleteLogs = async () => {
+      try {
+        const q = query(
+          logsRef,
+          where('childId', '==', childId),
+          where('incomplete', '==', true)
+        );
+        
+        const snapshot = await getDocs(q);
+        const logs = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          logs.push({
+            id: doc.id,
+            ...data,
+            timestamp: data.timestamp?.toDate()
+          });
+        });
+        
+        // Sort by timestamp descending (newest first)
+        logs.sort((a, b) => b.timestamp - a.timestamp);
+        setIncompleteLogs(logs);
+      } catch (error) {
+        console.error('Error fetching incomplete logs:', error);
+      }
+    };
+    
+    fetchIncompleteLogs();
+    
+    // Set up real-time listener
+    const q = query(
+      logsRef,
+      where('childId', '==', childId),
+      where('incomplete', '==', true)
+    );
+    
+    const unsub = onSnapshot(q, (snapshot) => {
       const logs = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
@@ -71,40 +100,27 @@ useEffect(() => {
           timestamp: data.timestamp?.toDate()
         });
       });
-      
-      // Sort by timestamp descending (newest first)
       logs.sort((a, b) => b.timestamp - a.timestamp);
       setIncompleteLogs(logs);
-    } catch (error) {
-      console.error('Error fetching incomplete logs:', error);
-    }
-  };
-  
-  fetchIncompleteLogs();
-  
-  // Set up real-time listener
-  const q = query(
-    logsRef,
-    where('childId', '==', childId),
-    where('incomplete', '==', true)
-  );
-  
-  const unsub = onSnapshot(q, (snapshot) => {
-    const logs = [];
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      logs.push({
-        id: doc.id,
-        ...data,
-        timestamp: data.timestamp?.toDate()
-      });
     });
-    logs.sort((a, b) => b.timestamp - a.timestamp);
-    setIncompleteLogs(logs);
-  });
-  
-  return () => unsub();
-}, [childId]);
+    
+    return () => unsub();
+  }, [childId]);
+
+  useEffect(() => {
+    if (existingData) {
+      if (existingData.timestamp) setStartTime(existingData.timestamp);
+      if (existingData.sleepType) setSleepType(existingData.sleepType);
+      if (existingData.incomplete) {
+        setIsIncompleteLog(true);
+      } else if (existingData.duration) {
+        // Calculate end time from start time + duration
+        const calculatedEndTime = new Date(existingData.timestamp);
+        calculatedEndTime.setMinutes(calculatedEndTime.getMinutes() + existingData.duration);
+        setEndTime(calculatedEndTime);
+      }
+    }
+  }, [existingData]);
 
   const { darkMode } = useDarkMode();
   const currentTheme = darkMode ? appTheme.dark : appTheme.light;
@@ -117,7 +133,6 @@ useEffect(() => {
   const [showSleepTypePicker, setShowSleepTypePicker] = useState(false);
   const [isIncompleteLog, setIsIncompleteLog] = useState(false);
   const [incompleteLogs, setIncompleteLogs] = useState([]);
-  const [editingLogId, setEditingLogId] = useState(null);
 
 const formatTime = (date) => {
     let hours = date.getHours();
@@ -268,6 +283,7 @@ const checkForDuplicates = async () => {
           sleepType,
           endTime: isIncompleteLog ? null : endTime,
           incomplete: isIncompleteLog,
+          createdBy: uid,
           updatedAt: serverTimestamp()
         };
         
@@ -402,7 +418,7 @@ const checkForDuplicates = async () => {
               ))}
             </View>
           )}
-
+{/* 
           {editingLogId && (
             <View style={styles.editingBanner}>
               <LinearGradient
@@ -433,7 +449,7 @@ const checkForDuplicates = async () => {
                 </TouchableOpacity>
               </LinearGradient>
             </View>
-          )}
+          )} */}
 
           {/* Start Time */}
           <LinearGradient colors={darkMode ? currentTheme.card : ['#ffffffee', '#f9f9ff']} style={styles.inputCard}>

@@ -10,6 +10,7 @@ import { DarkModeProvider } from './screens/DarkMode';
 import { ActiveChildProvider } from './src/contexts/ActiveChildContext';
 import NetInfo from '@react-native-community/netinfo';
 import { checkAndProcessQueue, getQueueCount } from './src/utils/offlineQueue';
+import { Audio } from 'expo-av';
 
 // Screens
 import LoginScreen from './screens/LoginScreen';
@@ -37,6 +38,10 @@ import WelcomeTour from './screens/WelcomeTour';
 import AddMemoryScreen from './screens/AddMemoryScreen';
 import MemoryDetailScreen from './screens/MemoryDetailScreen';
 import PediatricianFinder from './screens/PediatricianFinder';
+import BreastfeedingTimer from './screens/BreastfeedingTimer';
+import PrivacyAgreement from './screens/PrivacyAgreement';
+import MeasurementsScreen from './screens/MeasurementsScreen';
+import LullabyScreen from './screens/LullabyScreen';
 
 const Stack = createStackNavigator();
 
@@ -167,6 +172,10 @@ export default function App() {
             <Stack.Screen name="InviteCaregiver" component={InviteCaregiver} options={{ headerShown: false }} />
             <Stack.Screen name="ManageCaregivers" component={ManageCaregivers} options={{ title: 'Manage Caregivers'  }} />
             <Stack.Screen name="PediatricianFinder" component={PediatricianFinder}options={{ headerShown: false }} />
+            <Stack.Screen name="BreastfeedingTimer" component={BreastfeedingTimer} options={{ headerShown: false }} />
+            <Stack.Screen name="PrivacyAgreement" component={PrivacyAgreement} options={{ headerShown: false }} />
+            <Stack.Screen name="MeasurementsScreen" component={MeasurementsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="LullabyScreen" component={LullabyScreen} ptions={{ headerShown: false }}/>
           </Stack.Navigator>
         </NavigationContainer>
       </ActiveChildProvider>

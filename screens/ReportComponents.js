@@ -1,8 +1,9 @@
-// ============================================================================
-// IMPROVED SUMMARY CARDS COMPONENT
-// ============================================================================
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { AntDesign } from '@expo/vector-icons';
 
-const EnhancedSummaryCard = ({ item, metric, activeTab, childAge, hasAIConsent }) => {
+const EnhancedSummaryCard = ({ item, metric, activeTab, childAge, hasAIConsent, darkMode, theme }) => {
   const getTrendIcon = (trend) => {
     switch(trend) {
       case 'up': return 'trending-up';
@@ -12,10 +13,10 @@ const EnhancedSummaryCard = ({ item, metric, activeTab, childAge, hasAIConsent }
   };
 
   const getTrendColor = (trend, metric) => {
-    if (trend === 'stable') return '#888';
+    if (trend === 'stable') return darkMode ? '#999' : '#888';
     if (metric === 'more') return trend === 'up' ? '#4CAF50' : '#F44336';
     if (metric === 'less') return trend === 'down' ? '#4CAF50' : '#F44336';
-    return '#888';
+    return darkMode ? '#999' : '#888';
   };
 
   const formatValue = (value, unit, key) => {
@@ -24,36 +25,56 @@ const EnhancedSummaryCard = ({ item, metric, activeTab, childAge, hasAIConsent }
   };
 
   const benchmarkColor = (avg, benchmark) => {
-    if (!benchmark) return '#888';
+    if (!benchmark) return darkMode ? '#999' : '#888';
     return parseFloat(avg) >= benchmark ? '#4CAF50' : '#FF9800';
   };
 
   // Get AI-based recommendation if enabled
+  const getAgeBasedRecommendation = (metric, value, ageInMonths) => {
+    // This function should be passed from parent or defined here
+    // For now, returning null
+    return null;
+  };
+
   const aiRecommendation = hasAIConsent && childAge 
     ? getAgeBasedRecommendation(item.key, item.avg, childAge)
     : null;
 
   return (
-    <View style={styles.enhancedSummaryCard}>
-      <View style={styles.cardTopRow}>
-        <View style={styles.cardIconContainer}>
+    <View style={[
+      enhancedStyles.enhancedSummaryCard,
+      { 
+        backgroundColor: darkMode ? '#2a2a2a' : '#f8f9fa',
+        borderLeftColor: darkMode ? '#64b5f6' : '#1976d2'
+      }
+    ]}>
+      <View style={enhancedStyles.cardTopRow}>
+        <View style={[
+          enhancedStyles.cardIconContainer,
+          { backgroundColor: darkMode ? '#1a3a52' : '#E3F2FD' }
+        ]}>
           <Ionicons 
             name={item.icon || "stats-chart"} 
             size={22} 
-            color="#1976d2" 
+            color={darkMode ? '#64b5f6' : '#1976d2'} 
           />
         </View>
-        <View style={styles.cardLabelContainer}>
-          <Text style={styles.cardLabel}>{item.label}</Text>
+        <View style={enhancedStyles.cardLabelContainer}>
+          <Text style={[enhancedStyles.cardLabel, { color: theme.textSecondary }]}>
+            {item.label}
+          </Text>
           {item.trend && item.trend !== 'stable' && (
-            <View style={styles.trendPill}>
+            <View style={[
+              enhancedStyles.trendPill,
+              { backgroundColor: darkMode ? '#333' : '#f0f0f0' }
+            ]}>
               <AntDesign 
                 name={getTrendIcon(item.trend)}
                 size={10}
                 color={getTrendColor(item.trend, item.metric)}
               />
               <Text style={[
-                styles.trendPillText,
+                enhancedStyles.trendPillText,
                 { color: getTrendColor(item.trend, item.metric) }
               ]}>
                 {item.trend === 'up' ? 'Increasing' : 'Decreasing'}
@@ -63,13 +84,13 @@ const EnhancedSummaryCard = ({ item, metric, activeTab, childAge, hasAIConsent }
         </View>
       </View>
 
-      <View style={styles.cardValueSection}>
-        <Text style={styles.cardValue}>
+      <View style={enhancedStyles.cardValueSection}>
+        <Text style={[enhancedStyles.cardValue, { color: theme.textPrimary }]}>
           {formatValue(item.avg, item.unit, item.key)}
         </Text>
         {item.benchmark && (
           <Text style={[
-            styles.benchmarkLabel,
+            enhancedStyles.benchmarkLabel,
             { color: benchmarkColor(item.avg, item.benchmark) }
           ]}>
             Target: {item.benchmark}{item.unit || ''}/day
@@ -80,7 +101,7 @@ const EnhancedSummaryCard = ({ item, metric, activeTab, childAge, hasAIConsent }
       {/* AI Recommendation Badge */}
       {aiRecommendation && (
         <View style={[
-          styles.aiRecommendationBadge,
+          enhancedStyles.aiRecommendationBadge,
           { 
             backgroundColor: aiRecommendation.color + '15',
             borderLeftColor: aiRecommendation.color
@@ -92,11 +113,14 @@ const EnhancedSummaryCard = ({ item, metric, activeTab, childAge, hasAIConsent }
             color={aiRecommendation.color} 
           />
           <View style={{ flex: 1, marginLeft: 6 }}>
-            <Text style={[styles.aiRecommendationText, { color: aiRecommendation.color }]}>
+            <Text style={[enhancedStyles.aiRecommendationText, { color: aiRecommendation.color }]}>
               {aiRecommendation.message}
             </Text>
             {aiRecommendation.advice && (
-              <Text style={styles.aiRecommendationAdvice}>
+              <Text style={[
+                enhancedStyles.aiRecommendationAdvice,
+                { color: darkMode ? '#aaa' : '#666' }
+              ]}>
                 {aiRecommendation.advice}
               </Text>
             )}
@@ -105,7 +129,7 @@ const EnhancedSummaryCard = ({ item, metric, activeTab, childAge, hasAIConsent }
       )}
 
       {item.details && !aiRecommendation && (
-        <Text style={styles.cardDetails}>
+        <Text style={[enhancedStyles.cardDetails, { color: theme.textSecondary }]}>
           {item.details}
         </Text>
       )}
@@ -117,18 +141,22 @@ const EnhancedSummaryCard = ({ item, metric, activeTab, childAge, hasAIConsent }
 // ENHANCED METRICS DISPLAY
 // ============================================================================
 
-const MetricsGrid = ({ data, activeTab }) => {
+const MetricsGrid = ({ data, activeTab, darkMode, theme, hasAIConsent, childAge }) => {
   if (!data.summary || data.summary.length === 0) {
     return null;
   }
 
   return (
-    <View style={styles.metricsGridContainer}>
+    <View style={enhancedStyles.metricsGridContainer}>
       {data.summary.map((item, index) => (
         <EnhancedSummaryCard 
           key={item.key || index} 
           item={item} 
           activeTab={activeTab}
+          darkMode={darkMode}
+          theme={theme}
+          hasAIConsent={hasAIConsent}
+          childAge={childAge}
         />
       ))}
     </View>
@@ -139,7 +167,7 @@ const MetricsGrid = ({ data, activeTab }) => {
 // SLEEP-SPECIFIC SUMMARY
 // ============================================================================
 
-const SleepMetricsSummary = ({ data }) => {
+const SleepMetricsSummary = ({ data, darkMode, theme }) => {
   const totalSleep = data.summary?.find(s => s.key === 'total');
   const nightSleep = data.summary?.find(s => s.key === 'night');
   const naps = data.summary?.find(s => s.key === 'naps');
@@ -156,49 +184,118 @@ const SleepMetricsSummary = ({ data }) => {
   const quality = totalSleep ? getSleepQualityStatus(totalSleep.avg, totalSleep.benchmark) : null;
 
   return (
-    <View style={styles.metricsSummaryContainer}>
+    <View style={enhancedStyles.metricsSummaryContainer}>
       {quality && (
-        <View style={[styles.qualityStatusBanner, { backgroundColor: quality.color + '15', borderLeftColor: quality.color }]}>
+        <View style={[
+          enhancedStyles.qualityStatusBanner, 
+          { 
+            backgroundColor: quality.color + (darkMode ? '25' : '15'),
+            borderLeftColor: quality.color 
+          }
+        ]}>
           <Ionicons name={quality.icon} size={24} color={quality.color} />
-          <View style={styles.qualityStatusText}>
-            <Text style={[styles.qualityStatusLabel, { color: quality.color }]}>
+          <View style={enhancedStyles.qualityStatusText}>
+            <Text style={[enhancedStyles.qualityStatusLabel, { color: quality.color }]}>
               {quality.status}
             </Text>
-            <Text style={styles.qualityStatusDescription}>
-              {totalSleep?.avg || 0}hrs daily vs {totalSleep?.benchmark || 12}hrs recommended
+            <Text style={[
+              enhancedStyles.qualityStatusDescription,
+              { color: darkMode ? '#bbb' : '#666' }
+            ]}>
+              {totalSleep?.avg || 0}{totalSleep?.unit || 'hrs'} daily vs {totalSleep?.benchmark || 12}hrs recommended
             </Text>
           </View>
         </View>
       )}
 
-      <View style={styles.sleepBreakdownContainer}>
-        <View style={styles.sleepBreakdownItem}>
-          <View style={styles.sleepBreakdownIcon}>
-            <Ionicons name="moon" size={18} color="#1976d2" />
+      <View style={[
+        enhancedStyles.sleepBreakdownContainer,
+        { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }
+      ]}>
+        <View style={[
+          enhancedStyles.sleepBreakdownItem,
+          {
+            backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+            borderColor: darkMode ? '#404040' : '#e0e0e0'
+          }
+        ]}>
+          <View style={[
+            enhancedStyles.sleepBreakdownIcon,
+            { backgroundColor: darkMode ? '#1a3a52' : '#f0f0f0' }
+          ]}>
+            <Ionicons name="moon" size={18} color={darkMode ? '#64b5f6' : '#1976d2'} />
           </View>
-          <View style={styles.sleepBreakdownInfo}>
-            <Text style={styles.sleepBreakdownLabel}>Night Sleep</Text>
-            <Text style={styles.sleepBreakdownValue}>{nightSleep?.avg || 0}hrs</Text>
+          <View style={enhancedStyles.sleepBreakdownInfo}>
+            <Text style={[
+              enhancedStyles.sleepBreakdownLabel,
+              { color: darkMode ? '#999' : '#999' }
+            ]}>
+              Night Sleep
+            </Text>
+            <Text style={[
+              enhancedStyles.sleepBreakdownValue,
+              { color: darkMode ? '#fff' : '#333' }
+            ]}>
+              {nightSleep?.avg || 0}{nightSleep?.unit || 'hrs'}
+            </Text>
           </View>
         </View>
 
-        <View style={styles.sleepBreakdownItem}>
-          <View style={styles.sleepBreakdownIcon}>
+        <View style={[
+          enhancedStyles.sleepBreakdownItem,
+          {
+            backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+            borderColor: darkMode ? '#404040' : '#e0e0e0'
+          }
+        ]}>
+          <View style={[
+            enhancedStyles.sleepBreakdownIcon,
+            { backgroundColor: darkMode ? '#4a3a1a' : '#f0f0f0' }
+          ]}>
             <Ionicons name="partly-sunny" size={18} color="#FF9800" />
           </View>
-          <View style={styles.sleepBreakdownInfo}>
-            <Text style={styles.sleepBreakdownLabel}>Daytime Naps</Text>
-            <Text style={styles.sleepBreakdownValue}>{naps?.avg || 0}hrs</Text>
+          <View style={enhancedStyles.sleepBreakdownInfo}>
+            <Text style={[
+              enhancedStyles.sleepBreakdownLabel,
+              { color: darkMode ? '#999' : '#999' }
+            ]}>
+              Daytime Naps
+            </Text>
+            <Text style={[
+              enhancedStyles.sleepBreakdownValue,
+              { color: darkMode ? '#fff' : '#333' }
+            ]}>
+              {naps?.avg || 0}{naps?.unit || 'hrs'}
+            </Text>
           </View>
         </View>
 
-        <View style={styles.sleepBreakdownItem}>
-          <View style={styles.sleepBreakdownIcon}>
+        <View style={[
+          enhancedStyles.sleepBreakdownItem,
+          {
+            backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+            borderColor: darkMode ? '#404040' : '#e0e0e0'
+          }
+        ]}>
+          <View style={[
+            enhancedStyles.sleepBreakdownIcon,
+            { backgroundColor: darkMode ? '#1a4a4a' : '#f0f0f0' }
+          ]}>
             <Ionicons name="repeat" size={18} color="#00BCD4" />
           </View>
-          <View style={styles.sleepBreakdownInfo}>
-            <Text style={styles.sleepBreakdownLabel}>Total Sessions</Text>
-            <Text style={styles.sleepBreakdownValue}>{sessions?.avg || 0}</Text>
+          <View style={enhancedStyles.sleepBreakdownInfo}>
+            <Text style={[
+              enhancedStyles.sleepBreakdownLabel,
+              { color: darkMode ? '#999' : '#999' }
+            ]}>
+              Total Sessions
+            </Text>
+            <Text style={[
+              enhancedStyles.sleepBreakdownValue,
+              { color: darkMode ? '#fff' : '#333' }
+            ]}>
+              {sessions?.avg || 0}{sessions?.unit || ''}
+            </Text>
           </View>
         </View>
       </View>
@@ -210,7 +307,7 @@ const SleepMetricsSummary = ({ data }) => {
 // FEEDING-SPECIFIC SUMMARY
 // ============================================================================
 
-const FeedingMetricsSummary = ({ data }) => {
+const FeedingMetricsSummary = ({ data, darkMode, theme }) => {
   const perDay = data.summary?.find(s => s.key === 'perDay');
   const avgGap = data.summary?.find(s => s.key === 'avgGap');
   const avgAmount = data.summary?.find(s => s.key === 'avgAmount');
@@ -233,52 +330,98 @@ const FeedingMetricsSummary = ({ data }) => {
   const status = perDay && avgGap ? getFeedingStatus(perDay.avg, avgGap.avg) : null;
 
   return (
-    <View style={styles.metricsSummaryContainer}>
+    <View style={enhancedStyles.metricsSummaryContainer}>
       {status && (
-        <View style={[styles.qualityStatusBanner, { backgroundColor: status.color + '15', borderLeftColor: status.color }]}>
+        <View style={[
+          enhancedStyles.qualityStatusBanner, 
+          { 
+            backgroundColor: status.color + (darkMode ? '25' : '15'),
+            borderLeftColor: status.color 
+          }
+        ]}>
           <Ionicons name={status.icon} size={24} color={status.color} />
-          <View style={styles.qualityStatusText}>
-            <Text style={[styles.qualityStatusLabel, { color: status.color }]}>
+          <View style={enhancedStyles.qualityStatusText}>
+            <Text style={[enhancedStyles.qualityStatusLabel, { color: status.color }]}>
               {status.status}
             </Text>
-            <Text style={styles.qualityStatusDescription}>
+            <Text style={[
+              enhancedStyles.qualityStatusDescription,
+              { color: darkMode ? '#bbb' : '#666' }
+            ]}>
               {perDay?.avg || 0} feedings/day, avg {avgGap?.avg || 0}hrs apart
             </Text>
           </View>
         </View>
       )}
 
-      <View style={styles.feedingDetailsContainer}>
-        <View style={styles.feedingDetailRow}>
-          <View style={styles.feedingDetailLabel}>
+      <View style={[
+        enhancedStyles.feedingDetailsContainer,
+        { 
+          backgroundColor: darkMode ? '#1f1f1f' : '#fff',
+          borderColor: darkMode ? '#404040' : '#e0e0e0'
+        }
+      ]}>
+        <View style={[
+          enhancedStyles.feedingDetailRow,
+          { borderBottomColor: darkMode ? '#333' : '#f0f0f0' }
+        ]}>
+          <View style={enhancedStyles.feedingDetailLabel}>
             <Ionicons name="restaurant" size={18} color="#FF9800" />
-            <Text style={styles.feedingDetailText}>Per Day</Text>
+            <Text style={[
+              enhancedStyles.feedingDetailText,
+              { color: darkMode ? '#e0e0e0' : '#666' }
+            ]}>
+              Per Day
+            </Text>
           </View>
-          <Text style={styles.feedingDetailValue}>{perDay?.avg || 0}</Text>
+          <Text style={[
+            enhancedStyles.feedingDetailValue,
+            { color: darkMode ? '#FFA726' : '#FF9800' }
+          ]}>
+            {perDay?.avg || 0} feedings
+          </Text>
         </View>
 
-        <View style={styles.feedingDetailRow}>
-          <View style={styles.feedingDetailLabel}>
+        <View style={[
+          enhancedStyles.feedingDetailRow,
+          { borderBottomColor: darkMode ? '#333' : '#f0f0f0' }
+        ]}>
+          <View style={enhancedStyles.feedingDetailLabel}>
             <Ionicons name="time" size={18} color="#FF9800" />
-            <Text style={styles.feedingDetailText}>Avg Gap</Text>
+            <Text style={[
+              enhancedStyles.feedingDetailText,
+              { color: darkMode ? '#e0e0e0' : '#666' }
+            ]}>
+              Avg Gap
+            </Text>
           </View>
-          <Text style={styles.feedingDetailValue}>{avgGap?.avg || 0}hrs</Text>
+          <Text style={[
+            enhancedStyles.feedingDetailValue,
+            { color: darkMode ? '#FFA726' : '#FF9800' }
+          ]}>
+            {avgGap?.avg || 0}hrs
+          </Text>
         </View>
 
-        <View style={styles.feedingDetailRow}>
-          <View style={styles.feedingDetailLabel}>
-            <Ionicons name="water" size={18} color="#FF9800" />
-            <Text style={styles.feedingDetailText}>Avg Amount</Text>
-          </View>
-          <Text style={styles.feedingDetailValue}>{avgAmount?.avg || 0}ml</Text>
-        </View>
-
-        <View style={styles.feedingDetailRow}>
-          <View style={styles.feedingDetailLabel}>
+        <View style={[
+          enhancedStyles.feedingDetailRow,
+          { borderBottomWidth: 0 }
+        ]}>
+          <View style={enhancedStyles.feedingDetailLabel}>
             <Ionicons name="alarm" size={18} color="#FF9800" />
-            <Text style={styles.feedingDetailText}>Common Time</Text>
+            <Text style={[
+              enhancedStyles.feedingDetailText,
+              { color: darkMode ? '#e0e0e0' : '#666' }
+            ]}>
+              Common Time
+            </Text>
           </View>
-          <Text style={styles.feedingDetailValue}>{mostCommon?.avg || 'N/A'}</Text>
+          <Text style={[
+            enhancedStyles.feedingDetailValue,
+            { color: darkMode ? '#FFA726' : '#FF9800' }
+          ]}>
+            {mostCommon?.avg || 'N/A'}
+          </Text>
         </View>
       </View>
     </View>
@@ -289,7 +432,7 @@ const FeedingMetricsSummary = ({ data }) => {
 // DIAPER-SPECIFIC SUMMARY
 // ============================================================================
 
-const DiaperMetricsSummary = ({ data, wetPerDay, bmPerDay }) => {
+const DiaperMetricsSummary = ({ data, wetPerDay, bmPerDay, darkMode, theme }) => {
   const totalChanges = data.summary?.find(s => s.key === 'total');
   const wetDiapers = data.summary?.find(s => s.key === 'wet');
   const bmDiapers = data.summary?.find(s => s.key === 'bm');
@@ -313,64 +456,95 @@ const DiaperMetricsSummary = ({ data, wetPerDay, bmPerDay }) => {
   const digestion = getDigestionStatus(bmDiapers?.avg || 0);
 
   return (
-    <View style={styles.metricsSummaryContainer}>
-      <View style={styles.diaperStatusRow}>
-        <View style={[styles.diaperStatusCard, { borderLeftColor: hydration.color }]}>
-          <View style={styles.diaperCardHeader}>
+    <View style={enhancedStyles.metricsSummaryContainer}>
+      <View style={enhancedStyles.diaperStatusRow}>
+        <View style={[
+          enhancedStyles.diaperStatusCard, 
+          { 
+            borderLeftColor: hydration.color,
+            backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+            borderColor: darkMode ? '#404040' : '#e0e0e0'
+          }
+        ]}>
+          <View style={enhancedStyles.diaperCardHeader}>
             <Ionicons name="water" size={20} color={hydration.color} />
-            <Text style={styles.diaperCardTitle}>Hydration</Text>
+            <Text style={[enhancedStyles.diaperCardTitle, { color: theme.textPrimary }]}>
+              Hydration
+            </Text>
           </View>
-          <Text style={[styles.diaperStatusBadge, { color: hydration.color }]}>
+          <Text style={[enhancedStyles.diaperStatusBadge, { color: hydration.color }]}>
             {hydration.status}
           </Text>
-          <Text style={styles.diaperStatusValue}>
+          <Text style={[enhancedStyles.diaperStatusValue, { color: theme.textPrimary }]}>
             {wetPerDay || wetDiapers?.avg || 0} wet/day
           </Text>
-          <Text style={styles.diaperStatusNote}>
+          <Text style={[enhancedStyles.diaperStatusNote, { color: darkMode ? '#aaa' : '#999' }]}>
             Target: 5-7/day
           </Text>
         </View>
 
-        <View style={[styles.diaperStatusCard, { borderLeftColor: digestion.color }]}>
-          <View style={styles.diaperCardHeader}>
+        <View style={[
+          enhancedStyles.diaperStatusCard, 
+          { 
+            borderLeftColor: digestion.color,
+            backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+            borderColor: darkMode ? '#404040' : '#e0e0e0'
+          }
+        ]}>
+          <View style={enhancedStyles.diaperCardHeader}>
             <Ionicons name="medical" size={20} color={digestion.color} />
-            <Text style={styles.diaperCardTitle}>Digestion</Text>
+            <Text style={[enhancedStyles.diaperCardTitle, { color: theme.textPrimary }]}>
+              Digestion
+            </Text>
           </View>
-          <Text style={[styles.diaperStatusBadge, { color: digestion.color }]}>
+          <Text style={[enhancedStyles.diaperStatusBadge, { color: digestion.color }]}>
             {digestion.status}
           </Text>
-          <Text style={styles.diaperStatusValue}>
+          <Text style={[enhancedStyles.diaperStatusValue, { color: theme.textPrimary }]}>
             {bmPerDay || bmDiapers?.avg || 0} BM/day
           </Text>
-          <Text style={styles.diaperStatusNote}>
+          <Text style={[enhancedStyles.diaperStatusNote, { color: theme.textPrimary }]}>
             Age-dependent
           </Text>
         </View>
       </View>
 
-      <View style={styles.diaperTotalContainer}>
+      <View style={[
+        enhancedStyles.diaperTotalContainer,
+        {
+          backgroundColor: darkMode ? '#1a4a4a' : '#f0f7fa',
+          borderColor: darkMode ? '#2a6a6a' : '#B3E5FC'
+        }
+      ]}>
         <Ionicons name="repeat" size={18} color="#00BCD4" />
-        <View style={styles.diaperTotalInfo}>
-          <Text style={styles.diaperTotalLabel}>Total Changes</Text>
-          <Text style={styles.diaperTotalValue}>{totalChanges?.avg || 0}/day</Text>
+        <View style={enhancedStyles.diaperTotalInfo}>
+          <Text style={[enhancedStyles.diaperTotalLabel, { color: darkMode ? '#bbb' : '#666' }]}>
+            Total Changes
+          </Text>
+          <Text style={[enhancedStyles.diaperTotalValue, { color: '#00BCD4' }]}>
+            {totalChanges?.avg || 0}/day
+          </Text>
         </View>
       </View>
     </View>
   );
 };
 
-const enhancedStyles = {
+const enhancedStyles = StyleSheet.create({
   metricsGridContainer: {
     marginBottom: 15,
     gap: 12,
   },
   enhancedSummaryCard: {
-    backgroundColor: '#f8f9fa',
     borderRadius: 12,
     padding: 14,
     borderLeftWidth: 4,
-    borderLeftColor: '#1976d2',
     marginBottom: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   cardTopRow: {
     flexDirection: 'row',
@@ -381,7 +555,6 @@ const enhancedStyles = {
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: '#E3F2FD',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -392,7 +565,6 @@ const enhancedStyles = {
   cardLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#666',
     marginBottom: 4,
   },
   trendPill: {
@@ -401,7 +573,6 @@ const enhancedStyles = {
     alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    backgroundColor: '#f0f0f0',
     borderRadius: 10,
     gap: 4,
   },
@@ -415,7 +586,6 @@ const enhancedStyles = {
   cardValue: {
     fontSize: 26,
     fontWeight: '700',
-    color: '#333',
   },
   benchmarkLabel: {
     fontSize: 11,
@@ -424,9 +594,25 @@ const enhancedStyles = {
   },
   cardDetails: {
     fontSize: 12,
-    color: '#888',
     fontStyle: 'italic',
     marginTop: 4,
+  },
+  aiRecommendationBadge: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 10,
+    marginTop: 10,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+  },
+  aiRecommendationText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 3,
+  },
+  aiRecommendationAdvice: {
+    fontSize: 11,
+    fontStyle: 'italic',
   },
 
   // Sleep Summary Styles
@@ -452,7 +638,6 @@ const enhancedStyles = {
   },
   qualityStatusDescription: {
     fontSize: 12,
-    color: '#666',
   },
   sleepBreakdownContainer: {
     gap: 10,
@@ -460,17 +645,13 @@ const enhancedStyles = {
   sleepBreakdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     borderRadius: 10,
     padding: 12,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
   },
   sleepBreakdownIcon: {
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -480,23 +661,18 @@ const enhancedStyles = {
   },
   sleepBreakdownLabel: {
     fontSize: 12,
-    color: '#999',
     marginBottom: 3,
   },
   sleepBreakdownValue: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#333',
   },
 
   // Feeding Summary Styles
   feedingDetailsContainer: {
     gap: 10,
-    backgroundColor: '#fff',
     borderRadius: 10,
     padding: 12,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
   },
   feedingDetailRow: {
     flexDirection: 'row',
@@ -504,7 +680,6 @@ const enhancedStyles = {
     alignItems: 'center',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
   },
   feedingDetailLabel: {
     flexDirection: 'row',
@@ -513,13 +688,11 @@ const enhancedStyles = {
   },
   feedingDetailText: {
     fontSize: 13,
-    color: '#666',
     fontWeight: '500',
   },
   feedingDetailValue: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FF9800',
   },
 
   // Diaper Summary Styles
@@ -530,12 +703,9 @@ const enhancedStyles = {
   },
   diaperStatusCard: {
     flex: 1,
-    backgroundColor: '#fff',
     borderRadius: 10,
     padding: 12,
     borderLeftWidth: 4,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
   },
   diaperCardHeader: {
     flexDirection: 'row',
@@ -546,7 +716,6 @@ const enhancedStyles = {
   diaperCardTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#333',
   },
   diaperStatusBadge: {
     fontSize: 13,
@@ -556,21 +725,16 @@ const enhancedStyles = {
   diaperStatusValue: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#333',
     marginBottom: 4,
   },
   diaperStatusNote: {
     fontSize: 11,
-    color: '#999',
   },
   diaperTotalContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f7fa',
     borderRadius: 10,
     padding: 12,
-    borderWidth: 1,
-    borderColor: '#B3E5FC',
   },
   diaperTotalInfo: {
     marginLeft: 12,
@@ -578,14 +742,12 @@ const enhancedStyles = {
   },
   diaperTotalLabel: {
     fontSize: 12,
-    color: '#666',
   },
   diaperTotalValue: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#00BCD4',
   },
-};
+});
 
 export {
   EnhancedSummaryCard,

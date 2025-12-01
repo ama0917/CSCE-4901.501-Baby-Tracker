@@ -85,7 +85,7 @@ const HomeScreen = () => {
           }))
           .filter((child) => {
             const perm = child.caregiverPerms?.[uid];
-            return perm === 'on' || perm === 'log';
+            return perm === 'view' || perm === 'log' || perm === 'on' || perm === 'parent';
           });
         
         setProfiles((prev) => {
@@ -526,6 +526,7 @@ safeArea: {
     paddingHorizontal: 24,
     borderRadius: 10,
     alignItems: 'center',
+    marginBottom: 50,
   },
 });
 

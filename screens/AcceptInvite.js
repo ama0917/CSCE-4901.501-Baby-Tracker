@@ -72,6 +72,32 @@ export default function AcceptInvite({ navigation }) {
       }
 
       const caregiverUid = user.uid;
+
+      // NEW: Check if user owns any of these children
+      const ownedChildren = [];
+      for (const cid of childIds) {
+        const childRef = doc(db, 'children', cid);
+        const childSnap = await getDoc(childRef);
+        
+        if (childSnap.exists()) {
+          const childData = childSnap.data();
+          if (childData.userId === caregiverUid) {
+            ownedChildren.push(childData.firstName || childData.name || 'your child');
+          }
+        }
+      }
+
+      // If user owns any of the children, prevent accepting
+      if (ownedChildren.length > 0) {
+        const childList = ownedChildren.join(', ');
+        Alert.alert(
+          'Cannot Accept Invite',
+          `You cannot be a caregiver for your own ${ownedChildren.length > 1 ? 'children' : 'child'} (${childList}). You already have full parent access.`,
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+        return;
+      }
+
       const batch = writeBatch(db);
 
       // link caregiver to each child (default OFF; parent must toggle ON)
@@ -260,7 +286,7 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    marginTop: 20,
+    marginTop: 70,
     marginBottom: 12,
     height: 44,
     flexDirection: 'row',

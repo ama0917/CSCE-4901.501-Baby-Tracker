@@ -27,9 +27,78 @@ import {
   arrayRemove,
   deleteField,
 } from 'firebase/firestore';
+import { Ionicons } from '@expo/vector-icons';
 import { useDarkMode } from '../screens/DarkMode';
 import ThemedBackground, { appTheme } from '../screens/ThemedBackground';
 import { ArrowLeft } from 'lucide-react-native';
+
+const PERMISSION_LEVELS = {
+  NONE: 'none',
+  LOG: 'log',
+  PARENT: 'parent'
+};
+
+const getPermissionLevel = (perms, cgUid) => {
+  const perm = perms[cgUid];
+  if (perm === 'parent') return PERMISSION_LEVELS.PARENT;
+  if (perm === 'on' || perm === 'log') return PERMISSION_LEVELS.LOG;
+  return PERMISSION_LEVELS.NONE;
+};
+
+const getNextPermissionLevel = (currentLevel) => {
+  switch(currentLevel) {
+    case PERMISSION_LEVELS.NONE:
+      return PERMISSION_LEVELS.LOG;
+    case PERMISSION_LEVELS.LOG:
+      return PERMISSION_LEVELS.PARENT;
+    case PERMISSION_LEVELS.PARENT:
+      return PERMISSION_LEVELS.NONE;
+    default:
+      return PERMISSION_LEVELS.NONE;
+  }
+};
+
+
+const getPermissionLabel = (level) => {
+  switch(level) {
+    case PERMISSION_LEVELS.NONE:
+      return 'No Access';
+    case PERMISSION_LEVELS.LOG:
+      return 'Can Log';
+    case PERMISSION_LEVELS.PARENT:
+      return 'Full Parent';
+    default:
+      return 'Unknown';
+  }
+};
+
+const getPermissionColor = (level, darkMode) => {
+  switch(level) {
+    case PERMISSION_LEVELS.NONE:
+      return darkMode ? '#666' : '#999';
+    case PERMISSION_LEVELS.LOG:
+      return '#4CAF50';
+    case PERMISSION_LEVELS.PARENT:
+      return '#FF9800';
+    default:
+      return '#999';
+  }
+};
+
+const getPermissionIcon = (level) => {
+  switch(level) {
+    case PERMISSION_LEVELS.NONE:
+      return 'close-circle';
+    case PERMISSION_LEVELS.VIEW:
+      return 'eye';
+    case PERMISSION_LEVELS.LOG:
+      return 'create';
+    case PERMISSION_LEVELS.PARENT:
+      return 'star';
+    default:
+      return 'help-circle';
+  }
+};
 
 const maskUid = (s = '') =>
   s.length > 12 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s;
@@ -102,49 +171,62 @@ export default function ManageCaregivers({ navigation }) {
   // Load all children owned by this parent
   useEffect(() => {
     if (!uid) {
-    setRows([]);
-    setLoading(false);
+      setRows([]);
+      setLoading(false);
       return;
     }
+    
     const q = query(collection(db, 'children'), where('userId', '==', uid));
 
     const unsub = onSnapshot(
       q,
       (snap) => {
         (async () => {
-          const children = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          const children = snap.docs.map((d) => ({ 
+            id: d.id, 
+            ...d.data() 
+          }));
+          
           const assembled = await Promise.all(
             children.map(async (c) => {
               const list = Array.isArray(c.caregivers) ? c.caregivers : [];
               const perms = c.caregiverPerms || {};
+              
               const careRows = await Promise.all(
                 list.map(async (cgUid) => {
                   const email = await lookupEmail(cgUid);
-                  const status =
-                    perms[cgUid] === 'on' || perms[cgUid] === 'log'
-                      ? 'on'
-                      : 'off';
+                  
+                  // Determine permission level
+                  const perm = perms[cgUid];
+                  let status = 'none';
+                  if (perm === 'parent') status = 'parent';
+                  else if (perm === 'on' || perm === 'log') status = 'log';
+                  else if (perm === 'view') status = 'log';
+                  else status = 'none';
+                  
                   return { uid: cgUid, email, status };
                 })
               );
-              const profileImage =
-              c.image || c.profileImage || c.photoURL || null;
+              
+              const profileImage = c.image || c.profileImage || c.photoURL || null;
 
               return {
                 childId: c.id,
                 childName: c.name || c.childName || 'Unnamed',
                 profileImage,
                 caregivers: careRows,
+                child: c, // Include full child data for permissions
               };
             })
           );
+          
           setRows(assembled);
           setLoading(false);
         })().catch((e) => {
-        console.error('assemble children error', e);
-        setLoading(false);
-        Alert.alert('Error', 'Failed to load caregivers.');
-      });
+          console.error('assemble children error', e);
+          setLoading(false);
+          Alert.alert('Error', 'Failed to load caregivers.');
+        });
       },
       (err) => {
         console.error(err);
@@ -156,15 +238,68 @@ export default function ManageCaregivers({ navigation }) {
     return () => unsub();
   }, [uid]);
 
-  const toggleAccess = async (childId, cgUid, next) => {
-    try {
-      await updateDoc(doc(db, 'children', childId), {
-        [`caregiverPerms.${cgUid}`]: next ? 'on' : 'off',
-      });
-    } catch (e) {
-      Alert.alert('Error', e.message || 'Failed to update access.');
-    }
-  };
+const toggleAccess = async (childId, cgUid, currentLevel) => {
+  const nextLevel = getNextPermissionLevel(currentLevel);
+  
+  // Show confirmation for parent privileges
+  if (nextLevel === PERMISSION_LEVELS.PARENT) {
+    Alert.alert(
+      'Grant Full Parent Privileges?',
+      'This caregiver will have the same access as you, including:\n\n• Managing other caregivers\n• Editing child profiles\n• Deleting data\n• Viewing reports\n\nAre you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Grant Access',
+          style: 'default',
+          onPress: async () => {
+            try {
+              await updateDoc(doc(db, 'children', childId), {
+                [`caregiverPerms.${cgUid}`]: 'parent',
+              });
+            } catch (e) {
+              Alert.alert('Error', e.message || 'Failed to update permissions.');
+            }
+          }
+        }
+      ]
+    );
+    return;
+  }
+  
+  // Show confirmation for revoking all access
+  if (nextLevel === PERMISSION_LEVELS.NONE) {
+    Alert.alert(
+      'Revoke All Access?',
+      'This caregiver will no longer be able to view or log activities for this child.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Revoke',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await updateDoc(doc(db, 'children', childId), {
+                [`caregiverPerms.${cgUid}`]: 'none',
+              });
+            } catch (e) {
+              Alert.alert('Error', e.message || 'Failed to update permissions.');
+            }
+          }
+        }
+      ]
+    );
+    return;
+  }
+  
+  // For view and log, just update directly
+  try {
+    await updateDoc(doc(db, 'children', childId), {
+      [`caregiverPerms.${cgUid}`]: nextLevel,
+    });
+  } catch (e) {
+    Alert.alert('Error', e.message || 'Failed to update permissions.');
+  }
+};
 
   const removeCaregiver = async (childId, cgUid) => {
     try {
@@ -308,116 +443,109 @@ export default function ManageCaregivers({ navigation }) {
                   </View>
                 </View>
 
-                  {item.caregivers.length === 0 ? (
-                    <Text
-                      style={[
-                        styles.noCaregiverText,
-                        { color: C.textMuted },
-                      ]}
-                    >
-                      No caregivers assigned yet.
-                    </Text>
-                  ) : (
-                    item.caregivers.map((cg, idx) => {
-                      const isOn = cg.status === 'on';
-                      const showDivider = idx < item.caregivers.length - 1;
+                {item.caregivers.length === 0 ? (
+                  <Text style={[styles.noCaregiverText, { color: C.textMuted }]}>
+                    No caregivers assigned yet.
+                  </Text>
+                ) : (
+                  item.caregivers.map((cg, idx) => {
+                    const permLevel = getPermissionLevel(
+                      item.child?.caregiverPerms || {},
+                      cg.uid
+                    );
+                    const showDivider = idx < item.caregivers.length - 1;
 
-                      return (
-                        <View
-                          key={cg.uid}
-                          style={[
-                            styles.caregiverRow,
-                            showDivider && {
-                              borderBottomWidth: 1,
-                              borderBottomColor: C.divider,
-                            },
-                          ]}
-                        >
-                          {/* Email + uid */}
-                          <View style={styles.caregiverInfo}>
+                    return (
+                      <View
+                        key={cg.uid}
+                        style={[
+                          styles.caregiverRow,
+                          showDivider && {
+                            borderBottomWidth: 1,
+                            borderBottomColor: C.divider,
+                          },
+                        ]}
+                      >
+                        {/* Email + uid */}
+                        <View style={styles.caregiverInfo}>
+                          <Text
+                            style={[styles.caregiverEmail, { color: C.textStrong }]}
+                            numberOfLines={1}
+                          >
+                            {cg.email || maskUid(cg.uid)}
+                          </Text>
+                          {!cg.email ? (
                             <Text
-                              style={[
-                                styles.caregiverEmail,
-                                { color: C.textStrong },
-                              ]}
+                              style={[styles.caregiverUid, { color: C.textMuted }]}
                               numberOfLines={1}
                             >
-                              {cg.email || maskUid(cg.uid)}
+                              {maskUid(cg.uid)}
                             </Text>
-                            {!cg.email ? (
-                              <Text
-                                style={[
-                                  styles.caregiverUid,
-                                  { color: C.textMuted },
-                                ]}
-                                numberOfLines={1}
-                              >
-                                {maskUid(cg.uid)}
-                              </Text>
-                            ) : null}
-                          </View>
-
-                          {/* Access pill + switch */}
-                          <View style={styles.accessBlock}>
-                            <View
-                              style={[
-                                styles.accessPill,
-                                {
-                                  backgroundColor: isOn
-                                    ? 'rgba(34,197,94,0.10)'
-                                    : 'rgba(148,163,184,0.12)',
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.accessPillText,
-                                  {
-                                    color: isOn ? '#22C55E' : C.textMuted,
-                                  },
-                                ]}
-                              >
-                                {isOn ? 'Can log' : 'View disabled'}
-                              </Text>
-                            </View>
-
-                            <Switch
-                              value={isOn}
-                              onValueChange={(val) =>
-                                toggleAccess(item.childId, cg.uid, val)
-                              }
-                              trackColor={{
-                                false: C.switchTrackOff,
-                                true: C.switchTrackOn,
-                              }}
-                              thumbColor={C.switchThumb}
-                            />
-                          </View>
-
-                          {/* Remove button */}
-                          <TouchableOpacity
-                            onPress={() =>
-                              removeCaregiver(item.childId, cg.uid)
-                            }
-                            style={[
-                              styles.removeButton,
-                              { backgroundColor: C.dangerBg },
-                            ]}
-                            activeOpacity={0.85}
-                          >
-                            <Text
-                              style={[
-                                styles.removeText,
-                                { color: C.dangerText },
-                              ]}
-                            >
-                              Remove
-                            </Text>
-                          </TouchableOpacity>
+                          ) : null}
                         </View>
-                      );
-                    })
-                  )}
+
+                        {/* Triple Toggle Permission Button */}
+                        <TouchableOpacity
+                          onPress={() => toggleAccess(item.childId, cg.uid, permLevel)}
+                          style={[
+                            styles.permissionButton,
+                            {
+                              backgroundColor: getPermissionColor(permLevel, darkMode) + '20',
+                              borderColor: getPermissionColor(permLevel, darkMode),
+                            }
+                          ]}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons
+                            name={getPermissionIcon(permLevel)}
+                            size={16}
+                            color={getPermissionColor(permLevel, darkMode)}
+                          />
+                          <Text
+                            style={[
+                              styles.permissionText,
+                              { color: getPermissionColor(permLevel, darkMode) }
+                            ]}
+                          >
+                            {getPermissionLabel(permLevel)}
+                          </Text>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={14}
+                            color={getPermissionColor(permLevel, darkMode)}
+                          />
+                        </TouchableOpacity>
+
+                        {/* Permission Description */}
+                        <Text
+                          style={[
+                            styles.permissionDescription,
+                            { color: C.textMuted }
+                          ]}
+                        >
+                          {permLevel === PERMISSION_LEVELS.NONE && 'No access to this child'}
+                          {permLevel === PERMISSION_LEVELS.LOG && 'Can view and log activities'}
+                          {permLevel === PERMISSION_LEVELS.PARENT && 'Full parent access'}
+                        </Text>
+
+                        {/* Remove button */}
+                      <TouchableOpacity
+                        onPress={() => removeCaregiver(item.childId, cg.uid)}
+                        style={[
+                          styles.removeButton,
+                          { backgroundColor: C.dangerBg, flexDirection: 'row', alignItems: 'center' },
+                        ]}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons name="trash-outline" size={14} color={C.dangerText} />
+                        <Text style={[styles.removeText, { color: C.dangerText, marginLeft: 5 }]}>
+                          Remove
+                        </Text>
+                      </TouchableOpacity>
+                      </View>
+                    );
+                  })
+                )}
                 </LinearGradient>
               )}
             />
@@ -601,7 +729,7 @@ const styles = StyleSheet.create({
   },
   removeButton: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 10,
+    paddingHorizontal: 18,
     paddingVertical: 6,
     borderRadius: 999,
     marginTop: 2,
@@ -609,5 +737,25 @@ const styles = StyleSheet.create({
   removeText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  permissionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    gap: 6,
+    marginBottom: 6,
+    alignSelf: 'flex-start',
+  },
+  permissionText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  permissionDescription: {
+    fontSize: 12,
+    marginBottom: 10,
+    fontStyle: 'italic',
   },
 });

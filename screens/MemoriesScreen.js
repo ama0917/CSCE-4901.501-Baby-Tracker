@@ -167,80 +167,90 @@ const MemoriesScreen = () => {
   };
 
   const renderMemoryItem = ({ item }) => {
-    // Handle both old single media and new multi-media formats
-    const firstMedia = item.media 
-      ? item.media.sort((a, b) => a.order - b.order)[0]
-      : {
-          mediaUrl: item.mediaUrl,
-          thumbnailUrl: item.thumbnailUrl,
-          mediaType: item.mediaType
-        };
-    
-    const mediaCount = item.media ? item.media.length : 1;
+      // Handle both old single media and new multi-media formats
+      const firstMedia = item.media 
+        ? item.media.sort((a, b) => a.order - b.order)[0]
+        : {
+            mediaUrl: item.mediaUrl,
+            thumbnailUrl: item.thumbnailUrl,
+            mediaType: item.mediaType
+          };
+      
+      const mediaCount = item.media ? item.media.length : 1;
 
-    return (
-      <TouchableOpacity
-        style={[styles.memoryCard, { backgroundColor: darkMode ? '#2c2c2c' : '#fff' }]}
-        onPress={() => navigation.navigate('MemoryDetail', { memory: item, childName })}
-        activeOpacity={0.9}
-      >
-        {/* Media Preview */}
-        <View style={styles.mediaContainer}>
-          {firstMedia.mediaType === 'video' ? (
-            <>
-              <Image 
-                source={{ uri: firstMedia.thumbnailUrl || firstMedia.mediaUrl }} 
-                style={styles.mediaImage}
-              />
-              <View style={styles.videoOverlay}>
-                <MaterialCommunityIcons name="play-circle" size={48} color="rgba(255,255,255,0.9)" />
+      return (
+        <TouchableOpacity
+          style={[styles.memoryCard, { backgroundColor: darkMode ? '#2c2c2c' : '#fff' }]}
+          onPress={() => navigation.navigate('MemoryDetail', { memory: item, childName })}
+          activeOpacity={0.9}
+        >
+          {/* Media Preview */}
+          <View style={styles.mediaContainer}>
+            {firstMedia.mediaType === 'video' ? (
+              <>
+                <Image 
+                  source={{ uri: firstMedia.thumbnailUrl || firstMedia.mediaUrl }} 
+                  style={styles.mediaImage}
+                />
+                <View style={styles.videoOverlay}>
+                  <MaterialCommunityIcons name="play-circle" size={48} color="rgba(255,255,255,0.9)" />
+                </View>
+              </>
+            ) : (
+              <Image source={{ uri: firstMedia.mediaUrl }} style={styles.mediaImage} />
+            )}
+            
+            {/* Milestone Badge */}
+          {item.milestone && (
+            <View style={styles.milestoneBadgeContainer}>
+              <View style={styles.milestoneBadge}>
+                <MaterialCommunityIcons name={item.milestone.icon} size={14} color="#fff" />
+                <Text style={styles.milestoneBadgeText}>{item.milestone.label}</Text>
               </View>
-            </>
-          ) : (
-            <Image source={{ uri: firstMedia.mediaUrl }} style={styles.mediaImage} />
-          )}
-          
-          {/* Multi-media indicator */}
-          {mediaCount > 1 && (
-            <View style={styles.multiMediaBadge}>
-              <MaterialCommunityIcons name="image-multiple" size={16} color="#fff" />
-              <Text style={styles.multiMediaText}>{mediaCount}</Text>
             </View>
           )}
-        </View>
-
-        {/* Content */}
-        <View style={styles.contentContainer}>
-          <Text style={[styles.caption, { color: theme.textPrimary }]} numberOfLines={2}>
-            {item.caption}
-          </Text>
-          {item.description && (
-            <Text style={[styles.description, { color: theme.textSecondary }]} numberOfLines={2}>
-              {item.description}
-            </Text>
-          )}
-          <View style={styles.metaContainer}>
-            <MaterialCommunityIcons name="calendar" size={14} color={theme.textSecondary} />
-            <Text style={[styles.date, { color: theme.textSecondary }]}>
-              {item.date?.toDate().toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
-              })}
-            </Text>
+            
+            {/* Multi-media indicator */}
+            {mediaCount > 1 && (
+              <View style={styles.multiMediaBadge}>
+                <MaterialCommunityIcons name="image-multiple" size={16} color="#fff" />
+                <Text style={styles.multiMediaText}>{mediaCount}</Text>
+              </View>
+            )}
           </View>
-        </View>
 
-        {/* Delete Button */}
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => handleDeleteMemory(item)}
-        >
-          <MaterialCommunityIcons name="delete-outline" size={20} color="#ff5252" />
+          {/* Content */}
+          <View style={styles.contentContainer}>
+            <Text style={[styles.caption, { color: theme.textPrimary }]} numberOfLines={2}>
+              {item.caption}
+            </Text>
+            {item.description && (
+              <Text style={[styles.description, { color: theme.textSecondary }]} numberOfLines={2}>
+                {item.description}
+              </Text>
+            )}
+            <View style={styles.metaContainer}>
+              <MaterialCommunityIcons name="calendar" size={14} color={theme.textSecondary} />
+              <Text style={[styles.date, { color: theme.textSecondary }]}>
+                {item.date?.toDate().toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric'
+                })}
+              </Text>
+            </View>
+          </View>
+
+          {/* Delete Button */}
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => handleDeleteMemory(item)}
+          >
+            <MaterialCommunityIcons name="delete-outline" size={20} color="#ff5252" />
+          </TouchableOpacity>
         </TouchableOpacity>
-      </TouchableOpacity>
-    );
-  };
+      );
+    };
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
@@ -554,6 +564,33 @@ const styles = StyleSheet.create({
   multiMediaText: {
     color: '#fff',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  milestoneBadgeContainer: {
+    position: 'absolute',
+    top: 12,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    pointerEvents: 'none',
+  },
+  milestoneBadge: {
+    backgroundColor: '#667eea',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  milestoneBadgeText: {
+    color: '#fff',
+    fontSize: 11,
     fontWeight: '600',
   },
 });

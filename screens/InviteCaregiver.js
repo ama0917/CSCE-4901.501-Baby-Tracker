@@ -1,4 +1,3 @@
-// screens/InviteCaregiver.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -13,6 +12,9 @@ import {
   StatusBar,
   SafeAreaView,
   ScrollView,
+  Share,
+  Platform,
+  KeyboardAvoidingView
 } from 'react-native';
 import {
   addDoc,
@@ -225,12 +227,50 @@ export default function InviteCaregiver({ navigation }) {
       }
 
       setInviteCode(docRef.id);
-      Alert.alert('Invite created', 'Share this code with your caregiver to accept.');
+      
+      // Automatically trigger share dialog
+      await shareInvite(docRef.id, note.trim());
+      
     } catch (e) {
       Alert.alert('Error', e.message || 'Could not create invite.');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const shareInvite = async (code, noteText) => {
+  try {
+    const childNames = selectedChildren.map(c => c.name).join(', ');
+    
+    const message = `👶 Baby Dashboard Caregiver Invite
+
+I'd like to invite you to help track activities for ${childNames}.
+
+${noteText ? `Note: ${noteText}\n\n` : ''}Invite Code: ${code}
+
+Please use this code in the app to accept the invitation and start helping!`;
+
+    const result = await Share.share({
+      message: message,
+      title: 'Baby Dashboard Caregiver Invite',
+    });
+
+    if (result.action === Share.sharedAction) {
+      if (result.activityType) {
+        // shared with activity type of result.activityType
+        console.log('Shared via:', result.activityType);
+      } else {
+        // shared
+        console.log('Invite shared successfully');
+      }
+    } else if (result.action === Share.dismissedAction) {
+      // dismissed
+      console.log('Share dialog dismissed');
+    }
+  } catch (error) {
+    console.error('Error sharing invite:', error);
+    Alert.alert('Share Error', 'Could not open share dialog. You can still copy the code manually.');
+  }
   };
 
   const copyCode = async () => {
@@ -243,12 +283,16 @@ export default function InviteCaregiver({ navigation }) {
     <ThemedBackground>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} translucent />
       <SafeAreaView style={{ flex: 1 }}>
-        <ScrollView
+        <KeyboardAvoidingView
           style={{ flex: 1 }}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
           <View style={styles.screenPadding}>
             {/* Header */}
             <View style={styles.header}>
@@ -416,18 +460,32 @@ export default function InviteCaregiver({ navigation }) {
                 >
                   {inviteCode}
                 </Text>
-                <TouchableOpacity
-                  onPress={copyCode}
-                  style={styles.copyButton}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.copyButtonText}>Copy code</Text>
-                </TouchableOpacity>
+                
+                {/* Button row */}
+                <View style={styles.resultButtonRow}>
+                  <TouchableOpacity
+                    onPress={() => shareInvite(inviteCode, note.trim())}
+                    style={[styles.resultButton, styles.shareButton]}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.resultButtonText}>Share invite</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    onPress={copyCode}
+                    style={[styles.resultButton, styles.copyButton]}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.copyButtonText}>Copy code</Text>
+                  </TouchableOpacity>
+                </View>
               </LinearGradient>
             ) : null}
           </View>
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
+
 
       {/* Child picker modal */}
       <Modal visible={pickerOpen} animationType="slide" transparent>
@@ -715,9 +773,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
   },
   copyButtonText: {
+    flex: 1,
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
+    alignItems: 'center',
   },
 
   // modal
@@ -776,4 +836,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  resultButtonRow: {
+  flexDirection: 'row',
+  gap: 10,
+  marginTop: 4,
+},
+resultButton: {
+  flex: 1,
+  paddingHorizontal: 12,
+  paddingVertical: 8,
+  borderRadius: 999,
+  alignItems: 'center',
+},
+shareButton: {
+  backgroundColor: '#81D4FA',
+},
 });

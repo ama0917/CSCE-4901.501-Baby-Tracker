@@ -42,7 +42,7 @@ const getTodayStr = () => {
 };
 
 const DiaperChangeForm = ({ navigation, route }) => {
-  const { childId } = route.params || {};
+  const { childId, name, editingLogId, existingData } = route.params || {};
   const { darkMode } = useDarkMode();
   const currentTheme = darkMode ? appTheme.dark : appTheme.light;
 
@@ -74,6 +74,14 @@ const DiaperChangeForm = ({ navigation, route }) => {
     return () => unsub();
   }, [role, childId, uid]);
 
+  useEffect(() => {
+    if (existingData) {
+      if (existingData.stoolType) setStoolType(existingData.stoolType);
+      if (existingData.time) setSelectedTime(existingData.time);
+      if (existingData.bathroomType) setBathroomType(existingData.bathroomType);
+    }
+  }, [existingData]);
+
   const [selectedTime, setSelectedTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [bathroomType, setBathroomType] = useState('Diaper Change');
@@ -81,6 +89,10 @@ const DiaperChangeForm = ({ navigation, route }) => {
   const [showStoolPicker, setShowStoolPicker] = useState(false);
 
   const formatTime = (date) => {
+    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+      return '12:00 a.m.';
+    }
+    
     let hours = date.getHours();
     const minutes = date.getMinutes().toString().padStart(2, '0');
     const ampm = hours >= 12 ? 'p.m.' : 'a.m.';

@@ -10,7 +10,8 @@ import {
   Platform,
   TextInput,
   Modal,
-  ActivityIndicator 
+  ActivityIndicator,
+  Image
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,6 +19,7 @@ import { BlurView } from 'expo-blur';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { ArrowLeft } from 'lucide-react-native';
 import { 
   collection, 
   doc, 
@@ -42,23 +44,57 @@ if (!OPENAI_API_KEY) {
 }
 
 const formatTime12Hour = (time24) => {
-  const [hours, minutes] = time24.split(':').map(Number);
+  if (!time24 || typeof time24 !== 'string') return '12:00 AM';
+  
+  const [hoursStr, minutesStr] = time24.split(':');
+  const hours = parseInt(hoursStr, 10);
+  const minutes = parseInt(minutesStr, 10);
+  
+  // Validate parsed values
+  if (isNaN(hours) || isNaN(minutes)) {
+    console.warn('Invalid time format:', time24);
+    return '12:00 AM';
+  }
+  
   const period = hours >= 12 ? 'PM' : 'AM';
   const hours12 = hours % 12 || 12;
+  
   return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
 };
 
 const getNextReminderTime = (times) => {
+  if (!times || times.length === 0) {
+    return { hours: 0, minutes: 0, isToday: true };
+  }
+
   const now = new Date();
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
   const currentTimeInMinutes = currentHour * 60 + currentMinute;
   
   // Convert times to minutes and find next one
-  const timesInMinutes = times.map(time => {
-    const [hours, minutes] = time.split(':').map(Number);
-    return hours * 60 + minutes;
-  }).sort((a, b) => a - b);
+  const timesInMinutes = times
+    .map(time => {
+      if (!time || typeof time !== 'string') return null;
+      
+      const [hoursStr, minutesStr] = time.split(':');
+      const hours = parseInt(hoursStr, 10);
+      const minutes = parseInt(minutesStr, 10);
+      
+      // Validate parsed values
+      if (isNaN(hours) || isNaN(minutes)) {
+        console.warn('Invalid time in getNextReminderTime:', time);
+        return null;
+      }
+      
+      return hours * 60 + minutes;
+    })
+    .filter(time => time !== null) // Remove invalid times
+    .sort((a, b) => a - b);
+  
+  if (timesInMinutes.length === 0) {
+    return { hours: 0, minutes: 0, isToday: true };
+  }
   
   // Find the next time
   const nextTime = timesInMinutes.find(time => time > currentTimeInMinutes);
@@ -79,6 +115,15 @@ const getNextReminderTime = (times) => {
 };
 
 const formatNextReminderTime = (hours, minutes) => {
+  // Validate inputs
+  if (isNaN(hours) || isNaN(minutes)) {
+    return 'calculating...';
+  }
+  
+  if (hours === 0 && minutes === 0) {
+    return 'less than 1 minute';
+  }
+  
   if (hours === 0) {
     return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
   } else if (minutes === 0) {
@@ -122,7 +167,24 @@ const getConfidenceColor = (confidence) => {
   }
 };
 
-const ReminderCard = ({ reminder, type, reminders, setReminders, toggleReminder, toggleAI, sendImmediateReminder, openTimePicker, aiConsent, aiLoading, reminderTypes, darkMode, theme }) => {
+const ReminderCard = ({ 
+  reminder, 
+  type, 
+  reminders, 
+  setReminders, 
+  toggleReminder, 
+  toggleAI, 
+  sendImmediateReminder, 
+  openTimePicker, 
+  aiConsent, 
+  aiLoading, 
+  reminderTypes, 
+  darkMode, 
+  theme,
+  toggleSupplemental,
+  toggleIntervalReminders,
+  updateIntervalHours
+}) => {
   const currentReminder = reminders[type];
   const [showInsights, setShowInsights] = useState(false);
   
@@ -233,11 +295,13 @@ const ReminderCard = ({ reminder, type, reminders, setReminders, toggleReminder,
           )}
 
           {!currentReminder.useAI && currentReminder.customTimes && (
+            <>
             <View style={styles.manualTimesSection}>
               <View style={styles.manualTimesSectionHeader}>
                 <MaterialCommunityIcons name="clock" size={16} color="#666" />
                 <Text style={[styles.sectionHeaderText, { color: theme.textPrimary }]}>Reminder Times:</Text>
               </View>
+              
               {currentReminder.customTimes.map((time, index) => (
                 <View key={index} style={[
                   styles.manualTimeContainer,
@@ -288,6 +352,113 @@ const ReminderCard = ({ reminder, type, reminders, setReminders, toggleReminder,
                 <Text style={styles.addTimeButtonText}>Add Another Time</Text>
               </TouchableOpacity>
             </View>
+            <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <MaterialCommunityIcons name="timer-outline" size={20} color="#9C27B0" />
+              <View style={styles.settingLabelContainer}>
+                <Text style={[styles.settingLabel, { color: theme.textPrimary }]}>
+                  Interval Reminders
+                </Text>
+                <Text style={[styles.settingSubtext, { color: theme.textSecondary }]}>
+                  Remind me every X hours automatically
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={currentReminder.useIntervalReminders}
+              onValueChange={() => toggleIntervalReminders(type)}
+              trackColor={{ false: '#D0D0D0', true: '#9C27B0' }}
+              thumbColor={currentReminder.useIntervalReminders ? '#FFFFFF' : '#F4F4F4'}
+              ios_backgroundColor="#D0D0D0"
+            />
+          </View>
+
+          {currentReminder.useIntervalReminders && (
+            <View style={[
+              styles.intervalSettingsContainer,
+              { backgroundColor: darkMode ? '#3D2D3D' : '#F3E5F5' }
+            ]}>
+              <Text style={[styles.intervalLabel, { color: theme.textPrimary }]}>
+                Remind every {currentReminder.intervalHours} hours
+              </Text>
+              <View style={styles.intervalControls}>
+                <TouchableOpacity
+                  style={styles.intervalButton}
+                  onPress={() => {
+                    const newHours = Math.max(0.5, currentReminder.intervalHours - 0.5);
+                    updateIntervalHours(type, newHours);
+                  }}
+                >
+                  <MaterialCommunityIcons name="minus" size={20} color="#9C27B0" />
+                </TouchableOpacity>
+                <Text style={[styles.intervalValue, { color: theme.textPrimary }]}>
+                  {currentReminder.intervalHours}h
+                </Text>
+                <TouchableOpacity
+                  style={styles.intervalButton}
+                  onPress={() => {
+                    const newHours = Math.min(12, currentReminder.intervalHours + 0.5);
+                    updateIntervalHours(type, newHours);
+                  }}
+                >
+                  <MaterialCommunityIcons name="plus" size={20} color="#9C27B0" />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.intervalInfo, { color: theme.textSecondary }]}>
+                {currentReminder.customTimes.length} reminders per day starting at{' '}
+                {formatTime12Hour(currentReminder.customTimes[0])}
+              </Text>
+            </View>
+          )}
+        </>
+      )}
+
+      {/* NEW: Supplemental times section - shows for both AI and manual */}
+      {currentReminder.enabled && (currentReminder.useAI || !currentReminder.useIntervalReminders) && (
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <MaterialCommunityIcons name="plus-circle-multiple-outline" size={20} color="#00BCD4" />
+            <View style={styles.settingLabelContainer}>
+              <Text style={[styles.settingLabel, { color: theme.textPrimary }]}>
+                Age-Based Supplemental Times
+              </Text>
+              <Text style={[styles.settingSubtext, { color: theme.textSecondary }]}>
+                Add extra reminders based on baby's age needs
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={currentReminder.useSupplemental}
+            onValueChange={() => toggleSupplemental(type)}
+            trackColor={{ false: '#D0D0D0', true: '#00BCD4' }}
+            thumbColor={currentReminder.useSupplemental ? '#FFFFFF' : '#F4F4F4'}
+            ios_backgroundColor="#D0D0D0"
+          />
+        </View>
+      )}
+
+      {currentReminder.useSupplemental && currentReminder.supplementalTimes.length > 0 && (
+        <View style={[
+          styles.supplementalSection,
+          { backgroundColor: darkMode ? '#2D3D3D' : '#E0F7FA' }
+        ]}>
+          <View style={styles.supplementalHeader}>
+            <MaterialCommunityIcons name="information-outline" size={16} color="#00BCD4" />
+            <Text style={[styles.supplementalHeaderText, { color: darkMode ? '#4DD0E1' : '#00838F' }]}>
+              {currentReminder.supplementalTimes.length} supplemental reminder{currentReminder.supplementalTimes.length !== 1 ? 's' : ''} added
+            </Text>
+          </View>
+          <View style={styles.supplementalTimesContainer}>
+            {currentReminder.supplementalTimes.map((time, index) => (
+              <View key={index} style={[
+                styles.supplementalTimeChip,
+                { backgroundColor: darkMode ? '#00BCD4' : '#00ACC1' }
+              ]}>
+                <Text style={styles.supplementalTimeText}>{formatTime12Hour(time)}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
           )}
 
           <View style={styles.settingRow}>
@@ -524,11 +695,15 @@ const [reminders, setReminders] = useState({
   feeding: {
     enabled: false,
     useAI: false,
-    customTimes: ['12:00'], // Array instead of single customTime
+    customTimes: ['12:00'],
     aiPattern: 'Every 3-4 hours based on feeding history',
     notificationIds: [],
     aiRecommendedTimes: [],
-    frequency: 'daily'
+    frequency: 'daily',
+    useSupplemental: false,
+    supplementalTimes: [],
+    useIntervalReminders: false,
+    intervalHours: 3
   },
   diaper: {
     enabled: false,
@@ -537,7 +712,11 @@ const [reminders, setReminders] = useState({
     aiPattern: 'Every 2-3 hours based on diaper logs',
     notificationIds: [],
     aiRecommendedTimes: [],
-    frequency: 'daily'
+    frequency: 'daily',
+    useSupplemental: false,
+    supplementalTimes: [],
+    useIntervalReminders: false,
+    intervalHours: 2.5
   },
   nap: {
     enabled: false,
@@ -546,7 +725,11 @@ const [reminders, setReminders] = useState({
     aiPattern: 'Based on sleep patterns and age',
     notificationIds: [],
     aiRecommendedTimes: [],
-    frequency: 'daily'
+    frequency: 'daily',
+    useSupplemental: false,
+    supplementalTimes: [],
+    useIntervalReminders: false,
+    intervalHours: 4
   }
 });
 
@@ -602,7 +785,6 @@ const loadSavedReminders = async () => {
       const data = reminderDoc.data();
       const loadedReminders = data.reminders || reminders;
       
-      // Migrate old data structure to new structure and fill in defaults
       const migratedReminders = {};
       for (const [key, reminder] of Object.entries(loadedReminders)) {
         migratedReminders[key] = {
@@ -613,18 +795,21 @@ const loadSavedReminders = async () => {
           notificationIds: reminder?.notificationIds || [],
           aiRecommendedTimes: reminder?.aiRecommendedTimes || [],
           frequency: reminder?.frequency || 'daily',
-          // Optional fields with defaults
+          useSupplemental: reminder?.useSupplemental || false,
+          supplementalTimes: reminder?.supplementalTimes || [],
+          useIntervalReminders: reminder?.useIntervalReminders || false,
+          intervalHours: reminder?.intervalHours || (key === 'feeding' ? 3 : key === 'diaper' ? 2.5 : 4),
           confidence: reminder?.confidence || null,
           insights: reminder?.insights || [],
           parentTip: reminder?.parentTip || '',
           nextOptimization: reminder?.nextOptimization || ''
         };
       }
-      
+            
       setReminders(migratedReminders);
       setAiConsent(data.aiConsent || false);
       
-      console.log('Reminders loaded successfully:', migratedReminders);
+      console.log('Reminders loaded successfully with supplemental times:', migratedReminders);
     }
   } catch (error) {
     console.error('Error loading reminders:', error);
@@ -921,6 +1106,12 @@ const cleanReminderData = (reminders) => {
       notificationIds: reminder.notificationIds || [],
       aiRecommendedTimes: reminder.aiRecommendedTimes || [],
       frequency: reminder.frequency || 'daily',
+      // Add supplemental times fields
+      useSupplemental: reminder.useSupplemental || false,
+      supplementalTimes: reminder.supplementalTimes || [],
+      // Add interval reminder fields
+      useIntervalReminders: reminder.useIntervalReminders || false,
+      intervalHours: reminder.intervalHours || (key === 'feeding' ? 3 : key === 'diaper' ? 2.5 : 4),
       // Only include optional fields if they have values
       ...(reminder.confidence && { confidence: reminder.confidence }),
       ...(reminder.insights && Array.isArray(reminder.insights) && reminder.insights.length > 0 && { insights: reminder.insights }),
@@ -1532,119 +1723,147 @@ const getDefaultInterval = (reminderType) => {
       return '3.0';
   }
 };
+
+// Generate supplemental reminder times based on child age and existing times
+const generateSupplementalTimes = (reminderType, existingTimes, childData) => {
+  const ageMonths = childData?.ageMonths || 0;
+  let targetCount = 0;
+  let minIntervalHours = 2;
   
-  // Default times based on reminder type and best practices
-  const getDefaultTimes = (reminderType) => {
-    switch (reminderType) {
-      case 'feeding':
-        return ['07:00', '11:00', '15:00', '19:00']; // Every 4 hours
-      case 'diaper':
-        return ['08:00', '12:00', '16:00', '20:00']; // Every 4 hours
-      case 'nap':
-        return ['10:00', '14:00']; // Morning and afternoon naps
-      default:
-        return ['12:00'];
-    }
-  };
-
-  // Local pattern analysis (privacy-focused approach)
-  const analyzePatterns = (data, reminderType) => {
-    if (!data || data.length === 0) {
-      return {
-        times: ['12:00'],
-        explanation: `No data available for ${reminderType} analysis.`,
-        frequency: 'daily'
-      };
-    }
-
-    const hourCounts = {};
-    const intervalCounts = {};
+  // Determine target number of reminders based on age and type
+  switch (reminderType) {
+    case 'feeding':
+      if (ageMonths < 2) {
+        targetCount = 10; // Newborns: 8-12 times/day
+        minIntervalHours = 2;
+      } else if (ageMonths < 6) {
+        targetCount = 7; // 2-6 months: 6-8 times/day
+        minIntervalHours = 2.5;
+      } else if (ageMonths < 12) {
+        targetCount = 5; // 6-12 months: 4-6 times/day
+        minIntervalHours = 3;
+      } else {
+        targetCount = 5; // 12+ months: 3 meals + 2 snacks
+        minIntervalHours = 3;
+      }
+      break;
+      
+    case 'diaper':
+      if (ageMonths < 3) {
+        targetCount = 9; // Newborns: 8-10 times/day
+        minIntervalHours = 2;
+      } else if (ageMonths < 12) {
+        targetCount = 7; // 3-12 months: 6-8 times/day
+        minIntervalHours = 2.5;
+      } else {
+        targetCount = 6; // 12+ months: 6 times/day
+        minIntervalHours = 3;
+      }
+      break;
+      
+    case 'nap':
+      if (ageMonths < 4) {
+        targetCount = 4; // Newborns: 4-5 naps
+        minIntervalHours = 2.5;
+      } else if (ageMonths < 9) {
+        targetCount = 3; // 4-9 months: 2-3 naps
+        minIntervalHours = 3;
+      } else if (ageMonths < 18) {
+        targetCount = 2; // 9-18 months: 2 naps
+        minIntervalHours = 4;
+      } else {
+        targetCount = 1; // 18+ months: 1 nap
+        return []; // No supplemental needed
+      }
+      break;
+      
+    default:
+      return [];
+  }
+  
+  const currentCount = existingTimes.length;
+  const neededCount = Math.max(0, targetCount - currentCount);
+  
+  if (neededCount === 0) {
+    return [];
+  }
+  
+  // Convert existing times to minutes for easier calculation
+  const existingMinutes = existingTimes.map(time => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+  }).sort((a, b) => a - b);
+  
+  const supplementalTimes = [];
+  const dayMinutes = 24 * 60;
+  const minIntervalMinutes = minIntervalHours * 60;
+  
+  // Find gaps between existing times and fill them
+  for (let i = 0; i < existingMinutes.length && supplementalTimes.length < neededCount; i++) {
+    const currentTime = existingMinutes[i];
+    const nextTime = i < existingMinutes.length - 1 ? existingMinutes[i + 1] : existingMinutes[0] + dayMinutes;
+    const gap = nextTime - currentTime;
     
-    // Analyze timing patterns with error handling
-    data.forEach((entry, index) => {
-      try {
-        if (!entry.timestamp || !(entry.timestamp instanceof Date)) {
-          console.warn(`Invalid timestamp at index ${index}:`, entry.timestamp);
-          return;
-        }
-        
-        const hour = entry.timestamp.getHours();
-        if (hour >= 0 && hour <= 23) {
-          hourCounts[hour] = (hourCounts[hour] || 0) + 1;
-        }
-      } catch (error) {
-        console.warn(`Error processing entry at index ${index}:`, error);
-      }
-    });
-
-    // Calculate intervals between activities with error handling
-    for (let i = 1; i < data.length; i++) {
-      try {
-        const currentEntry = data[i-1];
-        const previousEntry = data[i];
-        
-        if (!currentEntry.timestamp || !previousEntry.timestamp || 
-            !(currentEntry.timestamp instanceof Date) || 
-            !(previousEntry.timestamp instanceof Date)) {
-          continue;
-        }
-        
-        const interval = Math.round((currentEntry.timestamp - previousEntry.timestamp) / (1000 * 60 * 60));
-        if (interval > 0 && interval < 12) {
-          intervalCounts[interval] = (intervalCounts[interval] || 0) + 1;
-        }
-      } catch (error) {
-        console.warn(`Error calculating interval at index ${i}:`, error);
+    // If gap is large enough, add times in between
+    if (gap > minIntervalMinutes * 2) {
+      const timesToAdd = Math.floor(gap / minIntervalMinutes) - 1;
+      for (let j = 1; j <= timesToAdd && supplementalTimes.length < neededCount; j++) {
+        const newTime = (currentTime + (j * minIntervalMinutes)) % dayMinutes;
+        const hours = Math.floor(newTime / 60);
+        const minutes = newTime % 60;
+        supplementalTimes.push(`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`);
       }
     }
-
-    // Find most common times
-    const sortedHours = Object.entries(hourCounts)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 3);
-
-    const recommendedTimes = sortedHours.map(([hour]) => {
-      const h = parseInt(hour);
-      return `${h.toString().padStart(2, '0')}:00`;
-    });
-
-    // Find most common interval
-    const mostCommonInterval = Object.entries(intervalCounts)
-      .sort(([,a], [,b]) => b - a)[0]?.[0] || '3';
-
-    let explanation;
-    const dataCount = data.length;
-    const validHours = Object.keys(hourCounts).length;
-
-    if (validHours === 0) {
-      // Fallback if no valid timestamps
-      return {
-        times: ['12:00'],
-        explanation: `No valid timestamp data found for ${reminderType}. Using default schedule.`,
-        frequency: 'daily'
-      };
+  }
+  
+  // If we still need more times, distribute them evenly throughout the day
+  while (supplementalTimes.length < neededCount) {
+    const allTimes = [...existingMinutes, ...supplementalTimes.map(t => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    })].sort((a, b) => a - b);
+    
+    // Find largest gap
+    let largestGap = 0;
+    let largestGapIndex = 0;
+    for (let i = 0; i < allTimes.length; i++) {
+      const currentTime = allTimes[i];
+      const nextTime = i < allTimes.length - 1 ? allTimes[i + 1] : allTimes[0] + dayMinutes;
+      const gap = nextTime - currentTime;
+      if (gap > largestGap) {
+        largestGap = gap;
+        largestGapIndex = i;
+      }
     }
+    
+    // Add time in the middle of largest gap
+    const midpoint = (allTimes[largestGapIndex] + (largestGap / 2)) % dayMinutes;
+    const hours = Math.floor(midpoint / 60);
+    const minutes = Math.round(midpoint % 60);
+    supplementalTimes.push(`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`);
+  }
+  
+  return supplementalTimes.sort();
+};
 
-    switch (reminderType) {
-      case 'feeding':
-        explanation = `Based on ${dataCount} feeding logs, optimal times are ${recommendedTimes.join(', ')} with ${mostCommonInterval}hr intervals.`;
-        break;
-      case 'diaper':
-        explanation = `Analysis of ${dataCount} diaper changes suggests checking every ${mostCommonInterval} hours.`;
-        break;
-      case 'nap':
-        explanation = `Sleep pattern analysis shows best nap times at ${recommendedTimes.join(', ')}.`;
-        break;
-      default:
-        explanation = 'Pattern-based recommendation';
-    }
-
-    return {
-      times: recommendedTimes.length > 0 ? recommendedTimes : ['12:00'],
-      explanation,
-      frequency: 'daily'
-    };
-  };
+// Generate interval-based reminder times
+const generateIntervalTimes = (intervalHours, startTime = '07:00') => {
+  const times = [];
+  const [startHour, startMinute] = startTime.split(':').map(Number);
+  let currentMinutes = startHour * 60 + startMinute;
+  const intervalMinutes = intervalHours * 60;
+  const dayMinutes = 24 * 60;
+  
+  // Generate times throughout the day
+  while (currentMinutes < dayMinutes) {
+    const hours = Math.floor(currentMinutes / 60);
+    const minutes = Math.round(currentMinutes % 60);
+    times.push(`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`);
+    currentMinutes += intervalMinutes;
+  }
+  
+  return times;
+};
 
 // Schedule individual notification at proper time
 const scheduleReminder = async (reminderType, time, useAI = false) => {
@@ -1711,7 +1930,7 @@ const scheduleReminder = async (reminderType, time, useAI = false) => {
         notificationBody = `Time for ${name}'s feeding!`;
         break;
       case 'diaper':
-        notificationTitle = `👶 ${name}'s Diaper Change`;
+        notificationTitle = `💧 ${name}'s Diaper Change`;
         notificationBody = `Time to check ${name}'s diaper!`;
         break;
       case 'nap':
@@ -1756,15 +1975,27 @@ const scheduleReminder = async (reminderType, time, useAI = false) => {
 };
 
 // Schedule all times for a reminder type
-const scheduleNotifications = async (reminderType, times, useAI = false) => {
+const scheduleNotifications = async (reminderType, times, useAI = false, supplementalTimes = []) => {
   console.log(`\n📅 Scheduling ${reminderType} notifications for times:`, times);
   
   const notificationIds = [];
   
+  // Schedule primary times
   for (const time of times) {
     const notificationId = await scheduleReminder(reminderType, time, useAI);
     if (notificationId) {
       notificationIds.push(notificationId);
+    }
+  }
+  
+  // Schedule supplemental times if enabled
+  if (supplementalTimes.length > 0) {
+    console.log(`📅 Also scheduling ${supplementalTimes.length} supplemental times`);
+    for (const time of supplementalTimes) {
+      const notificationId = await scheduleReminder(reminderType, time, useAI);
+      if (notificationId) {
+        notificationIds.push(notificationId);
+      }
     }
   }
 
@@ -1819,12 +2050,6 @@ const sendImmediateReminder = async (reminderType) => {
   }
 };
 
-
-// ============================================================================
-// OPTIONAL: If you want to add a "Schedule Notifications" button later,
-// create this function (add it to your component):
-// ============================================================================
-
 const scheduleAllNotifications = async () => {
   try {
     // Cancel any existing scheduled notifications first
@@ -1839,15 +2064,18 @@ const scheduleAllNotifications = async () => {
     
     for (const [type, reminder] of Object.entries(reminders)) {
       if (reminder.enabled) {
-        const timesToUse = reminder.useAI && reminder.aiRecommendedTimes.length > 0
-          ? reminder.aiRecommendedTimes 
-          : reminder.customTimes;
-        
-        const notificationIds = await scheduleNotifications(type, timesToUse, reminder.useAI);
-        updatedReminders[type] = {
-          ...reminder,
-          notificationIds
-        };
+      const timesToUse = reminder.useAI && reminder.aiRecommendedTimes.length > 0
+        ? reminder.aiRecommendedTimes 
+        : reminder.customTimes;
+
+      const supplementalToUse = reminder.useSupplemental ? reminder.supplementalTimes : [];
+
+      const notificationIds = await scheduleNotifications(
+        type, 
+        timesToUse, 
+        reminder.useAI,
+        supplementalToUse
+      );
       }
     }
     
@@ -1916,6 +2144,86 @@ const toggleAI = async (type) => {
     }
   }
 };
+
+const toggleSupplemental = async (type) => {
+  const currentReminder = reminders[type];
+  const newUseSupplemental = !currentReminder.useSupplemental;
+  
+  if (newUseSupplemental) {
+    // Generate supplemental times
+    const childData = await getChildData(childId);
+    const baseTimes = currentReminder.useAI && currentReminder.aiRecommendedTimes.length > 0
+      ? currentReminder.aiRecommendedTimes
+      : currentReminder.customTimes;
+    
+    const supplementalTimes = generateSupplementalTimes(type, baseTimes, childData);
+    
+    setReminders(prev => ({
+      ...prev,
+      [type]: {
+        ...prev[type],
+        useSupplemental: true,
+        supplementalTimes
+      }
+    }));
+    
+    // Show info about supplemental times
+    Alert.alert(
+      'Supplemental Times Added',
+      `Added ${supplementalTimes.length} age-appropriate reminder${supplementalTimes.length !== 1 ? 's' : ''} based on ${childData?.ageMonths || 0}-month-old needs.`,
+      [{ text: 'OK' }]
+    );
+  } else {
+    setReminders(prev => ({
+      ...prev,
+      [type]: {
+        ...prev[type],
+        useSupplemental: false,
+        supplementalTimes: []
+      }
+    }));
+  }
+};
+
+const toggleIntervalReminders = (type) => {
+  const currentReminder = reminders[type];
+  const newUseInterval = !currentReminder.useIntervalReminders;
+  
+  if (newUseInterval) {
+    const intervalTimes = generateIntervalTimes(currentReminder.intervalHours);
+    
+    setReminders(prev => ({
+      ...prev,
+      [type]: {
+        ...prev[type],
+        useIntervalReminders: true,
+        customTimes: intervalTimes
+      }
+    }));
+  } else {
+    setReminders(prev => ({
+      ...prev,
+      [type]: {
+        ...prev[type],
+        useIntervalReminders: false
+      }
+    }));
+  }
+};
+
+const updateIntervalHours = (type, hours) => {
+  const intervalTimes = generateIntervalTimes(hours);
+  
+  setReminders(prev => ({
+    ...prev,
+    [type]: {
+      ...prev[type],
+      intervalHours: hours,
+      customTimes: intervalTimes
+    }
+  }));
+};
+
   const handleAiConsentToggle = async (value) => {
     if (!value) {
       // If disabling AI consent, disable AI for all reminders
@@ -2040,20 +2348,29 @@ const saveReminders = async () => {
     >
       <View style={styles.container}>
       <View style={[styles.header, { backgroundColor: darkMode ? 'transparent' : 'transparent' }]}>
-        <TouchableOpacity 
-          style={styles.backButton} 
+        <TouchableOpacity
           onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
+          style={styles.headerButton}
+          activeOpacity={0.9}
         >
-          <BlurView intensity={20} tint={darkMode ? "dark" : "light"} style={styles.backButtonBlur}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color={theme.textPrimary} />
-          </BlurView>
+          <LinearGradient
+            colors={darkMode ? ['#1f1f1f', '#2c2c2c'] : ['#F8FBFF', '#EEF4FF']}
+            style={styles.headerButtonGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <ArrowLeft size={20} color={darkMode ? '#fff' : '#2E3A59'} />
+          </LinearGradient>
         </TouchableOpacity>
+                      <View style={styles.logoContainer}>
+                <Image 
+                  source={require('../assets/logo.png')} 
+                  style={styles.logo}
+                />
+              </View>
       </View>
-
         <Text style={[styles.title, { color: theme.textPrimary }]}>{name}'s Reminders</Text>
-
-        <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}   contentContainerStyle={{ paddingBottom: 30 }}>
           {/* AI Consent Section */}
           <View style={[styles.aiConsentContainer, { backgroundColor: darkMode ? '#2c2c2c' : '#FFF' }]}>
             <View style={styles.consentHeader}>
@@ -2098,6 +2415,9 @@ const saveReminders = async () => {
               reminderTypes={reminderTypes}
               darkMode={darkMode}
               theme={theme}
+              toggleSupplemental={toggleSupplemental}
+              toggleIntervalReminders={toggleIntervalReminders}
+              updateIntervalHours={updateIntervalHours}
             />
           ))}
           <View style={styles.bottomPadding} />
@@ -2133,73 +2453,81 @@ const saveReminders = async () => {
                   return;
                 }
 
-                Alert.alert(
-                  'Save & Schedule?',
-                  'This will save your settings and schedule all enabled reminders to send at their designated times.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { 
-                      text: 'Save & Schedule', 
-                      onPress: async () => {
-                        try {
-                          // Cancel existing notifications first
-                          for (const [type, reminder] of Object.entries(reminders)) {
-                            if (reminder.notificationIds?.length > 0) {
-                              await cancelNotifications(reminder.notificationIds);
-                            }
-                          }
-                          
-                          // Schedule new notifications
-                          const updatedReminders = { ...reminders };
-                          let totalScheduled = 0;
-                          
-                          for (const [type, reminder] of Object.entries(reminders)) {
-                            if (reminder.enabled) {
-                              const timesToUse = reminder.useAI && reminder.aiRecommendedTimes.length > 0
-                                ? reminder.aiRecommendedTimes 
-                                : reminder.customTimes;
+              Alert.alert(
+                      'Save & Schedule?',
+                      'This will save your settings and schedule all enabled reminders to send at their designated times.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Save & Schedule', 
+                          onPress: async () => {
+                            try {
+                              // Cancel existing notifications first
+                              for (const [type, reminder] of Object.entries(reminders)) {
+                                if (reminder.notificationIds?.length > 0) {
+                                  await cancelNotifications(reminder.notificationIds);
+                                }
+                              }
                               
-                              const notificationIds = await scheduleNotifications(type, timesToUse, reminder.useAI);
-                              updatedReminders[type] = { ...reminder, notificationIds };
-                              totalScheduled += notificationIds.length;
+                              // Schedule new notifications
+                              const updatedReminders = { ...reminders };
+                              let totalScheduled = 0;
+                              
+                              for (const [type, reminder] of Object.entries(reminders)) {
+                                if (reminder.enabled) {
+                                  const timesToUse = reminder.useAI && reminder.aiRecommendedTimes.length > 0
+                                    ? reminder.aiRecommendedTimes 
+                                    : reminder.customTimes;
+                                  
+                                  // Include supplemental times
+                                  const supplementalToUse = reminder.useSupplemental ? reminder.supplementalTimes : [];
+                                  
+                                  const notificationIds = await scheduleNotifications(
+                                    type, 
+                                    timesToUse, 
+                                    reminder.useAI,
+                                    supplementalToUse // Pass supplemental times
+                                  );
+                                  updatedReminders[type] = { ...reminder, notificationIds };
+                                  totalScheduled += notificationIds.length;
+                                }
+                              }
+                              
+                              setReminders(updatedReminders);
+                              
+                              // Save to Firebase with all fields
+                              const cleanedReminders = cleanReminderData(updatedReminders);
+                              
+                              const reminderData = {
+                                childId,
+                                reminders: cleanedReminders,
+                                aiConsent,
+                                expoPushToken: expoPushToken || '',
+                                userId: auth.currentUser.uid,
+                                updatedAt: new Date().toISOString()
+                              };
+                              
+                              console.log('Saving reminder data with supplemental times:', reminderData);
+                              await setDoc(doc(db, 'reminders', childId), reminderData);
+                              
+                              Alert.alert(
+                                'Success!', 
+                                `Settings saved and ${totalScheduled} notification${totalScheduled !== 1 ? 's' : ''} scheduled!\n\nNotifications will be sent at your specified times.\n\nUse "Send Now" buttons to test immediately.`,
+                                [{ text: 'OK', onPress: () => navigation.goBack() }]
+                              );
+                            } catch (error) {
+                              console.error('Error saving and scheduling:', error);
+                              Alert.alert('Error', 'Failed to save and schedule reminders. Please try again.');
                             }
                           }
-                          
-                          setReminders(updatedReminders);
-                          
-                          // Save to Firebase
-                          const cleanedReminders = cleanReminderData(updatedReminders);
-                          
-                          const reminderData = {
-                            childId,
-                            reminders: cleanedReminders,
-                            aiConsent,
-                            expoPushToken: expoPushToken || '',
-                            userId: auth.currentUser.uid,
-                            updatedAt: new Date().toISOString()
-                          };
-                          
-                          console.log('Saving reminder data:', reminderData);
-                          await setDoc(doc(db, 'reminders', childId), reminderData);
-                          
-                          Alert.alert(
-                            'Success!', 
-                            `Settings saved and ${totalScheduled} notification${totalScheduled !== 1 ? 's' : ''} scheduled!\n\nNotifications will be sent at your specified times.\n\nUse "Send Now" buttons to test immediately.`,
-                            [{ text: 'OK', onPress: () => navigation.goBack() }]
-                          );
-                        } catch (error) {
-                          console.error('Error saving and scheduling:', error);
-                          Alert.alert('Error', 'Failed to save and schedule reminders. Please try again.');
                         }
-                      }
-                    }
-                  ]
-                );
-              }}
-            >
-              <MaterialCommunityIcons name="content-save-check" size={20} color="#FFF" />
-              <Text style={styles.scheduleAllButtonText}>Save & Schedule All Reminders</Text>
-            </TouchableOpacity>
+                      ]
+                    );
+                  }}
+                >
+                  <MaterialCommunityIcons name="content-save-check" size={20} color="#FFF" />
+                  <Text style={styles.scheduleAllButtonText}>Save & Schedule All Reminders</Text>
+                </TouchableOpacity>
           </View>
         )}
         </ScrollView>
@@ -2476,7 +2804,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   bottomPadding: {
-    height: 20,
+    height: 40,
   },
   modalOverlay: {
     flex: 1,
@@ -2894,15 +3222,15 @@ improvementTipText: {
   lineHeight: 16,
 },
 scheduleSection: {
-  marginTop: 20,
-  marginBottom: 10,
+  marginBottom: 40,
+  paddingHorizontal: 4,
 },
 scheduleInfoBox: {
   flexDirection: 'row',
   alignItems: 'flex-start',
-  padding: 12,
+  padding: 16,
   borderRadius: 12,
-  marginBottom: 12,
+  marginBottom: 16,
   gap: 10,
 },
 scheduleInfoText: {
@@ -2915,13 +3243,117 @@ scheduleAllButton: {
   alignItems: 'center',
   justifyContent: 'center',
   backgroundColor: '#007AFF',
-  padding: 16,
+  padding: 18,
   borderRadius: 12,
   gap: 8,
+  elevation: 4,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.15,
+  shadowRadius: 4,
 },
 scheduleAllButtonText: {
   color: '#FFF',
   fontSize: 16,
   fontWeight: '600',
 },
+intervalSettingsContainer: {
+  padding: 12,
+  borderRadius: 8,
+  marginTop: 8,
+  marginBottom: 12,
+},
+intervalLabel: {
+  fontSize: 14,
+  fontWeight: '600',
+  marginBottom: 12,
+  textAlign: 'center',
+},
+intervalControls: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 20,
+},
+intervalButton: {
+  width: 40,
+  height: 40,
+  borderRadius: 20,
+  backgroundColor: '#F3E5F5',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+intervalValue: {
+  fontSize: 24,
+  fontWeight: 'bold',
+  minWidth: 60,
+  textAlign: 'center',
+},
+intervalInfo: {
+  fontSize: 12,
+  textAlign: 'center',
+  marginTop: 8,
+},
+supplementalSection: {
+  padding: 12,
+  borderRadius: 8,
+  marginTop: 8,
+  marginBottom: 12,
+},
+supplementalHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginBottom: 8,
+},
+supplementalHeaderText: {
+  fontSize: 13,
+  fontWeight: '600',
+  marginLeft: 6,
+},
+supplementalTimesContainer: {
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  gap: 6,
+},
+supplementalTimeChip: {
+  paddingHorizontal: 10,
+  paddingVertical: 5,
+  borderRadius: 12,
+},
+supplementalTimeText: {
+  fontSize: 11,
+  color: '#FFF',
+  fontWeight: '600',
+},
+  header: {
+    marginTop: 15,
+    marginBottom: 18,
+    height: 44,
+    paddingLeft: 14,
+    paddingRight: 13,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+   
+  },
+headerButton: {
+  borderRadius: 16,
+  overflow: 'hidden',
+},
+headerButtonGradient: {
+  width: 44,
+  height: 44,
+  borderRadius: 16,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+  logoContainer: {
+    alignItems: 'center',
+  },
+    logo: {
+    width: 60,
+    height: 60,
+    resizeMode: 'contain',
+    marginRight: 170,
+  },
 });

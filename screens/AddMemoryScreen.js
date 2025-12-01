@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
   Alert, ScrollView, Platform, ActivityIndicator, StatusBar, FlatList,
-  KeyboardAvoidingView, Keyboard, InputAccessoryView
+  KeyboardAvoidingView, Keyboard
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -16,6 +16,7 @@ import { Video } from 'expo-av';
 import NetInfo from '@react-native-community/netinfo';
 import { useDarkMode } from './DarkMode';
 import { appTheme } from './ThemedBackground';
+import MilestoneSelector from './MilestoneSelector';
 import { 
   uploadMedia, 
   generateMemoryPath, 
@@ -35,7 +36,9 @@ const AddMemoryScreen = () => {
   const { childId, childName } = route.params;
   const { darkMode } = useDarkMode();
   const theme = darkMode ? appTheme.dark : appTheme.light;
-  
+  const [milestone, setMilestone] = useState(null);
+  const [showMilestoneSelector, setShowMilestoneSelector] = useState(false);
+
   const [mediaItems, setMediaItems] = useState([]); // Array of {uri, type: 'photo'|'video'}
   const [caption, setCaption] = useState('');
   const [description, setDescription] = useState('');
@@ -51,63 +54,94 @@ const AddMemoryScreen = () => {
   const db = getFirestore();
   const auth = getAuth();
 
-  const pickMedia = async (type) => {
-    if (mediaItems.length >= MAX_MEDIA_ITEMS) {
-      Alert.alert(
-        'Maximum Reached',
-        `You can only add up to ${MAX_MEDIA_ITEMS} photos or videos per memory.`
-      );
-      return;
-    }
-
-    try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permissionResult.granted) {
-        Alert.alert('Permission Required', 'Please grant media library permissions.');
+  const pickMedia = async (type, useCamera = false) => {
+      if (mediaItems.length >= MAX_MEDIA_ITEMS) {
+        Alert.alert(
+          'Maximum Reached',
+          `You can only add up to ${MAX_MEDIA_ITEMS} photos or videos per memory.`
+        );
         return;
       }
 
-      const options = {
-        mediaTypes: type === 'photo' 
-          ? ImagePicker.MediaTypeOptions.Images 
-          : ImagePicker.MediaTypeOptions.Videos,
-        allowsEditing: true,
-        quality: 0.8,
-      };
-
-      if (type === 'photo') {
-        options.aspect = [4, 3];
-      }
-
-      if (type === 'video') {
-        options.videoMaxDuration = 120;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync(options);
-
-      if (!result.canceled) {
-        const asset = result.assets[0];
-        
-        // Validate video duration
-        if (type === 'video' && asset.duration) {
-          const durationInSeconds = asset.duration / 1000;
+      try {
+        // Request appropriate permissions
+        const permissionResult = useCamera 
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
           
-          if (durationInSeconds > 120) {
-            Alert.alert(
-              'Video Too Long',
-              `Please select a video that is 2 minutes or shorter.\n\nSelected: ${Math.round(durationInSeconds)} seconds`
-            );
-            return;
-          }
+        if (!permissionResult.granted) {
+          Alert.alert(
+            'Permission Required', 
+            `Please grant ${useCamera ? 'camera' : 'media library'} permissions.`
+          );
+          return;
         }
-        
-        setMediaItems([...mediaItems, { uri: asset.uri, type }]);
+
+        const options = {
+          mediaTypes: type === 'photo' 
+            ? ImagePicker.MediaTypeOptions.Images 
+            : ImagePicker.MediaTypeOptions.Videos,
+          allowsEditing: true,
+          quality: 0.8,
+        };
+
+        if (type === 'photo') {
+          options.aspect = [4, 3];
+        }
+
+        if (type === 'video') {
+          options.videoMaxDuration = 120;
+        }
+
+        const result = useCamera
+          ? await ImagePicker.launchCameraAsync(options)
+          : await ImagePicker.launchImageLibraryAsync(options);
+
+        if (!result.canceled) {
+          const asset = result.assets[0];
+          
+          // Validate video duration
+          if (type === 'video' && asset.duration) {
+            const durationInSeconds = asset.duration / 1000;
+            
+            if (durationInSeconds > 120) {
+              Alert.alert(
+                'Video Too Long',
+                `Please select a video that is 2 minutes or shorter.\n\nSelected: ${Math.round(durationInSeconds)} seconds`
+              );
+              return;
+            }
+          }
+          
+          setMediaItems([...mediaItems, { uri: asset.uri, type }]);
+        }
+      } catch (error) {
+        console.error('Error picking media:', error);
+        Alert.alert('Error', 'Failed to pick media. Please try again.');
       }
-    } catch (error) {
-      console.error('Error picking media:', error);
-      Alert.alert('Error', 'Failed to pick media. Please try again.');
-    }
-  };
+    };
+
+
+  const showMediaOptions = (type) => {
+    Alert.alert(
+      `Add ${type === 'photo' ? 'Photo' : 'Video'}`,
+      'Choose source',
+      [
+        {
+          text: 'Take Now',
+          onPress: () => pickMedia(type, true)
+        },
+        {
+          text: 'Choose from Library',
+          onPress: () => pickMedia(type, false)
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        }
+      ]
+    );
+  };  
 
   const removeMedia = (index) => {
     setMediaItems(mediaItems.filter((_, i) => i !== index));
@@ -215,6 +249,11 @@ const AddMemoryScreen = () => {
         caption: caption.trim(),
         description: description.trim(),
         date: Timestamp.fromDate(memoryDate),
+        milestone: milestone ? {
+          id: milestone.id,
+          label: milestone.label,
+          icon: milestone.icon
+        } : null,
         createdAt: Timestamp.fromDate(new Date()),
         updatedAt: Timestamp.fromDate(new Date()),
         likes: 0,
@@ -297,17 +336,20 @@ const AddMemoryScreen = () => {
                 <View style={styles.mediaPickerContainer}>
                   <TouchableOpacity
                     style={[styles.mediaOption, { backgroundColor: darkMode ? '#2c2c2c' : '#f8f9fa' }]}
-                    onPress={() => pickMedia('photo')}
+                    onPress={() => showMediaOptions('photo')}
                   >
                     <MaterialCommunityIcons name="camera" size={40} color="#667eea" />
                     <Text style={[styles.mediaOptionText, { color: theme.textPrimary }]}>
                       Add Photo
                     </Text>
+                    <Text style={[styles.videoHint, { color: theme.textSecondary }]}>
+                      Camera or Library
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[styles.mediaOption, { backgroundColor: darkMode ? '#2c2c2c' : '#f8f9fa' }]}
-                    onPress={() => pickMedia('video')}
+                    onPress={() => showMediaOptions('video')}
                   >
                     <MaterialCommunityIcons name="video" size={40} color="#667eea" />
                     <Text style={[styles.mediaOptionText, { color: theme.textPrimary }]}>
@@ -333,13 +375,13 @@ const AddMemoryScreen = () => {
                     <View style={styles.addMoreContainer}>
                       <TouchableOpacity
                         style={[styles.addMoreButton, { backgroundColor: darkMode ? '#2c2c2c' : '#f8f9fa' }]}
-                        onPress={() => pickMedia('photo')}
+                        onPress={() => showMediaOptions('photo')}
                       >
                         <MaterialCommunityIcons name="camera-plus" size={24} color="#667eea" />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.addMoreButton, { backgroundColor: darkMode ? '#2c2c2c' : '#f8f9fa' }]}
-                        onPress={() => pickMedia('video')}
+                        onPress={() => showMediaOptions('video')}
                       >
                         <MaterialCommunityIcons name="video-plus" size={24} color="#667eea" />
                       </TouchableOpacity>
@@ -370,9 +412,47 @@ const AddMemoryScreen = () => {
                     maxLength={100}
                     returnKeyType="Return"
                     onSubmitEditing={() => descriptionInputRef.current?.focus()}
-                    // REMOVED: inputAccessoryViewID={Platform.OS === 'ios' ? INPUT_ACCESSORY_VIEW_ID : undefined}
                     />
                   <Text style={styles.charCount}>{caption.length}/100</Text>
+                </View>
+
+                {/* Milestone */}
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, { color: theme.textSecondary }]}>
+                    Milestone (Optional)
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.milestoneButton, { 
+                      backgroundColor: darkMode ? '#2c2c2c' : '#f8f9fa',
+                      borderColor: milestone ? '#667eea' : (darkMode ? '#444' : '#e9ecef')
+                    }]}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setShowMilestoneSelector(true);
+                    }}
+                  >
+                    {milestone ? (
+                      <>
+                        <MaterialCommunityIcons name={milestone.icon} size={20} color="#667eea" />
+                        <Text style={[styles.milestoneText, { color: theme.textPrimary }]}>
+                          {milestone.label}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => setMilestone(null)}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          <MaterialCommunityIcons name="close-circle" size={20} color="#999" />
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <>
+                        <MaterialCommunityIcons name="star-outline" size={20} color="#667eea" />
+                        <Text style={[styles.milestonePlaceholder, { color: theme.textSecondary }]}>
+                          Add a milestone
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
                 </View>
 
                 {/* Description */}
@@ -483,6 +563,14 @@ const AddMemoryScreen = () => {
                   )}
                 </LinearGradient>
               </TouchableOpacity>
+
+              {/* Milestone Selector Modal */}
+              <MilestoneSelector
+                visible={showMilestoneSelector}
+                onClose={() => setShowMilestoneSelector(false)}
+                onSelect={setMilestone}
+                darkMode={darkMode}
+              />
             </ScrollView>
             </KeyboardAvoidingView>
         </SafeAreaView>
@@ -692,6 +780,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  milestoneButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  milestoneText: {
+    fontSize: 16,
+    flex: 1,
+  },
+  milestonePlaceholder: {
+    fontSize: 16,
+    flex: 1,
   },
 });
 

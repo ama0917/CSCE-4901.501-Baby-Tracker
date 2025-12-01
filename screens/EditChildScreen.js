@@ -8,7 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getFirestore, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, updateDoc, deleteDoc, collection, addDoc } from 'firebase/firestore';
 import { app } from '../firebaseConfig';
 import { KeyboardAvoidingView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -77,11 +77,19 @@ const EditChildScreen = () => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         let birthDate = new Date();
-        if (data.birthDate) {
-          if (typeof data.birthDate === 'string') {
-            birthDate = new Date(data.birthDate);
-          } else if (data.birthDate.seconds) {
-            birthDate = new Date(data.birthDate.seconds * 1000);
+        if (data.birthdate) {
+          // Check if it's a Firestore timestamp
+          if (data.birthdate.seconds) {
+            birthDate = new Date(data.birthdate.seconds * 1000);
+          } else if (typeof data.birthdate === 'string') {
+            birthDate = new Date(data.birthdate);
+          } else if (data.birthdate instanceof Date) {
+            birthDate = data.birthdate;
+          }
+          
+          // Validate the date
+          if (isNaN(birthDate.getTime()) || birthDate > new Date()) {
+            birthDate = new Date();
           }
         }
 
@@ -280,7 +288,20 @@ const EditChildScreen = () => {
       };
 
       await updateDoc(doc(db, 'children', childId), updatedProfile);
-      
+            
+      // Only add measurement if there's weight or height data
+      if (formData.weight || formData.height) {
+        await addDoc(collection(db, 'measurements'), {
+          childId: childId,
+          weight: formData.weight ? parseFloat(formData.weight) : null,
+          weightUnit: formData.weightUnit,
+          height: formData.height ? parseFloat(formData.height) : null,
+          heightUnit: formData.heightUnit,
+          date: new Date(),
+          createdAt: new Date()
+        });
+      }
+
       if (Platform.OS === 'ios') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
@@ -378,6 +399,7 @@ const EditChildScreen = () => {
       ]
     );
   };
+  
 
   const handleDateChange = useCallback((event, selectedDate) => {
     if (selectedDate) {
@@ -583,6 +605,8 @@ const EditChildScreen = () => {
                       display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                       onChange={handleDateChange}
                       textColor={theme.textPrimary}
+                      maximumDate={new Date()}
+                      minimumDate={new Date(1900, 0, 1)}
                     />
                     {Platform.OS === 'ios' && (
                       <TouchableOpacity

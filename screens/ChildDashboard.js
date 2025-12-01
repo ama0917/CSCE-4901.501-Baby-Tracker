@@ -10,6 +10,7 @@ import {
   orderBy,
   limit,
   getDocs,
+  getDoc,
   doc,
   onSnapshot,
 } from 'firebase/firestore';
@@ -24,6 +25,7 @@ import { Modal, Easing } from 'react-native';
 import { CalendarDays, Ruler, Weight, UserRound, X, Cake } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Clock } from 'lucide-react-native';
 
 const { width } = Dimensions.get('window');
 const db = getFirestore(app);
@@ -51,14 +53,14 @@ export default function ChildDashboard() {
   const route = useRoute();
   const { name, childId, image } = route.params || {};
   const { darkMode } = useDarkMode();
-
+  const [userEmails, setUserEmails] = useState({});
   const { role } = useUserRole();                  
   const isCaregiver = role === 'caregiver';        
   const uid = getAuth().currentUser?.uid;          
   const [canView, setCanView] = useState(true);    
   const [isOwner, setIsOwner] = useState(false);   
-  const [canLog, setCanLog] = useState(true);      // parents true, caregivers gated
-
+  const [canLog, setCanLog] = useState(true);
+const [hasParentAccess, setHasParentAccess] = useState(false);
   const [history, setHistory] = useState([]);
   const [childInfo, setChildInfo] = useState(null);
   const [infoVisible, setInfoVisible] = useState(false);
@@ -79,16 +81,22 @@ export default function ChildDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!childId || !uid) { setCanView(false); setIsOwner(false); setCanLog(false); return; }
+    if (!childId || !uid) { 
+      setCanView(false); 
+      setIsOwner(false); 
+      setCanLog(false); 
+      setHasParentAccess(false);
+      return; 
+    }
 
     const ref = doc(db, 'children', childId);
     const unsub = onSnapshot(ref, (snap) => {
       const data = snap.data();
+      
       setChildInfo({
         name: data.firstName ? `${data.firstName} ${data.lastName || ''}`.trim() : name,
         firstName: data.firstName || '',
         lastName: data.lastName || '',
-        // support either birthdate (your AddChild screen) or birthDate
         birthdate: data.birthdate || data.birthDate || null,
         sex: data.sex || '',
         weight: data.weight ?? null,
@@ -98,12 +106,35 @@ export default function ChildDashboard() {
         notes: data.notes || '',
         image: data.image || null,
       });
+      
+      // Check if user is the owner
       const owner = data?.userId === uid;
-      const val = data?.caregiverPerms?.[uid]; // 'on' | 'log' | undefined
+      
+      // Get caregiver permission level
+      const permissionLevel = data?.caregiverPerms?.[uid];
+      
+      // Determine access levels based on permissions
       setIsOwner(owner);
-      setCanView(owner || val === 'on' || val === 'log');
-      setCanLog(owner || val === 'on' || val === 'log');
+      
+      // Parent access: owner OR caregiver with 'parent' permission
+      setHasParentAccess(owner || permissionLevel === 'parent');
+      
+      // Can view: owner OR any caregiver permission except 'none'
+      setCanView(owner || (permissionLevel && permissionLevel !== 'none'));
+      
+      // Can log: owner OR 'log' OR 'parent' permission
+      setCanLog(owner || permissionLevel === 'log' || permissionLevel === 'parent' || permissionLevel === 'on');
+      
+      console.log('Permission check:', {
+        uid,
+        owner,
+        permissionLevel,
+        canView: owner || (permissionLevel && permissionLevel !== 'none'),
+        canLog: owner || permissionLevel === 'log' || permissionLevel === 'parent' || permissionLevel === 'on',
+        hasParentAccess: owner || permissionLevel === 'parent'
+      });
     });
+    
     return () => unsub();
   }, [childId, uid]);
 
@@ -114,25 +145,34 @@ export default function ChildDashboard() {
         navigation.goBack();
       } else {
         fetchChildData();
-        // double-check caregiver canLog on focus (defensive)
-        if (isCaregiver && uid) {
+        
+        // Double-check permissions on focus
+        if (uid) {
           (async () => {
             try {
-              const snap = await getDocs(query(collection(db, 'children'), where('__name__', '==', childId)));
-              const d = snap.docs[0];
-              if (d) {
-                const data = d.data() || {};
-                const perms = (data.caregiverPerms || {})[uid];
-                setCanLog(perms === 'on' || perms === 'log');
+              const childDocRef = doc(db, 'children', childId);
+              const childDoc = await getDoc(childDocRef);
+              
+              if (childDoc.exists()) {
+                const data = childDoc.data();
+                const owner = data.userId === uid;
+                const permissionLevel = data?.caregiverPerms?.[uid];
+                
+                setIsOwner(owner);
+                setHasParentAccess(owner || permissionLevel === 'parent');
+                setCanView(owner || (permissionLevel && permissionLevel !== 'none'));
+                setCanLog(owner || permissionLevel === 'log' || permissionLevel === 'parent' || permissionLevel === 'on');
               }
             } catch (e) {
-              console.log('perm check error', e);
+              console.log('Permission check error:', e);
+              setCanView(false);
               setCanLog(false);
+              setHasParentAccess(false);
             }
           })();
         }
       }
-    }, [childId, isCaregiver, uid]) // include deps used above
+    }, [childId, uid])
   );
 
   const animateButton = (index) => {
@@ -174,6 +214,45 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return `${hours > 0 ? `${hours} hr` : ''} ${mins} min`;
+  };
+
+
+  const fetchUserEmail = async (userId) => {
+    if (!userId) return null;
+    
+    // Check if we already have this user's email cached
+    if (userEmails[userId]) {
+      return userEmails[userId];
+    }
+    
+    try {
+      // Import getDoc at the top if not already imported
+      const { getDoc } = await import('firebase/firestore');
+      
+      // Fetch user document directly by ID
+      const userDocRef = doc(db, 'users', userId);
+      const userDocSnap = await getDoc(userDocRef);
+      
+      if (userDocSnap.exists()) {
+        const userData = userDocSnap.data();
+        // Use lowercase 'email' field (fallback to uppercase if needed)
+        const email = userData.email || userData.Email || null;
+        
+        console.log('Fetched email for user:', userId, email); // Debug log
+        
+        if (email) {
+          // Cache the email to avoid repeated fetches
+          setUserEmails(prev => ({ ...prev, [userId]: email }));
+          return email;
+        }
+      } else {
+        console.log('No user document found for:', userId);
+      }
+    } catch (error) {
+      console.error('Error fetching user email for userId:', userId, error);
+    }
+    
+    return null;
   };
 
   const fetchChildData = async () => {
@@ -249,19 +328,48 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
         };
       });
 
-      const combinedLogs = [...diaperLogs, ...feedLogs, ...sleepLogs].sort((a, b) => b.timestamp - a.timestamp);
-      setHistory(combinedLogs.slice(0, 5));
+      const combinedLogs = [...diaperLogs, ...feedLogs, ...sleepLogs]
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 5);
+      
+      setHistory(combinedLogs);
+      
+      // Fetch emails for all unique users who created these logs
+      const uniqueUserIds = [...new Set(combinedLogs.map(log => log.createdBy).filter(Boolean))];
+      for (const userId of uniqueUserIds) {
+        await fetchUserEmail(userId);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
       Alert.alert('Error', 'Unable to fetch data.');
     }
   };
 
+  const getLoggerDisplay = (userId) => {
+    if (!userId) return 'Unknown';
+    
+    // If this is the current user
+    if (userId === uid) {
+      return 'You';
+    }
+    
+    // If we have the email cached
+    if (userEmails[userId]) {
+      const email = userEmails[userId];
+      // Extract name before @ or show first part of email
+      const displayName = email.split('@')[0];
+      return displayName;
+    }
+    
+    return 'Loading...';
+  };
+
   const canModifyLog = (log) => {
-    // Parents can modify all logs
-    if (isOwner) return true;
-    // Caregivers can only modify their own logs
-    return log.createdBy === uid;
+    // Owners and those with parent access can modify all logs
+    if (isOwner || hasParentAccess) return true;
+    
+    // Caregivers with logging permission can only modify their own logs
+    return canLog && log.createdBy === uid;
   };
 
   const handleDeleteLog = async (log) => {
@@ -283,7 +391,7 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
               const { deleteDoc, doc } = await import('firebase/firestore');
               await deleteDoc(doc(db, log.collection, log.id));
               Alert.alert('Success', 'Log deleted successfully');
-              fetchChildData(); // Refresh
+              fetchChildData();
             } catch (error) {
               console.error('Error deleting log:', error);
               Alert.alert('Error', 'Failed to delete log');
@@ -294,37 +402,91 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
     );
   };
 
-  const handleEditLog = (log) => {
+  const handleEditLog = async (log) => {
     if (!canModifyLog(log)) {
       Alert.alert('Permission Denied', 'You can only edit logs you created.');
       return;
     }
 
-    // Navigate to appropriate form
-    switch (log.collection) {
-      case 'feedLogs':
-        navigation.navigate('FeedingForm', { childId, name, editingLogId: log.id });
-        break;
-      case 'diaperLogs':
-        navigation.navigate('DiaperChangeForm', { childId, name, editingLogId: log.id });
-        break;
-      case 'sleepLogs':
-        navigation.navigate('SleepingForm', { childId, name, editingLogId: log.id });
-        break;
+    try {
+      // Fetch the full log data from Firestore
+      const { getDoc, doc } = await import('firebase/firestore');
+      const logDoc = await getDoc(doc(db, log.collection, log.id));
+      
+      if (!logDoc.exists()) {
+        Alert.alert('Error', 'Log not found');
+        return;
+      }
+      
+      const logData = logDoc.data();
+      
+      // Navigate to appropriate form with existing data
+      switch (log.collection) {
+        case 'feedLogs':
+          navigation.navigate('FeedingForm', { 
+            childId, 
+            name, 
+            editingLogId: log.id,
+            existingData: {
+              feedType: logData.feedType,
+              amount: logData.amount,
+              amountUnit: logData.amountUnit,
+              notes: logData.notes,
+              timestamp: logData.timestamp?.toDate(),
+            }
+          });
+          break;
+        case 'diaperLogs':
+          navigation.navigate('DiaperChangeForm', { 
+            childId, 
+            name, 
+            editingLogId: log.id,
+            existingData: {
+              stoolType: logData.stoolType,
+              time: logData.time?.toDate(),
+              notes: logData.notes,
+            }
+          });
+          break;
+        case 'sleepLogs':
+          navigation.navigate('SleepingForm', { 
+            childId, 
+            name, 
+            editingLogId: log.id,
+            existingData: {
+              sleepType: logData.sleepType,
+              duration: logData.duration,
+              timestamp: logData.timestamp?.toDate(),
+              incomplete: logData.incomplete,
+              notes: logData.notes,
+            }
+          });
+          break;
+      }
+    } catch (error) {
+      console.error('Error fetching log data:', error);
+      Alert.alert('Error', 'Failed to load log data');
     }
   };
 
   if (!canView) {
-    // early return that matches app styling, minimal/no ripple to their UI
     return (
       <LinearGradient colors={['#E3F2FD', '#FFFFFF']} style={{ flex: 1, justifyContent: 'center' }}>
         <View style={{ margin: 20, backgroundColor: '#fff', borderRadius: 12, padding: 16 }}>
-          <Text style={{ color: '#2E3A59', marginBottom: 12 }}>Access is turned off by the parent.</Text>
+          <View style={{ alignItems: 'center', marginBottom: 16 }}>
+            <Ionicons name="lock-closed" size={48} color="#9E9E9E" />
+          </View>
+          <Text style={{ color: '#2E3A59', fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 8 }}>
+            Access Restricted
+          </Text>
+          <Text style={{ color: '#7C8B9A', textAlign: 'center', marginBottom: 16 }}>
+            The parent has turned off access for this child. Please contact them to request access.
+          </Text>
           <TouchableOpacity
             onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}
             style={{ padding: 12, backgroundColor: '#CFD8DC', borderRadius: 10, alignItems: 'center' }}
           >
-            <Text style={{ color: '#2E3A59', fontWeight: '700' }}>Back</Text>
+            <Text style={{ color: '#2E3A59', fontWeight: '700' }}>Return Home</Text>
           </TouchableOpacity>
         </View>
       </LinearGradient>
@@ -420,21 +582,59 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
           </View>
         </Animated.View>
         {/* Info Button */}
-  <TouchableOpacity
-    style={styles.infoFab}
-    onPress={() => setInfoVisible(true)}
-    activeOpacity={0.85}
-  >
-    <LinearGradient
-      colors={darkMode ? ['#2d2f35', '#3b3f47'] : ['#81D4FA', '#F8BBD9']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.infoFabGrad}
-    >
-      <Info size={18} color="#fff" />
-    </LinearGradient>
-  </TouchableOpacity>
-</View>
+        <TouchableOpacity
+          style={styles.infoFab}
+          onPress={() => setInfoVisible(true)}
+          activeOpacity={0.85}
+        >
+          <LinearGradient
+            colors={darkMode ? ['#2d2f35', '#3b3f47'] : ['#81D4FA', '#F8BBD9']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.infoFabGrad}
+          >
+            <Info size={18} color="#fff" />
+          </LinearGradient>
+        </TouchableOpacity>
+        </View>
+
+          {/* Permission Status Badge - shown to caregivers */}
+          {!isOwner && (
+            <View style={[
+              styles.permissionBadge,
+              { 
+                backgroundColor: hasParentAccess 
+                  ? (darkMode ? '#2a3a1a' : '#E8F5E9') 
+                  : canLog 
+                  ? (darkMode ? '#2a3a2a' : '#E3F2FD')
+                  : (darkMode ? '#3a3a2a' : '#FFF9C4')
+              }
+            ]}>
+              <Ionicons 
+                name={hasParentAccess ? 'star' : canLog ? 'create' : 'eye'} 
+                size={14} 
+                color={
+                  hasParentAccess 
+                    ? (darkMode ? '#A5D6A7' : '#2E7D32') 
+                    : canLog 
+                    ? (darkMode ? '#64b5f6' : '#1976d2')
+                    : (darkMode ? '#FFD54F' : '#F57C00')
+                }
+              />
+              <Text style={[
+                styles.permissionBadgeText,
+                { 
+                  color: hasParentAccess 
+                    ? (darkMode ? '#A5D6A7' : '#2E7D32') 
+                    : canLog 
+                    ? (darkMode ? '#64b5f6' : '#1976d2')
+                    : (darkMode ? '#FFD54F' : '#F57C00')
+                }
+              ]}>
+                {hasParentAccess ? 'Full Parent Access' : canLog ? 'Can Log' : 'View Only'}
+              </Text>
+            </View>
+          )}
 
         {/* Modern Profile Sheet */}
         <Modal
@@ -541,7 +741,7 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
             </View>
 
             {/* Only show activity logging buttons if owner or caregiver with logging permission */}
-            {(isOwner || canLog) ? (
+            {canLog ? (
               <View style={styles.activitiesGrid}>
                 {activityButtons.map((activity, index) => (
                   <Animated.View key={activity.title} style={{ transform: [{ scale: buttonScales[index] }] }}>
@@ -560,92 +760,187 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
                 ))}
               </View>
             ) : (
-              // view-only message for caregivers without logging perms
-              <View style={{ padding: 12, backgroundColor: '#FFF9B0', borderRadius: 10, marginBottom: 10 }}>
-                <Text style={{ color: '#2E3A59' }}>View-only access. Ask the parent for logging permission.</Text>
+              // View-only message
+              <View style={[
+                styles.viewOnlyBanner,
+                { backgroundColor: darkMode ? '#2a3a2a' : '#FFF9B0' }
+              ]}>
+                <Ionicons name="eye" size={20} color={darkMode ? '#A5D6A7' : '#F57C00'} />
+                <Text style={[
+                  styles.viewOnlyText,
+                  { color: darkMode ? '#A5D6A7' : '#2E3A59' }
+                ]}>
+                  View-only access. Ask the parent for logging permission.
+                </Text>
               </View>
             )}
           </View>
 
-          {/* Reports + Reminders + Memories + Calendar */}
-          <View style={styles.actionButtonsContainer}>
-            {/* Only show Reports button if user is the child's parent (owner) */}
-            {isOwner && (
+          {/* Featured Health Tracking Section */}
+          {hasParentAccess && (
+            <View style={styles.featuredSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : '#2e3a59' }]}>
+                  Health Insights
+                </Text>
+                <Ionicons name="fitness" size={20} color={darkMode ? '#fff' : '#2E3A59'} />
+              </View>
+
+              {/* Reports Card */}
               <TouchableOpacity
-                style={styles.actionButton}
+                style={styles.featuredCard}
                 onPress={() => navigation.navigate('ReportsScreen', { childId, name })}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
                 <LinearGradient
-                  colors={darkMode ? ['#00c6ff', '#0072ff'] : ['#90CAF9', '#81D4FA']}
-                  style={styles.actionButtonGradient}
+                  colors={darkMode ? ['#0a3a5a', '#003d5c'] : ['#E3F2FD', '#BBDEFB']}
+                  style={styles.featuredGradient}
                   start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
+                  end={{ x: 1, y: 1 }}
                 >
-                  <TrendingUp size={18} color="#fff" strokeWidth={2} />
-                  <Text style={styles.actionButtonText}>Reports</Text>
+                  <View style={styles.featuredContent}>
+                    <View style={styles.featuredLeft}>
+                      <View style={[styles.featuredIconContainer, { backgroundColor: darkMode ? '#1976d2' : '#2196F3' }]}>
+                        <TrendingUp size={24} color="#fff" strokeWidth={2.5} />
+                      </View>
+                      <View style={styles.featuredText}>
+                        <Text style={[styles.featuredTitle, { color: darkMode ? '#fff' : '#0D47A1' }]}>
+                          Reports & Analytics
+                        </Text>
+                        <Text style={[styles.featuredSubtitle, { color: darkMode ? '#64B5F6' : '#1565C0' }]}>
+                          Sleep, feeding & diaper insights
+                        </Text>
+                      </View>
+                    </View>
+                    <Ionicons 
+                      name="chevron-forward" 
+                      size={24} 
+                      color={darkMode ? '#64B5F6' : '#1976d2'} 
+                    />
+                  </View>
                 </LinearGradient>
               </TouchableOpacity>
-            )}
 
-            {/* Reminders button - available to both parents and caregivers with access */}
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => navigation.navigate('RemindersScreen', { childId, name })}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={darkMode ? ['#ff6a00', '#ee0979'] : ['#FFB74D', '#FF9800']}
-                style={styles.actionButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Bell size={18} color="#fff" strokeWidth={2} />
-                <Text style={styles.actionButtonText}>Reminders</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            {/* Memories button - only for parents */}
-             {isOwner && (
+              {/* Growth Tracking Card */}
               <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => navigation.navigate('MemoriesScreen', { childId, name })}
-                activeOpacity={0.8}
+                style={styles.featuredCard}
+                onPress={() => navigation.navigate('MeasurementsScreen', { childId, name })}
+                activeOpacity={0.85}
               >
                 <LinearGradient
-                  colors={darkMode ? ['#E1BEE7', '#CE93D8'] : ['#E1BEE7', '#FFCDD2']}
-                  style={styles.actionButtonGradient}
+                  colors={darkMode ? ['#1b5e20', '#2d5016'] : ['#E8F5E9', '#C8E6C9']}
+                  style={styles.featuredGradient}
                   start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
+                  end={{ x: 1, y: 1 }}
                 >
-                  <ImageIcon size={18} color="#fff" strokeWidth={2} />
-                  <Text style={styles.actionButtonText}>Memories</Text>
+                  <View style={styles.featuredContent}>
+                    <View style={styles.featuredLeft}>
+                      <View style={[styles.featuredIconContainer, { backgroundColor: darkMode ? '#388E3C' : '#4CAF50' }]}>
+                        <Ionicons name="analytics" size={24} color="#fff" />
+                      </View>
+                      <View style={styles.featuredText}>
+                        <Text style={[styles.featuredTitle, { color: darkMode ? '#fff' : '#1B5E20' }]}>
+                          Growth Tracking
+                        </Text>
+                        <Text style={[styles.featuredSubtitle, { color: darkMode ? '#81C784' : '#2E7D32' }]}>
+                          Weight, height & CDC percentiles
+                        </Text>
+                      </View>
+                    </View>
+                    <Ionicons 
+                      name="chevron-forward" 
+                      size={24} 
+                      color={darkMode ? '#81C784' : '#388E3C'} 
+                    />
+                  </View>
                 </LinearGradient>
               </TouchableOpacity>
-            )} 
+            </View>
+          )}
 
-          {/* Pediatrician Finder button */}
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => {
-              console.log('Find Pediatrician button pressed!');
-              console.log('Navigating to PediatricianFinder...');
-              navigation.navigate('PediatricianFinder');
-            }}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={darkMode ? ['#e14c2bff', '#de4040ff']: ['#ed7e65ff', '#f16767ff']}
-              style={styles.actionButtonGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <Ionicons name="medical" size={18} color="#fff" strokeWidth={2} />
-              <Text style={styles.actionButtonText}>Find Pediatrician</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : '#2e3a59' }]}>
+                Quick Actions
+              </Text>
+              <Ionicons name="flash" size={20} color={darkMode ? '#fff' : '#2E3A59'} />
+            </View>
 
-          </View>
+            <View style={[styles.actionGridCard]}>
+              <View style={styles.actionButtonsContainerGrid}> 
+                
+                {/* Reminders button */}
+                <TouchableOpacity
+                  style={styles.actionButtonGrid}
+                  onPress={() => navigation.navigate('RemindersScreen', { childId, name })}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={darkMode ? ['#ff6a00', '#ee0979'] : ['#FFB74D', '#FF9800']}
+                    style={styles.actionButtonGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    <Bell size={18} color="#fff" strokeWidth={2} />
+                    <Text style={styles.actionButtonText}>Reminders</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                {/* Memories button */}
+                {hasParentAccess && (
+                  <TouchableOpacity
+                    style={styles.actionButtonGrid}
+                    onPress={() => navigation.navigate('MemoriesScreen', { childId, name })}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={darkMode ? ['#E1BEE7', '#CE93D8'] : ['#E1BEE7', '#FFCDD2']}
+                      style={styles.actionButtonGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    >
+                      <ImageIcon size={18} color="#fff" strokeWidth={2} />
+                      <Text style={styles.actionButtonText}>Memories</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+
+                {/* Pediatrician Finder button */}
+                {hasParentAccess && (
+                  <TouchableOpacity
+                    style={styles.actionButtonGrid}
+                    onPress={() => navigation.navigate('PediatricianFinder')}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={darkMode ? ['#e14c2bff', '#de4040ff']: ['#ed7e65ff', '#f16767ff']}
+                      style={styles.actionButtonGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    >
+                      <Ionicons name="medical" size={18} color="#fff" strokeWidth={2} />
+                      <Text style={styles.actionButtonText}>Find Pediatrician</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+
+                {/* Lullaby button */}
+                {/* <TouchableOpacity
+                  style={styles.actionButtonGrid}
+                  onPress={() => navigation.navigate('LullabyScreen', { childId, name })}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={darkMode ? ['#9C27B0', '#7B1FA2'] : ['#BA68C8', '#AB47BC']}
+                    style={styles.actionButtonGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    <Ionicons name="moon" size={18} color="#fff" strokeWidth={2} />
+                    <Text style={styles.actionButtonText}>Lullabies</Text>
+                  </LinearGradient>
+                </TouchableOpacity> */}
+              </View>
+            </View>
 
           {/* History */}
           <View style={styles.section}>
@@ -700,9 +995,21 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
                         )}
                       </View>
                       
-                      <Text style={[styles.historyTime, { color: darkMode ? '#B0BEC5' : '#7C8B9A' }]}>
-                        {item.time}
-                      </Text>
+                      <View style={styles.historyMetaRow}>
+                        <Text style={[styles.historyTime, { color: darkMode ? '#B0BEC5' : '#7C8B9A' }]}>
+                          {item.time}
+                        </Text>
+                        {item.createdBy && (
+                          <>
+                            <Text style={[styles.historyDivider, { color: darkMode ? '#B0BEC5' : '#7C8B9A' }]}>
+                              •
+                            </Text>
+                            <Text style={[styles.historyLogger, { color: darkMode ? '#90A4AE' : '#9E9E9E' }]}>
+                              by {getLoggerDisplay(item.createdBy)}
+                            </Text>
+                          </>
+                        )}
+                      </View>
                       
                       {item.subtype && (
                         <Text style={[styles.historySubtext, { color: darkMode ? '#90A4AE' : '#A0A0A0' }]}>
@@ -1200,4 +1507,122 @@ const styles = StyleSheet.create({
     fontWeight: '800', 
     letterSpacing: 0.3,
    },
+   historyMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  historyDivider: {
+    marginHorizontal: 6,
+    fontSize: 12,
+  },
+  historyLogger: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    fontWeight: '500',
+  },
+  viewOnlyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 10,
+    gap: 10,
+  },
+  viewOnlyText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  permissionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 6,
+    marginBottom: 10,
+  },
+  permissionBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  featuredSection: {
+  marginBottom: 20,
+},
+featuredCard: {
+  marginBottom: 12,
+  borderRadius: 16,
+  overflow: 'hidden',
+  elevation: 6,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.25,
+  shadowRadius: 5,
+},
+featuredGradient: {
+  padding: 16,
+},
+featuredContent: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+},
+featuredLeft: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  flex: 1,
+},
+featuredIconContainer: {
+  width: 52,
+  height: 52,
+  borderRadius: 26,
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginRight: 14,
+  elevation: 4,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.2,
+  shadowRadius: 3,
+},
+featuredText: {
+  flex: 1,
+},
+featuredTitle: {
+  fontSize: 18,
+  fontWeight: '700',
+  marginBottom: 3,
+  letterSpacing: 0.3,
+},
+featuredSubtitle: {
+  fontSize: 13,
+  fontWeight: '600',
+  lineHeight: 18,
+},
+actionGridCard: {
+  borderRadius: 24, 
+  padding: 10,
+  elevation: 8,
+  marginBottom: 30, 
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.1,
+  shadowRadius: 6,
+},
+actionButtonsContainerGrid: { 
+  flexDirection: 'row', 
+  flexWrap: 'wrap',
+  justifyContent: 'space-between',
+  marginHorizontal: -5,
+},
+actionButtonGrid: {
+  minWidth: '47%',
+  marginHorizontal: 5,
+  borderRadius: 20, 
+  elevation: 0,
+  marginBottom: 10,
+},
 });

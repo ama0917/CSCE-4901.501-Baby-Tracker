@@ -198,7 +198,20 @@ const AddChildScreen = () => {
       };
 
       const docRef = await addDoc(collection(db, 'children'), newProfile);
-      
+            
+      // Only add measurement if there's weight or height data
+      if (formData.weight || formData.height) {
+        await addDoc(collection(db, 'measurements'), {
+          childId: docRef.id,
+          weight: formData.weight ? parseFloat(formData.weight) : null,
+          weightUnit: formData.weightUnit,
+          height: formData.height ? parseFloat(formData.height) : null,
+          heightUnit: formData.heightUnit,
+          date: new Date(),
+          createdAt: new Date()
+        });
+      }
+
       let imageUrl = null;
       if (formData.image) {
         try {
@@ -474,6 +487,8 @@ const AddChildScreen = () => {
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                     onChange={handleDateChange}
                     textColor={theme.textPrimary}
+                    maximumDate={new Date()}
+                    minimumDate={new Date(1900, 0, 1)}
                   />
                   {Platform.OS === 'ios' && (
                     <TouchableOpacity

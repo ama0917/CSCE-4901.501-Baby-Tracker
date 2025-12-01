@@ -19,7 +19,8 @@
       "bundleIdentifier": "com.angelabrajano.BabyTracker",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We need your location to find nearby pediatricians.",
-        "NSLocationAlwaysUsageDescription": "We need your location to find nearby pediatricians."
+        "NSLocationAlwaysUsageDescription": "We need your location to find nearby pediatricians.",
+        "UIBackgroundModes": ["audio"]
       }
     },
     "android": {

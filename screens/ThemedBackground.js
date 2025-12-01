@@ -7,6 +7,7 @@ export const appTheme = {
   light: {
     backgroundGradient: ['#B2EBF2', '#FCE4EC'], // pastel dashboard style
     textPrimary: '#2E3A59',
+    textMuted: '#2E3A59',
     textSecondary: '#7C8B9A',
     card: '#ffffffee',
     input: ['#f0f0f0', '#fff'],
@@ -23,6 +24,7 @@ export const appTheme = {
   dark: {
     backgroundGradient: ['#0f2027', '#05090b'], // dark gradient
     textPrimary: '#EAEAEA',
+    textMuted: '#EAEAEA',
     textSecondary: '#9E9E9E',
     card: ['#1f1f1f', '#2c2c2c'],
     input: ['#3f3e3eff', '#444'],

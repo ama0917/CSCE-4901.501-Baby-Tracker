@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft } from 'lucide-react-native';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
-import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { AntDesign, Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
@@ -37,57 +37,259 @@ import {
   enhancedStyles
 } from './ReportComponents';
 import OverviewTab from './OverviewTab';
+import ExportOptionsModal from './ExportOptionsModal';
 
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 const { width } = Dimensions.get('window');
 const adjustedWidth = width - 40;
 
-const FeedingBreakdownPieChart = ({ feedingData, darkMode, theme }) => {
-  const getCalorieEstimate = (feedType, amount, unit) => {
-    // Rough calorie estimates
-    const estimates = {
-      'breast milk': 20, // per oz
-      'formula': 20, // per oz
-      'solid food': 50, // per serving
-      'puree': 30, // per oz
-      'juice': 15, // per oz
-      'water': 0,
-      'milk': 18, // per oz
-    };
+// Extended CDC Growth Data - Weight in kg (0-240 months / 0-20 years)
+const CDC_WEIGHT_PERCENTILES = {
+  male: {
+    0: { p3: 2.5, p5: 2.6, p10: 2.8, p25: 3.0, p50: 3.3, p75: 3.7, p85: 3.9, p90: 4.1, p95: 4.4, p97: 4.6 },
+    1: { p3: 3.4, p5: 3.5, p10: 3.8, p25: 4.1, p50: 4.5, p75: 5.0, p85: 5.3, p90: 5.5, p95: 5.8, p97: 6.1 },
+    2: { p3: 4.3, p5: 4.5, p10: 4.8, p25: 5.2, p50: 5.6, p75: 6.2, p85: 6.5, p90: 6.8, p95: 7.1, p97: 7.5 },
+    3: { p3: 5.0, p5: 5.2, p10: 5.5, p25: 5.9, p50: 6.4, p75: 7.0, p85: 7.4, p90: 7.7, p95: 8.0, p97: 8.4 },
+    4: { p3: 5.6, p5: 5.8, p10: 6.1, p25: 6.6, p50: 7.0, p75: 7.7, p85: 8.1, p90: 8.4, p95: 8.7, p97: 9.1 },
+    5: { p3: 6.0, p5: 6.2, p10: 6.6, p25: 7.1, p50: 7.5, p75: 8.2, p85: 8.6, p90: 9.0, p95: 9.3, p97: 9.7 },
+    6: { p3: 6.4, p5: 6.6, p10: 7.0, p25: 7.5, p50: 7.9, p75: 8.7, p85: 9.1, p90: 9.5, p95: 9.8, p97: 10.2 },
+    9: { p3: 7.5, p5: 7.7, p10: 8.2, p25: 8.7, p50: 9.2, p75: 10.1, p85: 10.5, p90: 10.9, p95: 11.3, p97: 11.7 },
+    12: { p3: 8.4, p5: 8.6, p10: 9.1, p25: 9.6, p50: 10.2, p75: 11.1, p85: 11.6, p90: 12.0, p95: 12.4, p97: 12.9 },
+    15: { p3: 9.2, p5: 9.4, p10: 9.9, p25: 10.5, p50: 11.1, p75: 12.1, p85: 12.6, p90: 13.1, p95: 13.5, p97: 14.0 },
+    18: { p3: 9.8, p5: 10.1, p10: 10.6, p25: 11.2, p50: 11.8, p75: 12.9, p85: 13.5, p90: 13.9, p95: 14.3, p97: 14.9 },
+    21: { p3: 10.4, p5: 10.7, p10: 11.2, p25: 11.9, p50: 12.5, p75: 13.7, p85: 14.3, p90: 14.8, p95: 15.2, p97: 15.8 },
+    24: { p3: 10.9, p5: 11.2, p10: 11.8, p25: 12.5, p50: 13.0, p75: 14.3, p85: 15.0, p90: 15.5, p95: 15.8, p97: 16.5 },
+    30: { p3: 12.0, p5: 12.3, p10: 12.9, p25: 13.7, p50: 14.3, p75: 15.8, p85: 16.5, p90: 17.1, p95: 17.8, p97: 18.5 },
+    36: { p3: 12.7, p5: 13.1, p10: 13.8, p25: 14.6, p50: 15.3, p75: 17.0, p85: 17.8, p90: 18.5, p95: 19.2, p97: 20.0 },
+    48: { p3: 13.9, p5: 14.4, p10: 15.2, p25: 16.2, p50: 17.1, p75: 19.2, p85: 20.3, p90: 21.2, p95: 22.4, p97: 23.5 },
+    60: { p3: 15.2, p5: 15.8, p10: 16.8, p25: 18.0, p50: 19.1, p75: 21.7, p85: 23.2, p90: 24.4, p95: 26.0, p97: 27.5 },
+    72: { p3: 16.6, p5: 17.3, p10: 18.5, p25: 20.0, p50: 21.4, p75: 24.5, p85: 26.5, p90: 28.1, p95: 30.3, p97: 32.2 },
+    84: { p3: 18.1, p5: 18.9, p10: 20.4, p25: 22.2, p50: 24.0, p75: 27.7, p85: 30.3, p90: 32.4, p95: 35.4, p97: 37.9 },
+    96: { p3: 19.8, p5: 20.7, p10: 22.5, p25: 24.7, p50: 26.9, p75: 31.4, p85: 34.7, p90: 37.4, p95: 41.3, p97: 44.7 },
+    108: { p3: 21.6, p5: 22.7, p10: 24.8, p25: 27.4, p50: 30.2, p75: 35.6, p85: 39.7, p90: 43.2, p95: 48.1, p97: 52.6 },
+    120: { p3: 23.6, p5: 24.9, p10: 27.4, p25: 30.5, p50: 34.0, p75: 40.3, p85: 45.3, p90: 49.8, p95: 55.9, p97: 61.5 },
+    132: { p3: 25.9, p5: 27.4, p10: 30.3, p25: 34.0, p50: 38.4, p75: 45.7, p85: 51.5, p90: 56.8, p95: 64.1, p97: 70.8 },
+    144: { p3: 28.5, p5: 30.3, p10: 33.6, p25: 38.0, p50: 43.4, p75: 51.7, p85: 58.2, p90: 64.4, p95: 72.8, p97: 80.5 },
+    156: { p3: 31.6, p5: 33.6, p10: 37.4, p25: 42.5, p50: 48.8, p75: 57.9, p85: 65.0, p90: 71.9, p95: 81.0, p97: 89.3 },
+    168: { p3: 35.1, p5: 37.4, p10: 41.6, p25: 47.4, p50: 54.4, p75: 64.1, p85: 71.6, p90: 78.9, p95: 88.4, p97: 96.9 },
+    180: { p3: 38.9, p5: 41.5, p10: 46.0, p25: 52.4, p50: 59.9, p75: 69.9, p85: 77.6, p90: 85.1, p95: 94.6, p97: 103.2 },
+    192: { p3: 42.8, p5: 45.6, p10: 50.4, p25: 57.3, p50: 65.2, p75: 75.3, p85: 83.0, p90: 90.4, p95: 99.7, p97: 108.1 },
+    204: { p3: 46.6, p5: 49.5, p10: 54.5, p25: 61.8, p50: 70.1, p75: 80.1, p85: 87.6, p90: 94.7, p95: 103.8, p97: 111.8 },
+    216: { p3: 50.1, p5: 53.1, p10: 58.2, p25: 65.9, p50: 74.4, p75: 84.1, p85: 91.4, p90: 98.2, p95: 106.9, p97: 114.4 },
+    228: { p3: 53.2, p5: 56.2, p10: 61.4, p25: 69.3, p50: 78.0, p75: 87.4, p85: 94.4, p90: 101.0, p95: 109.3, p97: 116.3 },
+    240: { p3: 56.0, p5: 59.0, p10: 64.2, p25: 72.3, p50: 81.0, p75: 90.1, p85: 96.8, p90: 103.2, p95: 111.2, p97: 117.8 }
+  },
+  female: {
+    0: { p3: 2.4, p5: 2.5, p10: 2.7, p25: 2.9, p50: 3.2, p75: 3.6, p85: 3.8, p90: 4.0, p95: 4.2, p97: 4.5 },
+    1: { p3: 3.2, p5: 3.3, p10: 3.6, p25: 3.9, p50: 4.2, p75: 4.7, p85: 5.0, p90: 5.2, p95: 5.5, p97: 5.8 },
+    2: { p3: 3.9, p5: 4.0, p10: 4.4, p25: 4.7, p50: 5.1, p75: 5.7, p85: 6.1, p90: 6.3, p95: 6.6, p97: 7.0 },
+    3: { p3: 4.5, p5: 4.6, p10: 5.0, p25: 5.4, p50: 5.8, p75: 6.5, p85: 6.9, p90: 7.2, p95: 7.5, p97: 7.9 },
+    4: { p3: 5.0, p5: 5.1, p10: 5.5, p25: 5.9, p50: 6.4, p75: 7.1, p85: 7.5, p90: 7.8, p95: 8.2, p97: 8.6 },
+    5: { p3: 5.4, p5: 5.5, p10: 6.0, p25: 6.4, p50: 6.9, p75: 7.6, p85: 8.1, p90: 8.4, p95: 8.8, p97: 9.2 },
+    6: { p3: 5.7, p5: 5.9, p10: 6.3, p25: 6.8, p50: 7.3, p75: 8.1, p85: 8.6, p90: 8.9, p95: 9.3, p97: 9.8 },
+    9: { p3: 6.9, p5: 7.0, p10: 7.5, p25: 8.0, p50: 8.6, p75: 9.5, p85: 10.1, p90: 10.5, p95: 10.9, p97: 11.4 },
+    12: { p3: 7.7, p5: 7.9, p10: 8.4, p25: 9.0, p50: 9.6, p75: 10.6, p85: 11.2, p90: 11.7, p95: 12.1, p97: 12.7 },
+    15: { p3: 8.5, p5: 8.7, p10: 9.2, p25: 9.8, p50: 10.5, p75: 11.6, p85: 12.3, p90: 12.8, p95: 13.3, p97: 13.9 },
+    18: { p3: 9.1, p5: 9.4, p10: 9.9, p25: 10.6, p50: 11.3, p75: 12.5, p85: 13.2, p90: 13.8, p95: 14.3, p97: 15.0 },
+    21: { p3: 9.7, p5: 10.0, p10: 10.6, p25: 11.3, p50: 12.0, p75: 13.3, p85: 14.1, p90: 14.7, p95: 15.3, p97: 16.0 },
+    24: { p3: 10.2, p5: 10.5, p10: 11.1, p25: 11.8, p50: 12.6, p75: 14.0, p85: 14.8, p90: 15.5, p95: 16.1, p97: 16.9 },
+    30: { p3: 11.2, p5: 11.5, p10: 12.2, p25: 13.0, p50: 13.9, p75: 15.5, p85: 16.5, p90: 17.2, p95: 18.0, p97: 18.9 },
+    36: { p3: 11.9, p5: 12.3, p10: 13.0, p25: 13.9, p50: 14.9, p75: 16.7, p85: 17.8, p90: 18.6, p95: 19.5, p97: 20.5 },
+    48: { p3: 13.1, p5: 13.6, p10: 14.5, p25: 15.6, p50: 16.8, p75: 19.1, p85: 20.6, p90: 21.7, p95: 23.1, p97: 24.5 },
+    60: { p3: 14.4, p5: 15.0, p10: 16.1, p25: 17.4, p50: 19.0, p75: 21.8, p85: 23.7, p90: 25.2, p95: 27.2, p97: 29.1 },
+    72: { p3: 15.8, p5: 16.5, p10: 17.8, p25: 19.5, p50: 21.4, p75: 24.9, p85: 27.4, p90: 29.3, p95: 32.0, p97: 34.5 },
+    84: { p3: 17.3, p5: 18.1, p10: 19.7, p25: 21.8, p50: 24.1, p75: 28.3, p85: 31.4, p90: 33.9, p95: 37.4, p97: 40.6 },
+    96: { p3: 18.9, p5: 19.9, p10: 21.8, p25: 24.4, p50: 27.2, p75: 32.2, p85: 36.0, p90: 39.2, p95: 43.6, p97: 47.6 },
+    108: { p3: 20.7, p5: 21.9, p10: 24.1, p25: 27.2, p50: 30.5, p75: 36.4, p85: 40.9, p90: 44.8, p95: 50.2, p97: 55.1 },
+    120: { p3: 22.8, p5: 24.1, p10: 26.7, p25: 30.3, p50: 34.1, p75: 40.9, p85: 46.0, p90: 50.6, p95: 57.1, p97: 62.8 },
+    132: { p3: 25.1, p5: 26.7, p10: 29.6, p25: 33.7, p50: 38.1, p75: 45.6, p85: 51.3, p90: 56.5, p95: 63.9, p97: 70.2 },
+    144: { p3: 27.8, p5: 29.5, p10: 32.8, p25: 37.4, p50: 42.3, p75: 50.3, p85: 56.5, p90: 62.1, p95: 70.0, p97: 76.7 },
+    156: { p3: 30.6, p5: 32.5, p10: 36.2, p25: 41.2, p50: 46.6, p75: 54.7, p85: 61.1, p90: 66.9, p95: 75.2, p97: 82.1 },
+    168: { p3: 33.5, p5: 35.5, p10: 39.5, p25: 44.9, p50: 50.6, p75: 58.6, p85: 65.0, p90: 70.8, p95: 79.1, p97: 85.9 },
+    180: { p3: 36.2, p5: 38.3, p10: 42.5, p25: 48.2, p50: 54.0, p75: 61.9, p85: 68.1, p90: 73.8, p95: 81.9, p97: 88.4 },
+    192: { p3: 38.6, p5: 40.8, p10: 45.1, p25: 51.0, p50: 56.9, p75: 64.6, p85: 70.6, p90: 76.1, p95: 83.9, p97: 90.1 },
+    204: { p3: 40.7, p5: 42.9, p10: 47.3, p25: 53.3, p50: 59.2, p75: 66.8, p85: 72.6, p90: 77.9, p95: 85.4, p97: 91.3 },
+    216: { p3: 42.4, p5: 44.7, p10: 49.1, p25: 55.2, p50: 61.0, p75: 68.4, p85: 74.0, p90: 79.2, p95: 86.4, p97: 92.0 },
+    228: { p3: 43.8, p5: 46.1, p10: 50.5, p25: 56.6, p50: 62.3, p75: 69.5, p85: 74.9, p90: 80.0, p95: 86.9, p97: 92.3 },
+    240: { p3: 45.0, p5: 47.2, p10: 51.6, p25: 57.7, p50: 63.2, p75: 70.2, p85: 75.5, p90: 80.5, p95: 87.2, p97: 92.4 }
+  }
+};
+
+// Extended CDC Height Data - Height in cm (0-240 months / 0-20 years)
+const CDC_HEIGHT_PERCENTILES = {
+  male: {
+    0: { p3: 46.1, p5: 46.8, p10: 47.8, p25: 48.9, p50: 49.9, p75: 51.0, p85: 51.8, p90: 52.4, p95: 53.7, p97: 54.4 },
+    1: { p3: 50.8, p5: 51.5, p10: 52.6, p25: 53.7, p50: 54.7, p75: 55.8, p85: 56.5, p90: 57.2, p95: 58.6, p97: 59.4 },
+    2: { p3: 54.4, p5: 55.0, p10: 56.2, p25: 57.4, p50: 58.4, p75: 59.5, p85: 60.3, p90: 61.0, p95: 62.4, p97: 63.3 },
+    3: { p3: 57.3, p5: 58.0, p10: 59.2, p25: 60.4, p50: 61.4, p75: 62.6, p85: 63.4, p90: 64.1, p95: 65.5, p97: 66.4 },
+    4: { p3: 59.7, p5: 60.4, p10: 61.6, p25: 62.9, p50: 63.9, p75: 65.1, p85: 66.0, p90: 66.7, p95: 68.0, p97: 69.0 },
+    5: { p3: 61.7, p5: 62.4, p10: 63.7, p25: 65.0, p50: 66.0, p75: 67.3, p85: 68.2, p90: 68.9, p95: 70.1, p97: 71.1 },
+    6: { p3: 63.3, p5: 64.0, p10: 65.3, p25: 66.6, p50: 67.6, p75: 68.9, p85: 69.8, p90: 70.6, p95: 72.0, p97: 73.0 },
+    9: { p3: 67.7, p5: 68.5, p10: 69.8, p25: 71.2, p50: 72.3, p75: 73.6, p85: 74.6, p90: 75.4, p95: 76.9, p97: 78.0 },
+    12: { p3: 71.0, p5: 71.8, p10: 73.1, p25: 74.5, p50: 75.7, p75: 77.1, p85: 78.1, p90: 79.0, p95: 80.5, p97: 81.7 },
+    15: { p3: 74.0, p5: 74.8, p10: 76.2, p25: 77.6, p50: 78.9, p75: 80.3, p85: 81.4, p90: 82.3, p95: 83.9, p97: 85.1 },
+18: { p3: 76.6, p5: 77.5, p10: 78.9, p25: 80.4, p50: 81.7, p75: 83.2, p85: 84.3, p90: 85.2, p95: 86.9, p97: 88.1 },
+    21: { p3: 79.0, p5: 79.9, p10: 81.3, p25: 82.8, p50: 84.2, p75: 85.7, p85: 86.8, p90: 87.8, p95: 89.5, p97: 90.7 },
+    24: { p3: 81.2, p5: 82.1, p10: 83.5, p25: 85.1, p50: 86.5, p75: 88.1, p85: 89.2, p90: 90.2, p95: 92.0, p97: 93.2 },
+    30: { p3: 85.3, p5: 86.2, p10: 87.7, p25: 89.4, p50: 90.9, p75: 92.6, p85: 93.8, p90: 94.9, p95: 96.8, p97: 98.1 },
+    36: { p3: 88.9, p5: 89.9, p10: 91.4, p25: 93.2, p50: 94.8, p75: 96.6, p85: 97.9, p90: 99.0, p95: 101.0, p97: 102.4 },
+    48: { p3: 95.4, p5: 96.5, p10: 98.2, p25: 100.3, p50: 102.2, p75: 104.4, p85: 105.9, p90: 107.2, p95: 109.5, p97: 111.2 },
+    60: { p3: 101.2, p5: 102.5, p10: 104.4, p25: 106.9, p50: 109.2, p75: 111.8, p85: 113.6, p90: 115.2, p95: 117.9, p97: 119.9 },
+    72: { p3: 106.5, p5: 108.0, p10: 110.2, p25: 113.0, p50: 115.7, p75: 118.8, p85: 120.9, p90: 122.7, p95: 125.9, p97: 128.2 },
+    84: { p3: 111.4, p5: 113.1, p10: 115.6, p25: 118.8, p50: 121.9, p75: 125.5, p85: 128.0, p90: 130.1, p95: 133.8, p97: 136.5 },
+    96: { p3: 116.1, p5: 118.0, p10: 120.8, p25: 124.4, p50: 127.9, p75: 132.1, p85: 135.0, p90: 137.4, p95: 141.7, p97: 144.8 },
+    108: { p3: 120.7, p5: 122.8, p10: 125.9, p25: 130.0, p50: 134.0, p75: 138.8, p85: 142.2, p90: 145.0, p95: 149.8, p97: 153.4 },
+    120: { p3: 125.4, p5: 127.6, p10: 131.1, p25: 135.7, p50: 140.2, p75: 145.6, p85: 149.4, p90: 152.6, p95: 158.0, p97: 162.0 },
+    132: { p3: 130.3, p5: 132.8, p10: 136.6, p25: 141.8, p50: 146.7, p75: 152.6, p85: 156.8, p90: 160.3, p95: 166.2, p97: 170.6 },
+    144: { p3: 135.7, p5: 138.4, p10: 142.5, p25: 148.1, p50: 153.3, p75: 159.5, p85: 163.9, p90: 167.6, p95: 173.6, p97: 178.1 },
+    156: { p3: 141.8, p5: 144.6, p10: 148.9, p25: 154.6, p50: 159.9, p75: 166.0, p85: 170.3, p90: 173.9, p95: 179.7, p97: 184.0 },
+    168: { p3: 148.3, p5: 151.1, p10: 155.3, p25: 160.8, p50: 165.9, p75: 171.6, p85: 175.5, p90: 178.8, p95: 184.2, p97: 188.2 },
+    180: { p3: 154.6, p5: 157.2, p10: 161.2, p25: 166.3, p50: 171.1, p75: 176.3, p85: 179.9, p90: 182.9, p95: 187.8, p97: 191.4 },
+    192: { p3: 160.2, p5: 162.7, p10: 166.4, p25: 171.2, p50: 175.6, p75: 180.4, p85: 183.7, p90: 186.4, p95: 190.8, p97: 194.1 },
+    204: { p3: 164.9, p5: 167.2, p10: 170.7, p25: 175.2, p50: 179.3, p75: 183.8, p85: 186.9, p90: 189.3, p95: 193.4, p97: 196.4 },
+    216: { p3: 168.6, p5: 170.7, p10: 174.1, p25: 178.3, p50: 182.2, p75: 186.5, p85: 189.3, p90: 191.6, p95: 195.4, p97: 198.2 },
+    228: { p3: 171.3, p5: 173.3, p10: 176.5, p25: 180.5, p50: 184.2, p75: 188.3, p85: 191.0, p90: 193.1, p95: 196.7, p97: 199.3 },
+    240: { p3: 173.2, p5: 175.1, p10: 178.2, p25: 182.1, p50: 185.7, p75: 189.7, p85: 192.2, p90: 194.3, p95: 197.7, p97: 200.2 }
+  },
+  female: {
+    0: { p3: 45.4, p5: 46.1, p10: 47.1, p25: 48.2, p50: 49.1, p75: 50.2, p85: 51.0, p90: 51.7, p95: 52.9, p97: 53.7 },
+    1: { p3: 50.0, p5: 50.7, p10: 51.8, p25: 52.9, p50: 53.7, p75: 54.8, p85: 55.6, p90: 56.2, p95: 57.6, p97: 58.4 },
+    2: { p3: 53.4, p5: 54.1, p10: 55.2, p25: 56.4, p50: 57.1, p75: 58.3, p85: 59.1, p90: 59.8, p95: 61.1, p97: 62.1 },
+    3: { p3: 56.2, p5: 56.9, p10: 58.0, p25: 59.2, p50: 59.8, p75: 61.1, p85: 61.9, p90: 62.6, p95: 63.4, p97: 64.5 },
+    4: { p3: 58.5, p5: 59.2, p10: 60.4, p25: 61.6, p50: 62.1, p75: 63.4, p85: 64.3, p90: 65.0, p95: 66.4, p97: 67.5 },
+    5: { p3: 60.5, p5: 61.2, p10: 62.4, p25: 63.7, p50: 64.2, p75: 65.5, p85: 66.4, p90: 67.2, p95: 68.5, p97: 69.7 },
+    6: { p3: 62.2, p5: 62.9, p10: 64.1, p25: 65.4, p50: 65.7, p75: 67.3, p85: 68.2, p90: 69.0, p95: 69.8, p97: 71.1 },
+    9: { p3: 66.8, p5: 67.5, p10: 68.8, p25: 70.2, p50: 70.4, p75: 72.0, p85: 73.0, p90: 73.9, p95: 75.0, p97: 76.4 },
+    12: { p3: 69.8, p5: 70.6, p10: 71.9, p25: 73.4, p50: 74.0, p75: 75.6, p85: 76.7, p90: 77.6, p95: 78.9, p97: 80.3 },
+    15: { p3: 72.6, p5: 73.4, p10: 74.8, p25: 76.3, p50: 76.9, p75: 78.6, p85: 79.7, p90: 80.7, p95: 82.1, p97: 83.6 },
+    18: { p3: 75.2, p5: 76.0, p10: 77.4, p25: 79.0, p50: 79.6, p75: 81.4, p85: 82.5, p90: 83.5, p95: 85.0, p97: 86.5 },
+    21: { p3: 77.6, p5: 78.4, p10: 79.9, p25: 81.5, p50: 82.1, p75: 84.0, p85: 85.1, p90: 86.2, p95: 87.7, p97: 89.3 },
+    24: { p3: 79.7, p5: 80.6, p10: 82.1, p25: 83.7, p50: 84.4, p75: 86.2, p85: 87.4, p90: 88.5, p95: 90.1, p97: 91.7 },
+    30: { p3: 83.8, p5: 84.7, p10: 86.3, p25: 88.0, p50: 88.9, p75: 90.8, p85: 92.1, p90: 93.2, p95: 94.9, p97: 96.6 },
+    36: { p3: 87.4, p5: 88.3, p10: 90.0, p25: 91.7, p50: 92.8, p75: 94.8, p85: 96.1, p90: 97.3, p95: 99.1, p97: 100.9 },
+    48: { p3: 93.9, p5: 95.0, p10: 96.9, p25: 99.0, p50: 100.3, p75: 102.7, p85: 104.3, p90: 105.6, p95: 107.9, p97: 109.8 },
+    60: { p3: 99.7, p5: 101.0, p10: 103.2, p25: 105.7, p50: 107.4, p75: 110.2, p85: 112.1, p90: 113.7, p95: 116.5, p97: 118.7 },
+    72: { p3: 105.0, p5: 106.5, p10: 109.0, p25: 111.9, p50: 114.0, p75: 117.2, p85: 119.5, p90: 121.4, p95: 124.8, p97: 127.3 },
+    84: { p3: 110.0, p5: 111.7, p10: 114.5, p25: 117.8, p50: 120.3, p75: 124.0, p85: 126.6, p90: 128.8, p95: 132.8, p97: 135.6 },
+    96: { p3: 114.8, p5: 116.7, p10: 119.8, p25: 123.5, p50: 126.4, p75: 130.6, p85: 133.6, p90: 136.2, p95: 140.7, p97: 144.0 },
+    108: { p3: 119.5, p5: 121.6, p10: 125.0, p25: 129.1, p50: 132.4, p75: 137.1, p85: 140.5, p90: 143.4, p95: 148.5, p97: 152.2 },
+    120: { p3: 124.2, p5: 126.5, p10: 130.3, p25: 134.8, p50: 138.4, p75: 143.5, p85: 147.2, p90: 150.4, p95: 155.9, p97: 159.9 },
+    132: { p3: 129.1, p5: 131.6, p10: 135.6, p25: 140.4, p50: 144.2, p75: 149.5, p85: 153.3, p90: 156.7, p95: 162.2, p97: 166.3 },
+    144: { p3: 134.1, p5: 136.7, p10: 140.8, p25: 145.7, p50: 149.5, p75: 154.7, p85: 158.4, p90: 161.7, p95: 166.9, p97: 170.7 },
+    156: { p3: 138.8, p5: 141.4, p10: 145.4, p25: 150.2, p50: 153.9, p75: 158.8, p85: 162.2, p90: 165.3, p95: 170.1, p97: 173.6 },
+    168: { p3: 142.7, p5: 145.2, p10: 149.1, p25: 153.7, p50: 157.2, p75: 161.8, p85: 165.0, p90: 167.9, p95: 172.3, p97: 175.5 },
+    180: { p3: 145.7, p5: 148.1, p10: 151.8, p25: 156.2, p50: 159.5, p75: 163.9, p85: 166.9, p90: 169.6, p95: 173.7, p97: 176.7 },
+    192: { p3: 147.8, p5: 150.0, p10: 153.6, p25: 157.8, p50: 161.0, p75: 165.2, p85: 168.0, p90: 170.6, p95: 174.5, p97: 177.3 },
+    204: { p3: 149.2, p5: 151.3, p10: 154.8, p25: 158.9, p50: 162.0, p75: 166.0, p85: 168.7, p90: 171.2, p95: 175.0, p97: 177.6 },
+    216: { p3: 150.1, p5: 152.1, p10: 155.5, p25: 159.5, p50: 162.5, p75: 166.4, p85: 169.0, p90: 171.4, p95: 175.0, p97: 177.6 },
+    228: { p3: 150.7, p5: 152.6, p10: 156.0, p25: 159.9, p50: 162.8, p75: 166.7, p85: 169.2, p90: 171.6, p95: 175.1, p97: 177.6 },
+    240: { p3: 151.0, p5: 152.9, p10: 156.2, p25: 160.1, p50: 163.0, p75: 166.8, p85: 169.3, p90: 171.7, p95: 175.2, p97: 177.6 }
+  }
+};
+
+const getAICalorieEstimate = async (feedType, amount, unit) => {
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a nutritionist. Provide only a single number representing estimated calories. No explanation, just the number.'
+          },
+          {
+            role: 'user',
+            content: `Estimate calories for: ${amount || 'one serving'} ${unit || 'serving'} of ${feedType || 'food'}. Reply with only the number.`
+          }
+        ],
+        max_tokens: 20,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('API request failed');
+    }
+
+    const data = await response.json();
+    const caloriesText = data.choices[0]?.message?.content?.trim() || '0';
+    const calories = parseInt(caloriesText.replace(/[^0-9]/g, '')) || 0;
+    return calories;
+  } catch (error) {
+    console.error('Error getting AI calorie estimate:', error);
+    return 0;
+  }
+};
+
+
+const FeedingBreakdownPieChart = ({ feedingData, darkMode, theme, hasAIConsent }) => {
+  const [calorieData, setCalorieData] = useState({});
+  const [isLoadingCalories, setIsLoadingCalories] = useState(false);
+  const [caloriesCalculated, setCaloriesCalculated] = useState(false);
+
+  const calculateCalories = async () => {
+    if (!hasAIConsent || caloriesCalculated || isLoadingCalories) {
+      console.log('Skipping calorie calculation:', { hasAIConsent, caloriesCalculated, isLoadingCalories });
+      return;
+    }
     
-    const type = (feedType || '').toLowerCase();
-    let caloriesPerUnit = 50; // default
+    console.log('Starting calorie calculation for', feedingData.length, 'logs');
+    setIsLoadingCalories(true);
+    const newCalorieData = {};
     
-    for (const [key, cal] of Object.entries(estimates)) {
-      if (type.includes(key)) {
-        caloriesPerUnit = cal;
-        break;
+    try {
+      // Process in batches to avoid rate limits
+      for (let i = 0; i < feedingData.length; i++) {
+        const log = feedingData[i];
+        const type = log.feedType || 'Other';
+        
+        if (!newCalorieData[type]) {
+          newCalorieData[type] = { total: 0, count: 0 };
+        }
+        
+        // Get AI estimate for this feeding
+        console.log(`Processing ${i + 1}/${feedingData.length}: ${type}`);
+        const calories = await getAICalorieEstimate(type, log.amount, log.amountUnit);
+        newCalorieData[type].total += calories;
+        newCalorieData[type].count++;
+        
+        // Small delay to avoid rate limiting (every 5 requests)
+        if (i % 5 === 4 && i < feedingData.length - 1) {
+          console.log('Pausing to avoid rate limit...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
+      
+      console.log('Calorie calculation complete:', newCalorieData);
+      setCalorieData(newCalorieData);
+      setCaloriesCalculated(true);
+    } catch (error) {
+      console.error('Error calculating calories:', error);
+      Alert.alert('Error', 'Failed to calculate calorie estimates. Please try again.');
+    } finally {
+      setIsLoadingCalories(false);
     }
-    
-    // Convert to oz if needed
-    let amountInOz = amount || 4; // default serving
-    if (unit === 'ml') {
-      amountInOz = amount / 29.5735; // ml to oz
-    } else if (unit === 'pieces' || unit === 'servings') {
-      amountInOz = 4; // standard serving
-    }
-    
-    return caloriesPerUnit * amountInOz;
   };
-  
+
   const feedTypeData = {};
   
   feedingData.forEach(log => {
     const type = log.feedType || 'Other';
-    const calories = getCalorieEstimate(type, log.amount, log.amountUnit);
     
     if (!feedTypeData[type]) {
       feedTypeData[type] = { count: 0, totalCalories: 0 };
     }
     
     feedTypeData[type].count++;
-    feedTypeData[type].totalCalories += calories;
+    
+    if (hasAIConsent && calorieData[type]) {
+      feedTypeData[type].totalCalories = calorieData[type].total;
+    }
   });
   
   const colors = ['#1976d2', '#FF9800', '#4CAF50', '#F44336', '#9C27B0', '#00BCD4'];
@@ -96,7 +298,7 @@ const FeedingBreakdownPieChart = ({ feedingData, darkMode, theme }) => {
     .map(([type, data], index) => ({
       name: type,
       count: data.count,
-      calories: Math.round(data.totalCalories),
+      calories: hasAIConsent && calorieData[type] ? Math.round(data.totalCalories) : null,
       color: colors[index % colors.length],
       legendFontColor: darkMode ? '#ddd' : '#333',
       legendFontSize: 12
@@ -131,8 +333,37 @@ const FeedingBreakdownPieChart = ({ feedingData, darkMode, theme }) => {
       </View>
       
       <View style={styles.interactiveLegendContainer}>
+        {hasAIConsent && (
+          <View style={{ marginBottom: 10, alignItems: 'center' }}>
+            {/* {!caloriesCalculated && !isLoadingCalories && (
+              <TouchableOpacity
+                style={[
+                  styles.calculateCaloriesButton,
+                  { backgroundColor: darkMode ? '#1a3a52' : '#1976d2' }
+                ]}
+                onPress={calculateCalories}
+              >
+                <Ionicons name="sparkles" size={16} color="#fff" />
+                <Text style={styles.calculateCaloriesButtonText}>
+                  Get AI Calorie Estimates
+                </Text>
+              </TouchableOpacity>
+            )} */}
+            {isLoadingCalories && (
+              <View style={styles.calorieLoadingContainer}>
+                <ActivityIndicator size="small" color={darkMode ? '#64b5f6' : '#1976d2'} />
+                <Text style={[styles.calorieLoadingText, { color: theme.textSecondary }]}>
+                  Calculating calories with AI... ({Object.keys(calorieData).length}/{Object.keys(feedTypeData).length} types)
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+        
         <Text style={[styles.legendTitle, { color: theme.textSecondary }]}>
-          Tap to view estimated calories & details
+          {hasAIConsent && caloriesCalculated
+            ? 'Tap to view AI-estimated calories & details' 
+            : 'Tap to view feeding frequency details'}
         </Text>
         <View style={styles.legendGrid}>
           {pieData.map((item, index) => {
@@ -141,13 +372,16 @@ const FeedingBreakdownPieChart = ({ feedingData, darkMode, theme }) => {
             return (
               <TouchableOpacity 
                 key={index}
-                style={[styles.legendItemCard, { backgroundColor: darkMode ? '#2a2a2a' : '#f8f8f8' }]}
+                style={[
+                  styles.legendItemCard, 
+                  { backgroundColor: darkMode ? '#2a2a2a' : '#f8f8f8' }
+                ]}
                 onPress={() => {
-                  Alert.alert(
-                    item.name,
-                    `Feedings: ${item.count} (${percentage}%)\nEstimated Calories: ~${item.calories} cal\n\nNote: Calorie estimates are approximate and based on typical values.`,
-                    [{ text: 'OK' }]
-                  );
+                  const message = hasAIConsent && item.calories
+                    ? `Feedings: ${item.count} (${percentage}%)\nAI-Estimated Calories: ~${item.calories} cal\n\nNote: Calorie estimates are AI-generated approximations. For accurate nutrition tracking, consult your pediatrician.`
+                    : `Feedings: ${item.count} (${percentage}%)\n\nThis represents ${percentage}% of all feeding sessions in this period.`;
+                  
+                  Alert.alert(item.name, message, [{ text: 'OK' }]);
                 }}
               >
                 <View style={[styles.legendColorDot, { backgroundColor: item.color }]} />
@@ -158,9 +392,11 @@ const FeedingBreakdownPieChart = ({ feedingData, darkMode, theme }) => {
                   <Text style={[styles.legendItemCount, { color: theme.textSecondary, fontSize: 10 }]}>
                     {item.count} feedings ({percentage}%)
                   </Text>
-                  <Text style={[styles.legendItemCount, { color: theme.textSecondary, fontSize: 9, fontStyle: 'italic' }]}>
-                    ~{item.calories} cal
-                  </Text>
+                  {hasAIConsent && item.calories && caloriesCalculated && (
+                    <Text style={[styles.legendItemCount, { color: theme.textSecondary, fontSize: 9, fontStyle: 'italic' }]}>
+                      ~{item.calories} cal (AI est.)
+                    </Text>
+                  )}
                 </View>
               </TouchableOpacity>
             );
@@ -168,18 +404,20 @@ const FeedingBreakdownPieChart = ({ feedingData, darkMode, theme }) => {
         </View>
       </View>
       
-      <View style={[
-        styles.calorieDisclaimer,
-        { backgroundColor: darkMode ? '#2a2a2a' : '#f8f8f8' }
-      ]}>
-        <Ionicons name="information-circle-outline" size={16} color={darkMode ? '#64b5f6' : '#1976d2'} />
-        <Text style={[
-          styles.disclaimerText,
-          { color: darkMode ? '#bbb' : '#666' }
+      {hasAIConsent && caloriesCalculated && (
+        <View style={[
+          styles.calorieDisclaimer,
+          { backgroundColor: darkMode ? '#2a2a2a' : '#f8f8f8' }
         ]}>
-          Calorie estimates are approximate. For accurate nutrition tracking, consult your pediatrician.
-        </Text>
-      </View>
+          <Ionicons name="information-circle-outline" size={16} color={darkMode ? '#64b5f6' : '#1976d2'} />
+          <Text style={[
+            styles.disclaimerText,
+            { color: darkMode ? '#bbb' : '#666' }
+          ]}>
+            Calorie estimates are AI-generated approximations based on typical values. For accurate nutrition tracking, consult your pediatrician.
+          </Text>
+        </View>
+      )}
     </>
   );
 };
@@ -202,40 +440,20 @@ const SleepMetricsSummary = ({ data, darkMode }) => {
 
   return (
     <View style={styles.metricsSummaryContainer}>
-      {quality && (
-        <View style={[
-          styles.qualityStatusBanner,
-          {
-            backgroundColor: quality.color + (darkMode ? '25' : '15'),
-            borderLeftColor: quality.color
-          }
-        ]}>
-          <Ionicons name={quality.icon} size={24} color={quality.color} />
-          <View style={styles.qualityStatusText}>
-            <Text style={[styles.qualityStatusLabel, { color: quality.color }]}>
-              {quality.status}
-            </Text>
-            <Text style={[
-              styles.qualityStatusDescription,
-              { color: darkMode ? '#bbb' : '#666' }
-            ]}>
-              {totalSleep?.avg || 0}{totalSleep?.unit || ''}hrs daily vs {totalSleep?.benchmark || 12}hrs recommended
-            </Text>
-          </View>
-        </View>
-      )}
+
 
       <View style={[
         styles.sleepBreakdownContainer,
         { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }
       ]}>
-        <View style={[
-          styles.sleepBreakdownItem,
-          {
-            backgroundColor: darkMode ? '#2a2a2a' : '#fff',
-            borderColor: darkMode ? '#404040' : '#e0e0e0'
-          }
-        ]}>
+          <View style={[
+            styles.sleepBreakdownItem,
+            {
+              backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+              borderWidth: 1,
+              borderColor: darkMode ? '#404040' : '#e0e0e0'
+            }
+          ]}>
           <View style={styles.sleepBreakdownIcon}>
             <Ionicons name="moon" size={18} color="#1976d2" />
           </View>
@@ -400,56 +618,93 @@ const FeedingMetricsSummary = ({ data, darkMode  }) => {
   return (
     <View style={styles.metricsSummaryContainer}>
       {status && (
-        <View style={[styles.qualityStatusBanner, { backgroundColor: status.color + '15', borderLeftColor: status.color }]}>
+        <View style={[
+          styles.qualityStatusBanner, 
+          { 
+            backgroundColor: status.color + (darkMode ? '25' : '15'),
+            borderLeftColor: status.color 
+          }
+        ]}>
           <Ionicons name={status.icon} size={24} color={status.color} />
           <View style={styles.qualityStatusText}>
             <Text style={[styles.qualityStatusLabel, { color: status.color }]}>
               {status.status}
             </Text>
-            <Text style={styles.qualityStatusDescription}>
+            <Text style={[
+              styles.qualityStatusDescription,
+              { color: darkMode ? '#bbb' : '#666' }
+            ]}>
               {perDay?.avg || 0} feedings/day, avg {avgGap?.avg || 0}hrs apart
             </Text>
           </View>
         </View>
       )}
 
+      <View style={[
+        styles.feedingDetailsContainer,
+        { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }
+      ]}>
         <View style={[
-          styles.feedingDetailsContainer,
-          { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }
+          styles.feedingDetailRow,
+          { borderBottomColor: darkMode ? '#333' : '#f0f0f0' }
         ]}>
-          <View style={[
-            styles.feedingDetailRow,
-            { borderBottomColor: darkMode ? '#333' : '#f0f0f0' }
-          ]}>
           <View style={styles.feedingDetailLabel}>
             <Ionicons name="restaurant" size={18} color="#FF9800" />
-            <Text style={styles.feedingDetailText}>Per Day</Text>
+            <Text style={[
+              styles.feedingDetailText,
+              { color: darkMode ? '#e0e0e0' : '#333' }
+            ]}>
+              Per Day
+            </Text>
           </View>
-          <Text style={styles.feedingDetailValue}>{perDay?.avg || 0}</Text>
+          <Text style={[
+            styles.feedingDetailValue,
+            { color: darkMode ? '#fff' : '#333' }
+          ]}>
+            {perDay?.avg || 0} feedings
+          </Text>
         </View>
 
-        <View style={styles.feedingDetailRow}>
+        <View style={[
+          styles.feedingDetailRow,
+          { borderBottomColor: darkMode ? '#333' : '#f0f0f0' }
+        ]}>
           <View style={styles.feedingDetailLabel}>
             <Ionicons name="time" size={18} color="#FF9800" />
-            <Text style={styles.feedingDetailText}>Avg Gap</Text>
+            <Text style={[
+              styles.feedingDetailText,
+              { color: darkMode ? '#e0e0e0' : '#333' }
+            ]}>
+              Avg Gap
+            </Text>
           </View>
-          <Text style={styles.feedingDetailValue}>{avgGap?.avg || 0}hrs</Text>
+          <Text style={[
+            styles.feedingDetailValue,
+            { color: darkMode ? '#fff' : '#333' }
+          ]}>
+            {avgGap?.avg || 0}hrs
+          </Text>
         </View>
 
-        {/* <View style={styles.feedingDetailRow}>
-          <View style={styles.feedingDetailLabel}>
-            <Ionicons name="water" size={18} color="#FF9800" />
-            <Text style={styles.feedingDetailText}>Avg Amount</Text>
-          </View>
-          <Text style={styles.feedingDetailValue}>{avgAmount?.avg || 0}ml</Text>
-        </View> */}
-
-        <View style={styles.feedingDetailRow}>
+        <View style={[
+          styles.feedingDetailRow,
+          { borderBottomWidth: 0 }
+        ]}>
           <View style={styles.feedingDetailLabel}>
             <Ionicons name="alarm" size={18} color="#FF9800" />
-            <Text style={styles.feedingDetailText}>Common Time</Text>
+            <Text style={[
+              styles.feedingDetailText,
+              { color: darkMode ? '#e0e0e0' : '#333' }
+            ]}>
+              Common Time
+            </Text>
           </View>
-          <Text style={styles.feedingDetailValue}>{mostCommon?.avg || 'N/A'}</Text>
+          <Text style={[
+            styles.feedingDetailValue,
+            { color: darkMode ? '#fff' : '#333' }
+          ]}>
+            {mostCommon?.avg || 'N/A'}
+          </Text>
         </View>
       </View>
     </View>
@@ -457,10 +712,15 @@ const FeedingMetricsSummary = ({ data, darkMode  }) => {
 };
 
 // Diaper Summary Component
-const DiaperMetricsSummary = ({ data, wetPerDay, bmPerDay }) => {
+const DiaperMetricsSummary = ({ data, wetPerDay, bmPerDay, darkMode }) => {
   const totalChanges = data.summary?.find(s => s.key === 'total');
   const wetDiapers = data.summary?.find(s => s.key === 'wet');
   const bmDiapers = data.summary?.find(s => s.key === 'bm');
+
+  const textPrimary = darkMode ? '#FFFFFF' : '#1A1A1A';
+  const textSecondary = darkMode ? '#CCCCCC' : '#555555';
+  const cardBackground = darkMode ? '#2A2A2A' : '#FFFFFF';
+  const cardBorder = darkMode ? '#444444' : '#DDDDDD';
 
   const getHydrationStatus = (wet) => {
     const wetVal = parseFloat(wet);
@@ -482,74 +742,192 @@ const DiaperMetricsSummary = ({ data, wetPerDay, bmPerDay }) => {
 
   return (
     <View style={styles.metricsSummaryContainer}>
+
       <View style={styles.diaperStatusRow}>
-        <View style={[styles.diaperStatusCard, { borderLeftColor: hydration.color }]}>
+
+        <View style={[
+          styles.diaperStatusCard,
+          { borderLeftColor: hydration.color, backgroundColor: cardBackground, borderColor: cardBorder }
+        ]}>
           <View style={styles.diaperCardHeader}>
             <Ionicons name="water" size={20} color={hydration.color} />
-            <Text style={styles.diaperCardTitle}>Hydration</Text>
+            <Text style={[styles.diaperCardTitle, { color: textPrimary }]}>Hydration</Text>
           </View>
           <Text style={[styles.diaperStatusBadge, { color: hydration.color }]}>
             {hydration.status}
           </Text>
-          <Text style={styles.diaperStatusValue}>
+          <Text style={[styles.diaperStatusValue, { color: textPrimary }]}>
             {wetPerDay || wetDiapers?.avg || 0} wet/day
           </Text>
-          <Text style={styles.diaperStatusNote}>
+          <Text style={[styles.diaperStatusNote, { color: textSecondary }]}>
             Target: 5-7/day
           </Text>
         </View>
 
-        <View style={[styles.diaperStatusCard, { borderLeftColor: digestion.color }]}>
+        <View style={[
+          styles.diaperStatusCard,
+          { borderLeftColor: digestion.color, backgroundColor: cardBackground, borderColor: cardBorder }
+        ]}>
           <View style={styles.diaperCardHeader}>
             <Ionicons name="medical" size={20} color={digestion.color} />
-            <Text style={styles.diaperCardTitle}>Digestion</Text>
+            <Text style={[styles.diaperCardTitle, { color: textPrimary }]}>Digestion</Text>
           </View>
           <Text style={[styles.diaperStatusBadge, { color: digestion.color }]}>
             {digestion.status}
           </Text>
-          <Text style={styles.diaperStatusValue}>
+          <Text style={[styles.diaperStatusValue, { color: textPrimary }]}>
             {bmPerDay || bmDiapers?.avg || 0} BM/day
           </Text>
-          <Text style={styles.diaperStatusNote}>
+          <Text style={[styles.diaperStatusNote, { color: textSecondary }]}>
             Age-dependent
           </Text>
         </View>
       </View>
 
-      <View style={styles.diaperTotalContainer}>
+      <View style={[
+        styles.diaperTotalContainer,
+        { backgroundColor: darkMode ? '#1A4A4A' : '#F0F7FA', borderColor: cardBorder }
+      ]}>
         <Ionicons name="repeat" size={18} color="#00BCD4" />
         <View style={styles.diaperTotalInfo}>
-          <Text style={styles.diaperTotalLabel}>Total Changes</Text>
-          <Text style={styles.diaperTotalValue}>{totalChanges?.avg || 0}/day</Text>
+          <Text style={[styles.diaperTotalLabel, { color: textSecondary }]}>Total Changes</Text>
+          <Text style={[styles.diaperTotalValue, { color: '#00BCD4' }]}>
+            {totalChanges?.avg || 0}/day
+          </Text>
+        </View>
+      </View>
+
+    </View>
+  );
+};
+
+const GrowthMetricsSummary = ({ data, childData, darkMode, theme }) => {
+  if (!data || data.length === 0) {
+    return (
+      <View style={styles.noDataContainer}>
+        <Ionicons name="analytics-outline" size={40} color={darkMode ? '#555' : '#ccc'} />
+        <Text style={[styles.noDataText, { color: theme.textSecondary }]}>
+          No growth measurements recorded yet
+        </Text>
+      </View>
+    );
+  }
+
+  const latestMeasurement = data[data.length - 1];
+  const ageMonths = calculateAge(childData.birthdate);
+  
+  const weightPercentile = getPercentile(
+    latestMeasurement.weight, 
+    ageMonths, 
+    childData.sex, 
+    'weight', 
+    childData
+  );
+  
+  const heightPercentile = getPercentile(
+    latestMeasurement.height, 
+    ageMonths, 
+    childData.sex, 
+    'height', 
+    childData
+  );
+
+  const getGrowthStatus = (percentile) => {
+    if (!percentile) return { status: 'Unknown', color: '#999', icon: 'help-circle' };
+    
+    if (percentile.includes('< 3rd')) {
+      return { status: 'Below Range', color: '#F44336', icon: 'alert-circle' };
+    } else if (percentile.includes('> 97th')) {
+      return { status: 'Above Range', color: '#FF9800', icon: 'alert-circle' };
+    } else {
+      return { status: 'Normal Range', color: '#4CAF50', icon: 'checkmark-circle' };
+    }
+  };
+
+  const weightStatus = getGrowthStatus(weightPercentile);
+  const heightStatus = getGrowthStatus(heightPercentile);
+
+  return (
+    <View style={styles.metricsSummaryContainer}>
+      <View style={styles.diaperStatusRow}>
+        {/* Weight Card */}
+        <View style={[
+          styles.diaperStatusCard,
+          { 
+            borderLeftColor: weightStatus.color,
+            backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+            borderColor: darkMode ? '#404040' : '#e0e0e0'
+          }
+        ]}>
+          <View style={styles.diaperCardHeader}>
+            <Ionicons name="scale" size={20} color={weightStatus.color} />
+            <Text style={[styles.diaperCardTitle, { color: theme.textPrimary }]}>
+              Weight
+            </Text>
+          </View>
+          <Text style={[styles.diaperStatusBadge, { color: weightStatus.color }]}>
+            {weightStatus.status}
+          </Text>
+          <Text style={[styles.diaperStatusValue, { color: theme.textPrimary }]}>
+            {latestMeasurement.weight} {latestMeasurement.weightUnit}
+          </Text>
+          <Text style={[styles.diaperStatusNote, { color: theme.textSecondary }]}>
+            {weightPercentile || 'N/A'} percentile
+          </Text>
+        </View>
+
+        {/* Height Card */}
+        <View style={[
+          styles.diaperStatusCard,
+          { 
+            borderLeftColor: heightStatus.color,
+            backgroundColor: darkMode ? '#2a2a2a' : '#fff',
+            borderColor: darkMode ? '#404040' : '#e0e0e0'
+          }
+        ]}>
+          <View style={styles.diaperCardHeader}>
+            <Ionicons name="resize" size={20} color={heightStatus.color} />
+            <Text style={[styles.diaperCardTitle, { color: theme.textPrimary }]}>
+              Height
+            </Text>
+          </View>
+          <Text style={[styles.diaperStatusBadge, { color: heightStatus.color }]}>
+            {heightStatus.status}
+          </Text>
+          <Text style={[styles.diaperStatusValue, { color: theme.textPrimary }]}>
+            {latestMeasurement.height} {latestMeasurement.heightUnit}
+          </Text>
+          <Text style={[styles.diaperStatusNote, { color: theme.textSecondary }]}>
+            {heightPercentile || 'N/A'} percentile
+          </Text>
+        </View>
+      </View>
+
+      {/* Total Measurements Info */}
+      <View style={[
+        styles.diaperTotalContainer,
+        { 
+          backgroundColor: darkMode ? '#1A4A4A' : '#F0F7FA',
+          borderColor: darkMode ? '#404040' : '#e0e0e0'
+        }
+      ]}>
+        <Ionicons name="analytics" size={18} color="#00BCD4" />
+        <View style={styles.diaperTotalInfo}>
+          <Text style={[styles.diaperTotalLabel, { color: theme.textSecondary }]}>
+            Total Measurements
+          </Text>
+          <Text style={[styles.diaperTotalValue, { color: '#00BCD4' }]}>
+            {data.length} recorded
+          </Text>
         </View>
       </View>
     </View>
   );
 };
 
-
-const DataPointTooltip = ({ visible, data, position, onClose }) => {
-  if (!visible || !data) return null;
-  
-  return (
-    <Modal transparent visible={visible} animationType="fade">
-      <TouchableOpacity 
-        style={styles.tooltipOverlay} 
-        activeOpacity={1} 
-        onPress={onClose}
-      >
-        <View style={[styles.tooltipContainer, { top: position.y - 80, left: Math.max(10, Math.min(position.x - 75, width - 160)) }]}>
-          <Text style={styles.tooltipDate}>{data.label}</Text>
-          <Text style={styles.tooltipValue}>{data.value} {data.unit}</Text>
-          {data.details && <Text style={styles.tooltipDetails}>{data.details}</Text>}
-        </View>
-      </TouchableOpacity>
-    </Modal>
-  );
-};
-
 const TimeOfDayHeatmap = ({ data, title, color, darkMode }) => {
   // data format: [{ hour: 0-23, count: number, day: string }]
+  const [selectedHour, setSelectedHour] = useState(null);
   
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const maxCount = Math.max(...data.map(d => d.count), 1);
@@ -577,6 +955,16 @@ const TimeOfDayHeatmap = ({ data, title, color, darkMode }) => {
     return { hour, count };
   });
   
+  const handleBarPress = (hour, count) => {
+    if (count > 0) {
+      Alert.alert(
+        formatHour(hour),
+        `${count} occurrence${count !== 1 ? 's' : ''} during this hour`,
+        [{ text: 'OK' }]
+      );
+    }
+  };
+  
   return (
     <View style={styles.heatmapContainer}>
       <Text style={[
@@ -588,8 +976,16 @@ const TimeOfDayHeatmap = ({ data, title, color, darkMode }) => {
       <View style={styles.heatmapGrid}>
         {hourCounts.map(({ hour, count }) => {
           const intensity = getIntensity(count);
+          const showText = count > 0 && count.toString().length <= 2;
+          
           return (
-            <View key={hour} style={styles.heatmapCell}>
+            <TouchableOpacity 
+              key={hour} 
+              style={styles.heatmapCell}
+              onPress={() => handleBarPress(hour, count)}
+              activeOpacity={0.7}
+              disabled={count === 0}
+            >
               <View 
                 style={[
                   styles.heatmapBar, 
@@ -599,8 +995,11 @@ const TimeOfDayHeatmap = ({ data, title, color, darkMode }) => {
                   }
                 ]}
               >
-                {count > 0 && (
+                {showText && (
                   <Text style={styles.heatmapBarText}>{count}</Text>
+                )}
+                {count > 0 && !showText && (
+                  <View style={styles.heatmapBarDot} />
                 )}
               </View>
               <Text style={[
@@ -609,7 +1008,7 @@ const TimeOfDayHeatmap = ({ data, title, color, darkMode }) => {
               ]}>
                 {hour % 4 === 0 ? formatHour(hour) : ''}
               </Text>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </View>
@@ -642,58 +1041,175 @@ const TimeOfDayHeatmap = ({ data, title, color, darkMode }) => {
   );
 };
 
-const DiaperHealthIndicator = ({ wetPerDay, bmPerDay }) => {
-  const getWetStatus = () => {
-    if (wetPerDay >= 5) return { status: 'Good', color: '#4CAF50', icon: 'checkmark-circle' };
-    if (wetPerDay >= 4) return { status: 'Fair', color: '#FF9800', icon: 'alert-circle' };
-    return { status: 'Low', color: '#F44336', icon: 'close-circle' };
+const WeaningProgressCard = ({ feedingData, darkMode, theme }) => {
+  // Filter for weaning logs
+  const weaningLogs = feedingData.filter(log => log.weaningMode);
+  
+  if (weaningLogs.length === 0) return null;
+  
+  // Analyze progression
+  const progression = weaningLogs.map(log => ({
+    date: log.timestamp?.toDate(),
+    ratio: log.weaningRatio,
+    type: log.weaningType
+  })).sort((a, b) => a.date - b.date);
+  
+  const latestLog = progression[progression.length - 1];
+  const startDate = progression[0]?.date;
+  const daysInTransition = startDate ? Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24)) : 0;
+  
+  // Calculate progress percentage (rough estimate)
+  const getProgressPercentage = (ratio) => {
+    if (!ratio) return 0;
+    if (ratio.includes('100%')) return 100;
+    const match = ratio.match(/(\d+)\/(\d+)/);
+    if (match) {
+      const [, old, newMilk] = match;
+      return Math.round((parseInt(newMilk) / (parseInt(old) + parseInt(newMilk))) * 100);
+    }
+    return 0;
   };
   
-  const getBMStatus = () => {
-    if (bmPerDay >= 1 && bmPerDay <= 4) return { status: 'Normal', color: '#4CAF50', icon: 'checkmark-circle' };
-    if (bmPerDay > 4) return { status: 'Frequent', color: '#FF9800', icon: 'alert-circle' };
-    if (bmPerDay > 0) return { status: 'Low', color: '#FF9800', icon: 'alert-circle' };
-    return { status: 'Concern', color: '#F44336', icon: 'close-circle' };
-  };
-  
-  const wetStatus = getWetStatus();
-  const bmStatus = getBMStatus();
+  const currentProgress = getProgressPercentage(latestLog?.ratio);
   
   return (
-    <View style={styles.healthIndicatorContainer}>
-      <View style={styles.healthIndicatorCard}>
-        <View style={styles.healthIndicatorHeader}>
-          <Ionicons name="water" size={18} color="#00BCD4" />
-          <Text style={styles.healthIndicatorTitle}>Hydration</Text>
-        </View>
-        <View style={styles.healthIndicatorRow}>
-          <Ionicons name={wetStatus.icon} size={20} color={wetStatus.color} />
-          <Text style={[styles.healthIndicatorStatus, { color: wetStatus.color }]}>
-            {wetStatus.status}
+    <View style={[
+      styles.chartContainer,
+      { backgroundColor: darkMode ? '#1f1f1f' : '#fff' }
+    ]}>
+      <View style={styles.weaningHeader}>
+        <View>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+            Milk Weaning Progress
+          </Text>
+          <Text style={[styles.weaningSubtitle, { color: theme.textSecondary }]}>
+            Transitioning {latestLog?.type === 'to-dairy' ? 'to dairy milk' : 'to formula'}
           </Text>
         </View>
-        <Text style={styles.healthIndicatorNote}>
-          {wetPerDay >= 5 ? 'Well hydrated' : 'Monitor hydration'}
+      </View>
+      
+      {/* Progress Bar */}
+      <View style={[styles.progressBarContainer, { backgroundColor: darkMode ? '#2a2a2a' : '#f5f5f5' }]}>
+        <View style={[styles.progressBarFill, { width: `${currentProgress}%`, backgroundColor: '#4CAF50' }]} />
+        <Text style={[styles.progressBarText, { color: theme.textPrimary }]}>
+          {currentProgress}% Complete
         </Text>
       </View>
       
-      <View style={styles.healthIndicatorCard}>
-        <View style={styles.healthIndicatorHeader}>
-          <Ionicons name="medical" size={18} color="#FF9800" />
-          <Text style={styles.healthIndicatorTitle}>Digestion</Text>
+      {/* Stats Grid */}
+      <View style={styles.weaningStatsGrid}>
+        <View style={[styles.weaningStat, { backgroundColor: darkMode ? '#2a2a2a' : '#f8f8f8' }]}>
+          <Text style={[styles.weaningStatLabel, { color: theme.textSecondary }]}>Days in Transition</Text>
+          <Text style={[styles.weaningStatValue, { color: theme.textPrimary }]}>{daysInTransition}</Text>
         </View>
-        <View style={styles.healthIndicatorRow}>
-          <Ionicons name={bmStatus.icon} size={20} color={bmStatus.color} />
-          <Text style={[styles.healthIndicatorStatus, { color: bmStatus.color }]}>
-            {bmStatus.status}
-          </Text>
+        
+        <View style={[styles.weaningStat, { backgroundColor: darkMode ? '#2a2a2a' : '#f8f8f8' }]}>
+          <Text style={[styles.weaningStatLabel, { color: theme.textSecondary }]}>Current Ratio</Text>
+          <Text style={[styles.weaningStatValue, { color: theme.textPrimary }]}>{latestLog?.ratio || 'N/A'}</Text>
         </View>
-        <Text style={styles.healthIndicatorNote}>
-          {bmPerDay >= 1 && bmPerDay <= 4 ? 'Regular pattern' : 'Consult healthcare provider if concerned'}
-        </Text>
+        
+        <View style={[styles.weaningStat, { backgroundColor: darkMode ? '#2a2a2a' : '#f8f8f8' }]}>
+          <Text style={[styles.weaningStatLabel, { color: theme.textSecondary }]}>Total Logs</Text>
+          <Text style={[styles.weaningStatValue, { color: theme.textPrimary }]}>{weaningLogs.length}</Text>
+        </View>
       </View>
+      
+      {/* Timeline */}
+      <View style={styles.weaningTimeline}>
+        <Text style={[styles.timelineTitle, { color: theme.textPrimary }]}>Progression</Text>
+        {progression.slice(-5).reverse().map((entry, index) => (
+          <View key={index} style={styles.timelineEntry}>
+            <View style={[styles.timelineDot, { backgroundColor: '#4CAF50' }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.timelineDate, { color: theme.textSecondary }]}>
+                {entry.date.toLocaleDateString()}
+              </Text>
+              <Text style={[styles.timelineRatio, { color: theme.textPrimary }]}>
+                {entry.ratio}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </View>
+      
+      {/* Guidance
+      <View style={[styles.weaningGuidanceBox, { backgroundColor: darkMode ? '#1a3a2a' : '#E8F5E9' }]}>
+        <Text style={[styles.guidanceText, { color: darkMode ? '#A5D6A7' : '#2E7D32' }]}>
+          {currentProgress < 25 ? '🌱 Great start! Continue with this ratio for 3-5 days before advancing.' :
+           currentProgress < 50 ? '📈 Halfway there! Watch for any digestive changes as you progress.' :
+           currentProgress < 75 ? '🎯 Almost done! Your baby is adjusting well to the new milk.' :
+           currentProgress < 100 ? '🏁 Final stretch! You can complete the transition in the next few days.' :
+           '✅ Transition complete! Great job on a gradual, healthy weaning process!'}
+        </Text>
+      </View> */}
     </View>
   );
+};
+
+const calculateAge = (birthdate) => {
+  const birth = new Date(birthdate);
+  const today = new Date();
+  const diffMonths = (today.getFullYear() - birth.getFullYear()) * 12 + 
+                     (today.getMonth() - birth.getMonth());
+  return diffMonths;
+};
+
+const getClosestAgeData = (ageMonths, genderData) => {
+  const ages = Object.keys(genderData).map(Number).sort((a, b) => a - b);
+  
+  let lowerAge = ages[0];
+  let upperAge = ages[ages.length - 1];
+  
+  for (let i = 0; i < ages.length - 1; i++) {
+    if (ageMonths >= ages[i] && ageMonths <= ages[i + 1]) {
+      lowerAge = ages[i];
+      upperAge = ages[i + 1];
+      break;
+    }
+  }
+  
+  if (genderData[ageMonths]) {
+    return genderData[ageMonths];
+  }
+  
+  const lowerData = genderData[lowerAge];
+  const upperData = genderData[upperAge];
+  const ratio = (ageMonths - lowerAge) / (upperAge - lowerAge);
+  
+  const interpolated = {};
+  Object.keys(lowerData).forEach(percentile => {
+    interpolated[percentile] = lowerData[percentile] + 
+      (upperData[percentile] - lowerData[percentile]) * ratio;
+  });
+  
+  return interpolated;
+};
+
+const getPercentile = (value, ageMonths, sex, type, childData) => {
+  const data = type === 'weight' ? CDC_WEIGHT_PERCENTILES : CDC_HEIGHT_PERCENTILES;
+  const genderData = data[sex === 'Male' ? 'male' : 'female'];
+  
+  const percentiles = getClosestAgeData(ageMonths, genderData);
+  if (!percentiles) return null;
+  
+  let metricValue = value;
+  if (type === 'weight' && childData?.weightUnit === 'lbs') {
+    metricValue = value * 0.453592;
+  } else if (type === 'height' && childData?.heightUnit === 'in') {
+    metricValue = value * 2.54;
+  }
+  
+  if (metricValue < percentiles.p3) return '< 3rd';
+  if (metricValue < percentiles.p5) return '3-5th';
+  if (metricValue < percentiles.p10) return '5-10th';
+  if (metricValue < percentiles.p25) return '10-25th';
+  if (metricValue < percentiles.p50) return '25-50th';
+  if (metricValue < percentiles.p75) return '50-75th';
+  if (metricValue < percentiles.p85) return '75-85th';
+  if (metricValue < percentiles.p90) return '85-90th';
+  if (metricValue < percentiles.p95) return '90-95th';
+  if (metricValue < percentiles.p97) return '95-97th';
+  return '> 97th';
 };
 
 const ReportPage = () => {
@@ -716,6 +1232,8 @@ const ReportPage = () => {
   const navigation = useNavigation();
   const { darkMode } = useDarkMode();
   const theme = darkMode ? appTheme.dark : appTheme.light;
+  const [aiRefreshKey, setAiRefreshKey] = useState(0);
+  const [forceAIRefresh, setForceAIRefresh] = useState(false);
   const getContainerStyle = (baseStyle) => {
     return [
       baseStyle,
@@ -725,7 +1243,28 @@ const ReportPage = () => {
       }
     ];
   };
-
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [currentAISummaries, setCurrentAISummaries] = useState({});
+  // Memoize processed data to avoid recalculating on every render
+const processedChartData = useMemo(() => {
+  if (isLoading) return null;
+  
+  try {
+    switch (activeTab) {
+      case 'Sleep':
+        return processSleepData();
+      case 'Diaper':
+        return processDiaperData();
+      case 'Feeding':
+        return processFeedingData();
+      default:
+        return null;
+    }
+  } catch (error) {
+    console.error('Error processing chart data:', error);
+    return null;
+  }
+}, [activeTab, sleepData, diaperData, feedingData, reportRange, childData, isLoading]);
   const getTextStyle = (baseStyle, colorOverride) => {
     return [
       baseStyle,
@@ -743,7 +1282,11 @@ const ReportPage = () => {
   const [showConsentModal, setShowConsentModal] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [checkingPermissions, setCheckingPermissions] = useState(true);
-  
+  const [measurementsData, setMeasurementsData] = useState([]);
+  const [growthPercentiles, setGrowthPercentiles] = useState({
+    weight: null,
+    height: null
+  });
   // Data states
   const [sleepData, setSleepData] = useState([]);
   const [diaperData, setDiaperData] = useState([]);
@@ -751,6 +1294,43 @@ const ReportPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDataPoint, setSelectedDataPoint] = useState(null);
   const [childData, setChildData] = useState(null);
+
+  const [dataCache, setDataCache] = useState({
+    annual: { sleep: [], feeding: [], diaper: [], timestamp: null },
+    overview: { sleep: [], feeding: [], diaper: [], timestamp: null }
+  });
+  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+  useEffect(() => {
+  if (childId && !isLoading && childData) {
+    const updateAISummaries = async () => {
+      const summaries = {};
+      
+      // Get cached summaries from the AI component
+      const overallKey = `${reportRange}_Overall`;
+      const sleepKey = `${reportRange}_Sleep`;
+      const feedingKey = `${reportRange}_Feeding`;
+      const diaperKey = `${reportRange}_Diaper`;
+      
+      try {
+        const cached = await AsyncStorage.getItem(`ai_summary_cache_${childId}`);
+        if (cached) {
+          const parsedCache = JSON.parse(cached);
+          summaries.overall = parsedCache[overallKey];
+          summaries.sleep = parsedCache[sleepKey];
+          summaries.feeding = parsedCache[feedingKey];
+          summaries.diaper = parsedCache[diaperKey];
+        }
+      } catch (error) {
+        console.error('Error loading AI summaries for export:', error);
+      }
+      
+      setCurrentAISummaries(summaries);
+    };
+    
+    updateAISummaries();
+  }
+}, [reportRange, childId, childData, isLoading]);
 
   // First useEffect - Check ownership
   useEffect(() => {
@@ -797,38 +1377,63 @@ const ReportPage = () => {
     checkOwnership();
   }, [childId, navigation]);
 
-  // Second useEffect - Fetch all data (only runs if owner check passes)
-  useEffect(() => {
-    if (!childId || !isOwner || checkingPermissions) {
-      return;
-    }
+useEffect(() => {
+  if (!childId || !isOwner || checkingPermissions) {
+    return;
+  }
+  
+  // Clear cache if switching between different time ranges
+  const fetchAllData = async () => {
+    setIsLoading(true);
     
-    const fetchAllData = async () => {
-      setIsLoading(true);
+    try {
+      const { start, end } = getTimeRange();
       
-      try {
-        const { start, end } = getTimeRange();
-        
-        const startTimestamp = Timestamp.fromDate(new Date(start.setHours(0, 0, 0, 0)));
-        const endTimestamp = Timestamp.fromDate(new Date(end.setHours(23, 59, 59, 999)));
-        
-        await Promise.all([
-          fetchChildData(),
-          fetchSleepData(startTimestamp, endTimestamp),
-          fetchDiaperData(startTimestamp, endTimestamp),
-          fetchFeedingData(startTimestamp, endTimestamp)
-        ]);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        Alert.alert('Error', 'Failed to fetch report data.');
-      } finally {
-        setIsLoading(false);
+      const startTimestamp = Timestamp.fromDate(new Date(start.setHours(0, 0, 0, 0)));
+      const endTimestamp = Timestamp.fromDate(new Date(end.setHours(23, 59, 59, 999)));
+      
+      // Check if we're on Annual or Overview and have cached data
+      const cacheType = reportRange === 'Annual' ? 'annual' : reportRange === 'Overview' ? 'overview' : null;
+      
+      if (cacheType) {
+        const cached = getCachedData(cacheType);
+        if (cached) {
+          console.log(`Loading from cache for ${reportRange}`);
+          setSleepData(cached.sleep);
+          setFeedingData(cached.feeding);
+          setDiaperData(cached.diaper);
+          await fetchChildData();
+          setIsLoading(false);
+          return;
+        }
       }
-    };
-    
-    fetchAllData();
-  }, [childId, reportRange, isOwner, checkingPermissions]);
-
+      
+      console.log(`Fetching fresh data for ${reportRange}`);
+      const [childResult, sleepResult, diaperResult, feedingResult] = await Promise.all([
+        fetchChildData(),
+        fetchSleepData(startTimestamp, endTimestamp),
+        fetchDiaperData(startTimestamp, endTimestamp),
+        fetchFeedingData(startTimestamp, endTimestamp)
+      ]);
+      
+      // Cache the data if it's Annual or Overview
+      if (cacheType) {
+        console.log(`Caching data for ${reportRange}`);
+        // Use the data from state after it's been set
+        setTimeout(() => {
+          updateCache(cacheType, sleepData, feedingData, diaperData);
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      Alert.alert('Error', 'Failed to fetch report data.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  fetchAllData();
+}, [childId, reportRange, isOwner, checkingPermissions]);
   if (checkingPermissions) {
     return (
       <LinearGradient 
@@ -1762,7 +2367,8 @@ const AIPoweredSummary = ({
   activeTab: mainActiveTab, 
   darkMode, 
   theme,
-  isOverviewMode = false  // NEW: flag to indicate if in overview mode
+  isOverviewMode = false,
+  forceRefresh = false
 }) => {
   const [summaryCache, setSummaryCache] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -1772,8 +2378,8 @@ const AIPoweredSummary = ({
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
   const cacheLoadedRef = useRef(false);
   const consentCheckRef = useRef(false);
+  const forceRefreshProcessedRef = useRef(false); // NEW: Track if we've processed this refresh
 
-  // Load consent and cache on mount - ONLY ONCE
   useEffect(() => {
     if (consentCheckRef.current) return;
     
@@ -1799,13 +2405,32 @@ const AIPoweredSummary = ({
     }
   }, [childId]);
 
+  // NEW: Separate useEffect to handle forceRefresh
+  useEffect(() => {
+    if (forceRefresh && hasConsented && cacheLoadedRef.current && !forceRefreshProcessedRef.current) {
+      console.log('Force refresh detected, regenerating summary...');
+      forceRefreshProcessedRef.current = true;
+      handleGenerateSummary(isOverviewMode ? 'Overall' : mainActiveTab, true);
+      
+      // Reset the ref after processing
+      setTimeout(() => {
+        forceRefreshProcessedRef.current = false;
+      }, 1000);
+    } else if (!forceRefresh) {
+      // Reset when forceRefresh becomes false
+      forceRefreshProcessedRef.current = false;
+    }
+  }, [forceRefresh, hasConsented, cacheLoadedRef.current, isOverviewMode, mainActiveTab]);
+
   const handleGenerateSummary = async (category, forceRefresh = false) => {
     const cacheKey = `${reportRange}_${category}`;
     
     if (!forceRefresh && summaryCache[cacheKey]) {
+      console.log('Using cached summary for:', cacheKey);
       return;
     }
 
+    console.log('Generating new summary for:', cacheKey, 'Force:', forceRefresh);
     setIsLoading(true);
     setError(null);
     
@@ -1825,6 +2450,7 @@ const AIPoweredSummary = ({
         
         setSummaryCache(newCache);
         await AsyncStorage.setItem(`ai_summary_cache_${childId}`, JSON.stringify(newCache));
+        console.log('✅ Overview summary generated and cached');
       } else {
         // In regular mode, generate both overall and category-specific
         const [overallResponse, categoryResponse] = await Promise.all([
@@ -1848,9 +2474,10 @@ const AIPoweredSummary = ({
         
         setSummaryCache(newCache);
         await AsyncStorage.setItem(`ai_summary_cache_${childId}`, JSON.stringify(newCache));
+        console.log('✅ Regular summaries generated and cached');
       }
     } catch (error) {
-      console.error('Error in handleGenerateSummary:', error);
+      console.error('❌ Error in handleGenerateSummary:', error);
       setError('Unable to generate AI insights at this time. Please try again later.');
     } finally {
       setIsLoading(false);
@@ -1899,16 +2526,17 @@ const AIPoweredSummary = ({
                       (sleepData?.length > 0 || feedingData?.length > 0 || diaperData?.length > 0);
     
     if (shouldLoad) {
+      console.log('Auto-generating summary for:', cacheKey);
       handleGenerateSummary(isOverviewMode ? 'Overall' : mainActiveTab);
     }
-  }, [reportRange]);
+  }, [reportRange, hasConsented, cacheLoadedRef.current]);
 
+  // Rest of the component remains the same...
   if (!childId) return null;
 
   const currentCacheKey = isOverviewMode 
     ? `${reportRange}_Overall`
     : `${reportRange}_${mainActiveTab}`;
-  const overallCacheKey = `${reportRange}_Overall`;
 
   return (
     <View style={[
@@ -1919,6 +2547,7 @@ const AIPoweredSummary = ({
         borderColor: darkMode ? '#404040' : '#e8eaf6'
       }
     ]}>
+      {/* Modals */}
       {showConsentModal && !showRevokeConfirm && (
         <ConsentModal 
           onConsent={handleConsent}
@@ -1960,6 +2589,7 @@ const AIPoweredSummary = ({
         </Modal>
       )}
 
+      {/* Header - Only show in non-overview mode */}
       {!isOverviewMode && (
         <View style={styles.aiSummaryHeaderRow}>
           <View style={styles.aiSummaryHeaderLeft}>
@@ -2003,6 +2633,7 @@ const AIPoweredSummary = ({
         </View>
       )}
 
+      {/* Content */}
       {!hasConsented && !showConsentModal && (
         <TouchableOpacity 
           style={styles.consentPromptButton}
@@ -2041,54 +2672,14 @@ const AIPoweredSummary = ({
           
           {!isLoading && !error && summaryCache[currentCacheKey] && (
             <View style={styles.aiContentContainer}>
-              {/* Show only category-specific insight in overview mode */}
-              {isOverviewMode ? (
-                <View style={[
-                  styles.aiInsightCard,
-                  { backgroundColor: darkMode ? '#1f1f1f' : '#fafafa' }
-                ]}>
-                  <View style={styles.aiInsightContent}>
-                    {renderFormattedText(summaryCache[currentCacheKey], darkMode)}
-                  </View>
+              <View style={[
+                styles.aiInsightCard,
+                { backgroundColor: darkMode ? '#1f1f1f' : '#fafafa' }
+              ]}>
+                <View style={styles.aiInsightContent}>
+                  {renderFormattedText(summaryCache[currentCacheKey], darkMode)}
                 </View>
-              ) : (
-                <>
-                  
-                  {/* Show category-specific insight */}
-                  {summaryCache[currentCacheKey] && mainActiveTab !== 'Overall' && (
-                    <View style={[
-                      styles.aiInsightCard,
-                      { backgroundColor: darkMode ? '#1f1f1f' : '#fafafa' }
-                    ]}>
-                      <View style={[
-                        styles.aiInsightCardHeader,
-                        { borderBottomColor: darkMode ? '#404040' : '#e0e0e0' }
-                      ]}>
-                        <View style={styles.aiInsightHeaderLeft}>
-                          <Ionicons 
-                            name={
-                              mainActiveTab === 'Sleep' ? 'bed' :
-                              mainActiveTab === 'Feeding' ? 'restaurant' :
-                              'water'
-                            } 
-                            size={18} 
-                            color="#1976d2"
-                          />
-                          <Text style={[
-                            styles.aiInsightCardTitle,
-                            { color: darkMode ? '#fff' : '#333' }
-                          ]}>
-                            {mainActiveTab} Deep Dive
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.aiInsightContent}>
-                        {renderFormattedText(summaryCache[currentCacheKey], darkMode)}
-                      </View>
-                    </View>
-                  )}
-                </>
-              )}
+              </View>
             </View>
           )}
           
@@ -2109,46 +2700,195 @@ const AIPoweredSummary = ({
   );
 };
 
-  // Fetch sleep data
+const getCachedData = (rangeType) => {
+  const cached = dataCache[rangeType];
+  if (!cached || !cached.timestamp) return null;
+  
+  const now = Date.now();
+  if (now - cached.timestamp > CACHE_DURATION) {
+    console.log(`Cache expired for ${rangeType}`);
+    return null;
+  }
+  
+  console.log(`Using cached data for ${rangeType}`);
+  return cached;
+};
+
+const updateCache = (rangeType, sleepLogs, feedingLogs, diaperLogs) => {
+  setDataCache(prev => ({
+    ...prev,
+    [rangeType]: {
+      sleep: sleepLogs,
+      feeding: feedingLogs,
+      diaper: diaperLogs,
+      timestamp: Date.now()
+    }
+  }));
+};
+
+// REPLACE the fetchAllData function in the second useEffect (around line 1185)
+
+const fetchAllData = async () => {
+  setIsLoading(true);
+  
+  try {
+    const { start, end } = getTimeRange();
+    
+    const startTimestamp = Timestamp.fromDate(new Date(start.setHours(0, 0, 0, 0)));
+    const endTimestamp = Timestamp.fromDate(new Date(end.setHours(23, 59, 59, 999)));
+    
+    // Check if we're on Annual or Overview and have cached data
+    const cacheType = reportRange === 'Annual' ? 'annual' : reportRange === 'Overview' ? 'overview' : null;
+    
+    if (cacheType) {
+      const cached = getCachedData(cacheType);
+      if (cached) {
+        console.log(`Loading from cache for ${reportRange}`);
+        setSleepData(cached.sleep);
+        setFeedingData(cached.feeding);
+        setDiaperData(cached.diaper);
+        await fetchChildData(); // Still fetch child data as it might change
+        setIsLoading(false);
+        return;
+      }
+    }
+    
+    console.log(`Fetching fresh data for ${reportRange}`);
+    await Promise.all([
+      fetchChildData(),
+      fetchSleepData(startTimestamp, endTimestamp),
+      fetchDiaperData(startTimestamp, endTimestamp),
+      fetchFeedingData(startTimestamp, endTimestamp)
+    ]);
+    
+    // Cache the data if it's Annual or Overview
+    if (cacheType) {
+      console.log(`Caching data for ${reportRange}`);
+      updateCache(cacheType, sleepData, feedingData, diaperData);
+    }
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    Alert.alert('Error', 'Failed to fetch report data.');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+
 const fetchSleepData = async (startTimestamp, endTimestamp) => {
   try {
     console.log('Fetching sleep data for:', {
       childId,
       startDate: startTimestamp.toDate(),
-      endDate: endTimestamp.toDate()
+      endDate: endTimestamp.toDate(),
+      range: reportRange
     });
     
-    const sleepQuery = query(
-      collection(db, 'sleepLogs'),
-      where('childId', '==', childId),
-      where('timestamp', '>=', startTimestamp),
-      where('timestamp', '<=', endTimestamp),
-      orderBy('timestamp', 'asc')
-    );
-    
-    const querySnapshot = await getDocs(sleepQuery);
-    const logs = [];
-    
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      logs.push({ id: doc.id, ...data });
-      console.log('Sleep log entry:', {
-        timestamp: data.timestamp?.toDate(),
-        duration: data.duration
+    // For annual reports, fetch in batches by month to avoid large queries
+    if (reportRange === 'Annual') {
+      const logs = [];
+      const startDate = startTimestamp.toDate();
+      const endDate = endTimestamp.toDate();
+      
+      let currentStart = new Date(startDate);
+      let monthsProcessed = 0;
+      
+      while (currentStart < endDate) {
+        const monthEnd = new Date(currentStart.getFullYear(), currentStart.getMonth() + 1, 0, 23, 59, 59);
+        const batchEnd = monthEnd < endDate ? monthEnd : endDate;
+        
+        console.log(`Fetching sleep data for month ${monthsProcessed + 1}/12`);
+        
+        const sleepQuery = query(
+          collection(db, 'sleepLogs'),
+          where('childId', '==', childId),
+          where('timestamp', '>=', Timestamp.fromDate(currentStart)),
+          where('timestamp', '<=', Timestamp.fromDate(batchEnd)),
+          orderBy('timestamp', 'asc')
+        );
+        
+        const querySnapshot = await getDocs(sleepQuery);
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          logs.push({ id: doc.id, ...data });
+        });
+        
+        monthsProcessed++;
+        // Move to next month
+        currentStart = new Date(currentStart.getFullYear(), currentStart.getMonth() + 1, 1);
+      }
+      
+      console.log(`Total sleep logs fetched (annual): ${logs.length}`);
+      setSleepData(logs);
+      return logs;
+    } else {
+      // For weekly/monthly, use single query
+      const sleepQuery = query(
+        collection(db, 'sleepLogs'),
+        where('childId', '==', childId),
+        where('timestamp', '>=', startTimestamp),
+        where('timestamp', '<=', endTimestamp),
+        orderBy('timestamp', 'asc')
+      );
+      
+      const querySnapshot = await getDocs(sleepQuery);
+      const logs = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        logs.push({ id: doc.id, ...data });
       });
-    });
-    
-    console.log('Total sleep logs fetched:', logs.length);
-    setSleepData(logs);
+      
+      console.log(`Total sleep logs fetched: ${logs.length}`);
+      setSleepData(logs);
+      return logs;
+    }
   } catch (error) {
     console.error('Error fetching sleep logs:', error);
     Alert.alert('Error', 'Failed to fetch sleep data: ' + error.message);
+    return [];
   }
 };
 
-  // Fetch diaper data
-  const fetchDiaperData = async (startTimestamp, endTimestamp) => {
-    try {
+const fetchDiaperData = async (startTimestamp, endTimestamp) => {
+  try {
+    console.log('Fetching diaper data for range:', reportRange);
+    
+    if (reportRange === 'Annual') {
+      const logs = [];
+      const startDate = startTimestamp.toDate();
+      const endDate = endTimestamp.toDate();
+      
+      let currentStart = new Date(startDate);
+      let monthsProcessed = 0;
+      
+      while (currentStart < endDate) {
+        const monthEnd = new Date(currentStart.getFullYear(), currentStart.getMonth() + 1, 0, 23, 59, 59);
+        const batchEnd = monthEnd < endDate ? monthEnd : endDate;
+        
+        console.log(`Fetching diaper data for month ${monthsProcessed + 1}/12`);
+        
+        const diaperQuery = query(
+          collection(db, 'diaperLogs'),
+          where('childId', '==', childId),
+          where('time', '>=', Timestamp.fromDate(currentStart)),
+          where('time', '<=', Timestamp.fromDate(batchEnd)),
+          orderBy('time', 'asc')
+        );
+        
+        const querySnapshot = await getDocs(diaperQuery);
+        querySnapshot.forEach((doc) => {
+          logs.push({ id: doc.id, ...doc.data() });
+        });
+        
+        monthsProcessed++;
+        currentStart = new Date(currentStart.getFullYear(), currentStart.getMonth() + 1, 1);
+      }
+      
+      console.log(`Total diaper logs fetched (annual): ${logs.length}`);
+      setDiaperData(logs);
+      return logs;
+    } else {
       const diaperQuery = query(
         collection(db, 'diaperLogs'),
         where('childId', '==', childId),
@@ -2164,15 +2904,55 @@ const fetchSleepData = async (startTimestamp, endTimestamp) => {
         logs.push({ id: doc.id, ...doc.data() });
       });
       
+      console.log(`Total diaper logs fetched: ${logs.length}`);
       setDiaperData(logs);
-    } catch (error) {
-      console.error('Error fetching diaper logs:', error);
+      return logs;
     }
-  };
+  } catch (error) {
+    console.error('Error fetching diaper logs:', error);
+    return [];
+  }
+};
 
-  // Fetch feeding data
-  const fetchFeedingData = async (startTimestamp, endTimestamp) => {
-    try {
+const fetchFeedingData = async (startTimestamp, endTimestamp) => {
+  try {
+    console.log('Fetching feeding data for range:', reportRange);
+    
+    if (reportRange === 'Annual') {
+      const logs = [];
+      const startDate = startTimestamp.toDate();
+      const endDate = endTimestamp.toDate();
+      
+      let currentStart = new Date(startDate);
+      let monthsProcessed = 0;
+      
+      while (currentStart < endDate) {
+        const monthEnd = new Date(currentStart.getFullYear(), currentStart.getMonth() + 1, 0, 23, 59, 59);
+        const batchEnd = monthEnd < endDate ? monthEnd : endDate;
+        
+        console.log(`Fetching feeding data for month ${monthsProcessed + 1}/12`);
+        
+        const feedingQuery = query(
+          collection(db, 'feedLogs'),
+          where('childId', '==', childId),
+          where('timestamp', '>=', Timestamp.fromDate(currentStart)),
+          where('timestamp', '<=', Timestamp.fromDate(batchEnd)),
+          orderBy('timestamp', 'asc')
+        );
+        
+        const querySnapshot = await getDocs(feedingQuery);
+        querySnapshot.forEach((doc) => {
+          logs.push({ id: doc.id, ...doc.data() });
+        });
+        
+        monthsProcessed++;
+        currentStart = new Date(currentStart.getFullYear(), currentStart.getMonth() + 1, 1);
+      }
+      
+      console.log(`Total feeding logs fetched (annual): ${logs.length}`);
+      setFeedingData(logs);
+      return logs;
+    } else {
       const feedingQuery = query(
         collection(db, 'feedLogs'),
         where('childId', '==', childId),
@@ -2188,12 +2968,55 @@ const fetchSleepData = async (startTimestamp, endTimestamp) => {
         logs.push({ id: doc.id, ...doc.data() });
       });
       
+      console.log(`Total feeding logs fetched: ${logs.length}`);
       setFeedingData(logs);
-    } catch (error) {
-      console.error('Error fetching feeding logs:', error);
+      return logs;
     }
-  };
+  } catch (error) {
+    console.error('Error fetching feeding logs:', error);
+    return [];
+  }
+};
 
+const fetchMeasurementsData = async (startTimestamp, endTimestamp) => {
+  try {
+    console.log('Fetching measurements data for range:', reportRange);
+    
+    const measurementsQuery = query(
+      collection(db, 'measurements'),
+      where('childId', '==', childId),
+      where('date', '>=', startTimestamp),
+      where('date', '<=', endTimestamp),
+      orderBy('date', 'asc')
+    );
+    
+    const querySnapshot = await getDocs(measurementsQuery);
+    const logs = [];
+    
+    querySnapshot.forEach((doc) => {
+      logs.push({ id: doc.id, ...doc.data() });
+    });
+    
+    console.log(`Total measurements fetched: ${logs.length}`);
+    setMeasurementsData(logs);
+    
+    // Calculate current percentiles if we have data
+    if (logs.length > 0 && childData) {
+      const latestMeasurement = logs[logs.length - 1];
+      const ageMonths = calculateAge(childData.birthdate);
+      
+      setGrowthPercentiles({
+        weight: getPercentile(latestMeasurement.weight, ageMonths, childData.sex, 'weight', childData),
+        height: getPercentile(latestMeasurement.height, ageMonths, childData.sex, 'height', childData)
+      });
+    }
+    
+    return logs;
+  } catch (error) {
+    console.error('Error fetching measurements:', error);
+    return [];
+  }
+};
 
 const processSleepData = () => {
   const { periodLabels } = getTimeRange();
@@ -2243,15 +3066,33 @@ const processSleepData = () => {
   );
   
   // Age-appropriate benchmark
-  const recommendedSleep = 12;
+  const recommendedSleep = childData?.age 
+    ? (childData.age < 3 ? 15.5 : childData.age < 6 ? 14 : childData.age < 12 ? 12.5 : 12)
+    : 12;
   const benchmarkLine = Array(periodLabels.length).fill(recommendedSleep);
   
-  // Calculate summary statistics - these should be daily averages
+  // Calculate summary statistics - FIXED: these should match AI calculation
   const totalDays = reportRange === 'Weekly' ? 7 : reportRange === 'Monthly' ? 30 : 365;
-  const totalSleepHours = durationData.reduce((a, b) => a + b, 0);
-  const totalNightHours = nightSleepData.reduce((a, b) => a + b, 0);
-  const totalNapHours = napData.reduce((a, b) => a + b, 0);
-  const totalSessions = countData.reduce((a, b) => a + b, 0);
+  
+  // Calculate totals from actual data, not from display buckets
+  const totalSleepHours = sleepData.reduce((sum, log) => sum + (log.duration || 0) / 60, 0);
+  
+  // Calculate night vs nap from actual logs
+  const nightSleeps = sleepData.filter(s => {
+    const hour = s.timestamp?.toDate().getHours();
+    const duration = (s.duration || 0) / 60;
+    return (hour >= 19 || hour <= 6) && duration >= 4;
+  });
+  
+  const daySleeps = sleepData.filter(s => {
+    const hour = s.timestamp?.toDate().getHours();
+    const duration = (s.duration || 0) / 60;
+    return hour > 6 && hour < 19 && duration < 4;
+  });
+  
+  const totalNightHours = nightSleeps.reduce((sum, s) => sum + (s.duration || 0) / 60, 0);
+  const totalNapHours = daySleeps.reduce((sum, s) => sum + (s.duration || 0) / 60, 0);
+  const totalSessions = sleepData.length;
   
   const avgTotalDaily = totalDays > 0 ? (totalSleepHours / totalDays).toFixed(1) : '0';
   const avgNightSleep = totalDays > 0 ? (totalNightHours / totalDays).toFixed(1) : '0';
@@ -2473,10 +3314,21 @@ const processDiaperData = () => {
     }
   });
   
-  // Calculate totals
-  const totalWet = wetCount.reduce((sum, val) => sum + val, 0);
-  const totalBM = bmCount.reduce((sum, val) => sum + val, 0);
-  const totalDry = dryCount.reduce((sum, val) => sum + val, 0);
+  // FIXED: Calculate totals directly from actual data for consistency with AI
+  const totalWet = diaperData.filter(d => 
+    d.stoolType?.toLowerCase().includes('wet')
+  ).length;
+  
+  const totalBM = diaperData.filter(d => 
+    d.stoolType?.toLowerCase().includes('bm')
+  ).length;
+  
+  const totalDry = diaperData.filter(d => 
+    d.stoolType?.toLowerCase().includes('dry') && 
+    !d.stoolType?.toLowerCase().includes('wet') &&
+    !d.stoolType?.toLowerCase().includes('bm')
+  ).length;
+  
   const totalChanges = diaperData.length;
   
   const divisor = reportRange === 'Weekly' ? 7 : reportRange === 'Monthly' ? 30 : 365;
@@ -2522,7 +3374,7 @@ const processDiaperData = () => {
         key: 'total', 
         label: 'Changes/Day',
         avg: avgChangesPerDay,
-        trend: calculateTrend(totalCountsPerPeriod), // NOW DEFINED
+        trend: calculateTrend(totalCountsPerPeriod),
         metric: 'stable',
         icon: 'repeat',
         benchmark: 6,
@@ -2532,7 +3384,7 @@ const processDiaperData = () => {
         key: 'wet', 
         label: 'Wet Diapers',
         avg: avgWetPerDay,
-        trend: calculateTrend(wetCountsPerPeriod), // NOW DEFINED
+        trend: calculateTrend(wetCountsPerPeriod),
         metric: 'more',
         icon: 'water',
         benchmark: 5,
@@ -2542,7 +3394,7 @@ const processDiaperData = () => {
         key: 'bm', 
         label: 'BM Diapers',
         avg: avgBMPerDay,
-        trend: calculateTrend(bmCountsPerPeriod), // NOW DEFINED
+        trend: calculateTrend(bmCountsPerPeriod),
         metric: 'stable',
         icon: 'medical',
         benchmark: null,
@@ -2777,6 +3629,145 @@ const targetFeedingsPerDay = childData?.age
   };
 };
   
+const processGrowthData = () => {
+  if (measurementsData.length === 0) {
+    return {
+      lineData: null,
+      summary: []
+    };
+  }
+
+  const { periodLabels } = getTimeRange();
+  
+  // Group measurements by time period
+  const weightData = Array(periodLabels.length).fill(null);
+  const heightData = Array(periodLabels.length).fill(null);
+  
+  measurementsData.forEach(measurement => {
+    const measureDate = measurement.date.toDate ? measurement.date.toDate() : new Date(measurement.date);
+    let index = getTimeIndex(measureDate, reportRange);
+    
+    if (index >= 0 && index < weightData.length) {
+      // Convert to metric for consistency
+      let weight = measurement.weight;
+      let height = measurement.height;
+      
+      if (measurement.weightUnit === 'lbs') {
+        weight = weight * 0.453592; // to kg
+      }
+      if (measurement.heightUnit === 'in') {
+        height = height * 2.54; // to cm
+      }
+      
+      // Use latest measurement for each period
+      weightData[index] = weight;
+      heightData[index] = height;
+    }
+  });
+
+  // Calculate CDC percentile lines
+  const ageMonths = calculateAge(childData.birthdate);
+  const sex = childData.sex || 'Male';
+  
+  const weightPercentiles = getClosestAgeData(ageMonths, CDC_WEIGHT_PERCENTILES[sex.toLowerCase()]);
+  const heightPercentiles = getClosestAgeData(ageMonths, CDC_HEIGHT_PERCENTILES[sex.toLowerCase()]);
+
+  // Latest measurement
+  const latestMeasurement = measurementsData[measurementsData.length - 1];
+  let latestWeight = latestMeasurement.weight;
+  let latestHeight = latestMeasurement.height;
+  
+  // Growth velocity (if we have at least 2 measurements)
+  let weightGain = 0;
+  let heightGain = 0;
+  
+  if (measurementsData.length >= 2) {
+    const firstMeasurement = measurementsData[0];
+    
+    let firstWeight = firstMeasurement.weight;
+    let firstHeight = firstMeasurement.height;
+    
+    if (firstMeasurement.weightUnit === 'lbs') firstWeight *= 0.453592;
+    if (latestMeasurement.weightUnit === 'lbs') latestWeight *= 0.453592;
+    if (firstMeasurement.heightUnit === 'in') firstHeight *= 2.54;
+    if (latestMeasurement.heightUnit === 'in') latestHeight *= 2.54;
+    
+    weightGain = ((latestWeight - firstWeight) / firstWeight * 100).toFixed(1);
+    heightGain = ((latestHeight - firstHeight) / firstHeight * 100).toFixed(1);
+  }
+
+  return {
+    lineData: {
+      labels: periodLabels,
+      datasets: [
+        {
+          data: weightData.map((v, i) => v || weightData.find(w => w !== null) || 0),
+          color: (opacity = 1) => darkMode ? `rgba(100, 181, 246, ${opacity})` : `rgba(25, 118, 210, ${opacity})`,
+          strokeWidth: 3,
+          withDots: true,
+          legend: "Weight (kg)"
+        }
+      ],
+      legend: ["Weight Progress"]
+    },
+    heightLineData: {
+      labels: periodLabels,
+      datasets: [
+        {
+          data: heightData.map((v, i) => v || heightData.find(h => h !== null) || 0),
+          color: (opacity = 1) => darkMode ? `rgba(255, 152, 0, ${opacity})` : `rgba(255, 152, 0, ${opacity})`,
+          strokeWidth: 3,
+          withDots: true,
+          legend: "Height (cm)"
+        }
+      ],
+      legend: ["Height Progress"]
+    },
+    summary: [
+      {
+        key: 'currentWeight',
+        label: 'Current Weight',
+        avg: latestMeasurement.weight,
+        unit: latestMeasurement.weightUnit,
+        trend: weightGain > 0 ? 'up' : 'stable',
+        metric: 'info',
+        icon: 'scale'
+      },
+      {
+        key: 'currentHeight',
+        label: 'Current Height',
+        avg: latestMeasurement.height,
+        unit: latestMeasurement.heightUnit,
+        trend: heightGain > 0 ? 'up' : 'stable',
+        metric: 'info',
+        icon: 'resize'
+      },
+      {
+        key: 'weightGain',
+        label: 'Weight Gain',
+        avg: weightGain,
+        unit: '%',
+        trend: weightGain > 0 ? 'up' : 'stable',
+        metric: 'more',
+        icon: 'trending-up'
+      },
+      {
+        key: 'heightGain',
+        label: 'Height Gain',
+        avg: heightGain,
+        unit: '%',
+        trend: heightGain > 0 ? 'up' : 'stable',
+        metric: 'more',
+        icon: 'trending-up'
+      }
+    ],
+    percentiles: {
+      weight: getPercentile(latestMeasurement.weight, ageMonths, sex, 'weight', childData),
+      height: getPercentile(latestMeasurement.height, ageMonths, sex, 'height', childData)
+    }
+  };
+};
+
 const processSleepTimeOfDay = () => {
   const timeData = [];
   
@@ -2889,29 +3880,42 @@ const processDiaperTimeOfDay = () => {
     return '#888';
   };
 
+  const handleExport = async (options) => {
+  if (options.format === 'pdf') {
+    await exportReportAsPDF(options);
+  } else {
+    await exportReportAsExcel(options);
+  }
+};
 
-const exportReportAsPDF = async () => {
+const exportReportAsPDF = async (options) => {
   try {
     const date = new Date().toLocaleDateString();
-    const chartData = getChartData();
+    const { timeRange, categories, includeAI, aiSummaries } = options;
     
-    // Generate summary statistics
-    const sleepStats = sleepData.length > 0 ? {
+    // Filter data based on selected categories
+    const selectedSleepData = categories.sleep ? sleepData : [];
+    const selectedFeedingData = categories.feeding ? feedingData : [];
+    const selectedDiaperData = categories.diaper ? diaperData : [];
+    
+    // Generate summary statistics only for selected categories
+    const sleepStats = categories.sleep && sleepData.length > 0 ? {
       total: sleepData.length,
       avgDuration: (sleepData.reduce((sum, s) => sum + (s.duration || 0), 0) / sleepData.length / 60).toFixed(1)
-    } : { total: 0, avgDuration: 0 };
+    } : null;
     
-    const feedingStats = {
+    const feedingStats = categories.feeding ? {
       total: feedingData.length,
       avgGap: calculateFeedingGap(feedingData)
-    };
+    } : null;
     
-    const diaperStats = {
+    const diaperStats = categories.diaper ? {
       total: diaperData.length,
-      avgPerDay: (diaperData.length / (reportRange === 'Weekly' ? 7 : reportRange === 'Monthly' ? 30 : 365)).toFixed(1)
-    };
+      avgPerDay: (diaperData.length / (timeRange === 'weekly' ? 7 : timeRange === 'monthly' ? 30 : 365)).toFixed(1)
+    } : null;
 
-    const html = `
+    // Build HTML content
+    let htmlContent = `
       <html>
         <head>
           <style>
@@ -2925,15 +3929,17 @@ const exportReportAsPDF = async () => {
               text-align: center;
               border-bottom: 3px solid #1976d2;
               padding-bottom: 10px;
+              margin-bottom: 10px;
             }
             .header-info {
               text-align: center;
               color: #666;
               margin-bottom: 30px;
+              font-size: 14px;
             }
             .stats-grid {
               display: grid;
-              grid-template-columns: repeat(3, 1fr);
+              grid-template-columns: repeat(${[sleepStats, feedingStats, diaperStats].filter(Boolean).length}, 1fr);
               gap: 20px;
               margin: 30px 0;
             }
@@ -2952,6 +3958,61 @@ const exportReportAsPDF = async () => {
               font-size: 24px;
               font-weight: bold;
               color: #1976d2;
+            }
+            .stat-subtitle {
+              font-size: 12px;
+              color: #888;
+              margin-top: 5px;
+            }
+            .ai-insights-section {
+              background: #e3f2fd;
+              border-left: 4px solid #1976d2;
+              padding: 20px;
+              margin: 30px 0;
+              border-radius: 8px;
+              page-break-inside: avoid;
+            }
+            .ai-insights-header {
+              display: flex;
+              align-items: center;
+              margin-bottom: 15px;
+            }
+            .ai-insights-title {
+              font-size: 18px;
+              font-weight: bold;
+              color: #1976d2;
+              margin: 0;
+            }
+            .ai-badge {
+              background: #1976d2;
+              color: white;
+              padding: 4px 10px;
+              border-radius: 12px;
+              font-size: 10px;
+              margin-left: 10px;
+              font-weight: 600;
+            }
+            .ai-content {
+              background: white;
+              padding: 15px;
+              border-radius: 6px;
+              margin-top: 10px;
+              line-height: 1.6;
+              font-size: 13px;
+            }
+            .ai-category {
+              margin-bottom: 20px;
+            }
+            .ai-category-title {
+              font-weight: bold;
+              color: #1976d2;
+              font-size: 14px;
+              margin-bottom: 8px;
+              display: flex;
+              align-items: center;
+            }
+            .ai-category-icon {
+              margin-right: 8px;
             }
             .section { 
               margin-top: 30px;
@@ -2984,134 +4045,366 @@ const exportReportAsPDF = async () => {
               color: #888;
               font-size: 12px;
             }
+            .disclaimer {
+              background: #fff9c4;
+              padding: 12px;
+              border-radius: 6px;
+              border-left: 3px solid #ffc107;
+              margin-top: 15px;
+              font-size: 11px;
+              color: #666;
+            }
           </style>
         </head>
         <body>
-          <h1>${name || "Child"}'s ${reportRange} Report</h1>
+          <h1>${name || "Child"}'s ${timeRange.charAt(0).toUpperCase() + timeRange.slice(1)} Report</h1>
           <div class="header-info">
             Generated on ${date}
+            ${includeAI ? '<br><span style="color: #1976d2; font-weight: 600;">✨ Includes AI-Powered Insights</span>' : ''}
           </div>
+    `;
 
-          <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-title">Total Sleep Sessions</div>
-              <div class="stat-value">${sleepStats.total}</div>
-              <div class="stat-title">Avg. ${sleepStats.avgDuration}hrs</div>
+    // Add stats grid if any categories selected
+    if (sleepStats || feedingStats || diaperStats) {
+      htmlContent += '<div class="stats-grid">';
+      
+      if (sleepStats) {
+        htmlContent += `
+          <div class="stat-card">
+            <div class="stat-title">🌙 Total Sleep Sessions</div>
+            <div class="stat-value">${sleepStats.total}</div>
+            <div class="stat-subtitle">Avg. ${sleepStats.avgDuration}hrs per session</div>
+          </div>
+        `;
+      }
+      
+      if (feedingStats) {
+        htmlContent += `
+          <div class="stat-card">
+            <div class="stat-title">🍼 Total Feedings</div>
+            <div class="stat-value">${feedingStats.total}</div>
+            <div class="stat-subtitle">Avg. ${feedingStats.avgGap}hrs apart</div>
+          </div>
+        `;
+      }
+      
+      if (diaperStats) {
+        htmlContent += `
+          <div class="stat-card">
+            <div class="stat-title">💧 Diaper Changes</div>
+            <div class="stat-value">${diaperStats.total}</div>
+            <div class="stat-subtitle">${diaperStats.avgPerDay}/day average</div>
+          </div>
+        `;
+      }
+      
+      htmlContent += '</div>';
+    }
+
+    // Add AI Insights Section
+    if (includeAI && aiSummaries) {
+      htmlContent += `
+        <div class="ai-insights-section">
+          <div class="ai-insights-header">
+            <h2 class="ai-insights-title">✨ AI-Powered Insights</h2>
+            <span class="ai-badge">GPT-4</span>
+          </div>
+      `;
+
+      // Overall Summary
+      if (aiSummaries.overall) {
+        htmlContent += `
+          <div class="ai-category">
+            <div class="ai-category-title">
+              <span class="ai-category-icon">📊</span>
+              Overall Summary
             </div>
-            <div class="stat-card">
-              <div class="stat-title">Total Feedings</div>
-              <div class="stat-value">${feedingStats.total}</div>
-              <div class="stat-title">Avg. ${feedingStats.avgGap}hrs apart</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-title">Diaper Changes</div>
-              <div class="stat-value">${diaperStats.total}</div>
-              <div class="stat-title">${diaperStats.avgPerDay}/day avg</div>
+            <div class="ai-content">
+              ${formatAIContentForPDF(aiSummaries.overall)}
             </div>
           </div>
+        `;
+      }
 
-          <div class="section">
-            <div class="section-title">Sleep Logs</div>
-            ${sleepData.slice(0, 20).map(log => `
-              <div class="entry">
-                <div class="timestamp">${new Date(log.timestamp.toDate()).toLocaleString()}</div>
-                Duration: ${(log.duration / 60).toFixed(1)} hours
-              </div>
-            `).join('')}
-            ${sleepData.length > 20 ? `<div class="entry">... and ${sleepData.length - 20} more entries</div>` : ''}
+      // Category-specific insights
+      if (categories.sleep && aiSummaries.sleep) {
+        htmlContent += `
+          <div class="ai-category">
+            <div class="ai-category-title">
+              <span class="ai-category-icon">🌙</span>
+              Sleep Analysis
+            </div>
+            <div class="ai-content">
+              ${formatAIContentForPDF(aiSummaries.sleep)}
+            </div>
           </div>
+        `;
+      }
 
-          <div class="section">
-            <div class="section-title">Feeding Logs</div>
-            ${feedingData.slice(0, 20).map(log => `
-              <div class="entry">
-                <div class="timestamp">${new Date(log.timestamp.toDate()).toLocaleString()}</div>
-                ${log.amount || '?'}${log.unit || 'ml'} (${log.feedType || 'N/A'})
-              </div>
-            `).join('')}
-            ${feedingData.length > 20 ? `<div class="entry">... and ${feedingData.length - 20} more entries</div>` : ''}
+      if (categories.feeding && aiSummaries.feeding) {
+        htmlContent += `
+          <div class="ai-category">
+            <div class="ai-category-title">
+              <span class="ai-category-icon">🍼</span>
+              Feeding Analysis
+            </div>
+            <div class="ai-content">
+              ${formatAIContentForPDF(aiSummaries.feeding)}
+            </div>
           </div>
+        `;
+      }
 
-          <div class="section">
-            <div class="section-title">Diaper Logs</div>
-            ${diaperData.slice(0, 20).map(log => `
-              <div class="entry">
-                <div class="timestamp">${new Date(log.time.toDate()).toLocaleString()}</div>
-                ${log.stoolType || 'Unknown'}
-              </div>
-            `).join('')}
-            ${diaperData.length > 20 ? `<div class="entry">... and ${diaperData.length - 20} more entries</div>` : ''}
+      if (categories.diaper && aiSummaries.diaper) {
+        htmlContent += `
+          <div class="ai-category">
+            <div class="ai-category-title">
+              <span class="ai-category-icon">💧</span>
+              Diaper Pattern Analysis
+            </div>
+            <div class="ai-content">
+              ${formatAIContentForPDF(aiSummaries.diaper)}
+            </div>
           </div>
+        `;
+      }
 
+      htmlContent += `
+          <div class="disclaimer">
+            <strong>Note:</strong> AI insights are generated by GPT-4 and are meant to provide general guidance. 
+            They are not a substitute for professional medical advice. Always consult your pediatrician for 
+            specific health concerns.
+          </div>
+        </div>
+      `;
+    }
+
+    // Add data sections
+    if (categories.sleep && selectedSleepData.length > 0) {
+      htmlContent += `
+        <div class="section">
+          <div class="section-title">🌙 Sleep Logs</div>
+          ${selectedSleepData.slice(0, 30).map(log => `
+            <div class="entry">
+              <div class="timestamp">${new Date(log.timestamp.toDate()).toLocaleString()}</div>
+              Duration: ${(log.duration / 60).toFixed(1)} hours
+            </div>
+          `).join('')}
+          ${selectedSleepData.length > 30 ? `<div class="entry">... and ${selectedSleepData.length - 30} more entries</div>` : ''}
+        </div>
+      `;
+    }
+
+    if (categories.feeding && selectedFeedingData.length > 0) {
+      htmlContent += `
+        <div class="section">
+          <div class="section-title">🍼 Feeding Logs</div>
+          ${selectedFeedingData.slice(0, 30).map(log => `
+            <div class="entry">
+              <div class="timestamp">${new Date(log.timestamp.toDate()).toLocaleString()}</div>
+              ${log.amount || '?'}${log.amountUnit || 'ml'} (${log.feedType || 'N/A'})
+            </div>
+          `).join('')}
+          ${selectedFeedingData.length > 30 ? `<div class="entry">... and ${selectedFeedingData.length - 30} more entries</div>` : ''}
+        </div>
+      `;
+    }
+
+    if (categories.diaper && selectedDiaperData.length > 0) {
+      htmlContent += `
+        <div class="section">
+          <div class="section-title">💧 Diaper Logs</div>
+          ${selectedDiaperData.slice(0, 30).map(log => `
+            <div class="entry">
+              <div class="timestamp">${new Date(log.time.toDate()).toLocaleString()}</div>
+              ${log.stoolType || 'Unknown'}
+            </div>
+          `).join('')}
+          ${selectedDiaperData.length > 30 ? `<div class="entry">... and ${selectedDiaperData.length - 30} more entries</div>` : ''}
+        </div>
+      `;
+    }
+
+    htmlContent += `
           <div class="footer">
             Report generated by Baby Tracker App
+            ${includeAI ? '<br>AI insights powered by OpenAI GPT-4' : ''}
           </div>
         </body>
       </html>
     `;
 
-    const { uri } = await Print.printToFileAsync({ html });
+    const { uri } = await Print.printToFileAsync({ html: htmlContent });
     await Sharing.shareAsync(uri);
   } catch (err) {
     console.error("PDF Export Error:", err);
-    Alert.alert("Error", "Could not generate PDF.");
+    Alert.alert("Error", "Could not generate PDF: " + err.message);
   }
 };
 
-// Export report as Excel
-const exportReportAsExcel = async () => {
+// Helper function to format AI content for PDF
+const formatAIContentForPDF = (content) => {
+  if (!content) return '';
+  
+  // Remove markdown formatting and convert to HTML
+  let formatted = content
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>') // Bold
+    .replace(/\n\n/g, '</p><p>') // Paragraphs
+    .replace(/^- /gm, '• ') // Bullets
+    .replace(/^\d+\. /gm, '<br>$&') // Numbered lists
+    .replace(/\n/g, '<br>'); // Line breaks
+  
+  return `<p>${formatted}</p>`;
+};
+
+const exportReportAsExcel = async (options) => {
   try {
-    // 1. Feeding Sheet (with unit included)
-    const feedingSheetData = [
-      ["Timestamp", "Amount", "Unit", "Type"],
-      ...feedingData.map(log => [
-        new Date(log.timestamp.toDate()).toLocaleString(),
-        log.amount || '?',
-        log.unit || 'ml',
-        log.feedType || 'N/A',
-      ])
-    ];
-    const feedingSheet = XLSX.utils.aoa_to_sheet(feedingSheetData);
-    feedingSheet['!cols'] = [{ wch: 22 }, { wch: 10 }, { wch: 8 }, { wch: 18 }];
-
-    // 2. Sleep Sheet
-    const sleepSheetData = [
-      ["Timestamp", "Duration (mins)"],
-      ...sleepData.map(log => [
-        new Date(log.timestamp.toDate()).toLocaleString(),
-        log.duration || '?'
-      ])
-    ];
-    const sleepSheet = XLSX.utils.aoa_to_sheet(sleepSheetData);
-    sleepSheet['!cols'] = [{ wch: 22 }, { wch: 16 }];
-
-    // 3. Diaper Sheet
-    const diaperSheetData = [
-      ["Timestamp", "Stool Type"],
-      ...diaperData.map(log => [
-        new Date(log.time.toDate()).toLocaleString(),
-        log.stoolType || 'Unknown'
-      ])
-    ];
-    const diaperSheet = XLSX.utils.aoa_to_sheet(diaperSheetData);
-    diaperSheet['!cols'] = [{ wch: 22 }, { wch: 20 }];
-
-    // 4. Create Workbook
+    const { timeRange, categories, includeAI, aiSummaries } = options;
+    
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, feedingSheet, "Feeding");
-    XLSX.utils.book_append_sheet(wb, sleepSheet, "Sleep");
-    XLSX.utils.book_append_sheet(wb, diaperSheet, "Diaper");
 
-    // 5. Convert to base64 and save
+    // 1. Summary Sheet (Always included)
+    const summaryData = [
+      [`${name || 'Child'}'s ${timeRange.charAt(0).toUpperCase() + timeRange.slice(1)} Report`],
+      [`Generated: ${new Date().toLocaleString()}`],
+      [''],
+      ['Category', 'Total Entries', 'Key Metrics'],
+    ];
+
+    if (categories.sleep) {
+      const avgDuration = sleepData.length > 0 
+        ? (sleepData.reduce((sum, s) => sum + (s.duration || 0), 0) / sleepData.length / 60).toFixed(1)
+        : 0;
+      summaryData.push(['Sleep', sleepData.length, `Avg: ${avgDuration}hrs/session`]);
+    }
+
+    if (categories.feeding) {
+      const avgGap = calculateFeedingGap(feedingData);
+      summaryData.push(['Feeding', feedingData.length, `Avg gap: ${avgGap}hrs`]);
+    }
+
+    if (categories.diaper) {
+      const avgPerDay = (diaperData.length / (timeRange === 'weekly' ? 7 : timeRange === 'monthly' ? 30 : 365)).toFixed(1);
+      summaryData.push(['Diaper', diaperData.length, `${avgPerDay}/day`]);
+    }
+
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+    summarySheet['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
+
+    // 2. AI Insights Sheet (if enabled)
+    if (includeAI && aiSummaries) {
+      const aiData = [
+        ['AI-Powered Insights'],
+        [`Generated by GPT-4 on ${new Date().toLocaleDateString()}`],
+        [''],
+        ['⚠️ Note: AI insights are for general guidance only. Consult your pediatrician for medical advice.'],
+        [''],
+      ];
+
+      // Overall Summary
+      if (aiSummaries.overall) {
+        aiData.push(['Overall Summary'], ['']);
+        const cleanedOverall = cleanAIContentForExcel(aiSummaries.overall);
+        cleanedOverall.forEach(line => aiData.push([line]));
+        aiData.push(['']);
+      }
+
+      // Sleep Analysis
+      if (categories.sleep && aiSummaries.sleep) {
+        aiData.push(['🌙 Sleep Analysis'], ['']);
+        const cleanedSleep = cleanAIContentForExcel(aiSummaries.sleep);
+        cleanedSleep.forEach(line => aiData.push([line]));
+        aiData.push(['']);
+      }
+
+      // Feeding Analysis
+      if (categories.feeding && aiSummaries.feeding) {
+        aiData.push(['🍼 Feeding Analysis'], ['']);
+        const cleanedFeeding = cleanAIContentForExcel(aiSummaries.feeding);
+        cleanedFeeding.forEach(line => aiData.push([line]));
+        aiData.push(['']);
+      }
+
+      // Diaper Analysis
+      if (categories.diaper && aiSummaries.diaper) {
+        aiData.push(['💧 Diaper Analysis'], ['']);
+        const cleanedDiaper = cleanAIContentForExcel(aiSummaries.diaper);
+        cleanedDiaper.forEach(line => aiData.push([line]));
+        aiData.push(['']);
+      }
+
+      const aiSheet = XLSX.utils.aoa_to_sheet(aiData);
+      aiSheet['!cols'] = [{ wch: 100 }];
+      
+      // Apply text wrapping to all cells
+      const range = XLSX.utils.decode_range(aiSheet['!ref']);
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cell_address = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!aiSheet[cell_address]) continue;
+          if (!aiSheet[cell_address].s) aiSheet[cell_address].s = {};
+          aiSheet[cell_address].s.alignment = { wrapText: true, vertical: 'top' };
+        }
+      }
+      
+      XLSX.utils.book_append_sheet(wb, aiSheet, "AI Insights");
+    }
+
+    // 3. Feeding Sheet (if included)
+    if (categories.feeding && feedingData.length > 0) {
+      const feedingSheetData = [
+        ["Timestamp", "Amount", "Unit", "Type"],
+        ...feedingData.map(log => [
+          new Date(log.timestamp.toDate()).toLocaleString(),
+          log.amount || '?',
+          log.amountUnit || 'ml',
+          log.feedType || 'N/A',
+        ])
+      ];
+      const feedingSheet = XLSX.utils.aoa_to_sheet(feedingSheetData);
+      feedingSheet['!cols'] = [{ wch: 22 }, { wch: 10 }, { wch: 8 }, { wch: 18 }];
+      XLSX.utils.book_append_sheet(wb, feedingSheet, "Feeding Data");
+    }
+
+    // 4. Sleep Sheet (if included)
+    if (categories.sleep && sleepData.length > 0) {
+      const sleepSheetData = [
+        ["Timestamp", "Duration (mins)", "Duration (hrs)"],
+        ...sleepData.map(log => [
+          new Date(log.timestamp.toDate()).toLocaleString(),
+          log.duration || '?',
+          log.duration ? (log.duration / 60).toFixed(1) : '?'
+        ])
+      ];
+      const sleepSheet = XLSX.utils.aoa_to_sheet(sleepSheetData);
+      sleepSheet['!cols'] = [{ wch: 22 }, { wch: 16 }, { wch: 14 }];
+      XLSX.utils.book_append_sheet(wb, sleepSheet, "Sleep Data");
+    }
+
+    // 5. Diaper Sheet (if included)
+    if (categories.diaper && diaperData.length > 0) {
+      const diaperSheetData = [
+        ["Timestamp", "Stool Type"],
+        ...diaperData.map(log => [
+          new Date(log.time.toDate()).toLocaleString(),
+          log.stoolType || 'Unknown'
+        ])
+      ];
+      const diaperSheet = XLSX.utils.aoa_to_sheet(diaperSheetData);
+      diaperSheet['!cols'] = [{ wch: 22 }, { wch: 20 }];
+      XLSX.utils.book_append_sheet(wb, diaperSheet, "Diaper Data");
+    }
+
+    // Write and share
     const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
-    const uri = FileSystem.documentDirectory + `${name || 'Child'}_Report.xlsx`;
+    const fileName = `${name || 'Child'}_${timeRange}_Report${includeAI ? '_AI' : ''}.xlsx`;
+    const uri = FileSystem.documentDirectory + fileName;
 
-    // Write file using legacy API with proper encoding
     await FileSystem.writeAsStringAsync(uri, wbout, {
       encoding: FileSystem.EncodingType.Base64,
     });
 
-    // Check if sharing is available
     const isAvailable = await Sharing.isAvailableAsync();
     if (isAvailable) {
       await Sharing.shareAsync(uri);
@@ -3123,69 +4416,22 @@ const exportReportAsExcel = async () => {
     Alert.alert('Error', `Failed to export Excel file: ${err.message}`);
   }
 };
+
+// Helper function to clean AI content for Excel
+const cleanAIContentForExcel = (content) => {
+  if (!content) return [];
   
-  // Generate legend items
-
-  const getLegend = (chartData) => {
-    // Early return if no data
-    if (!chartData) return null;
-    
-    // Handle legend array format
-    if (chartData.legend && Array.isArray(chartData.legend)) {
-      return (
-        <View style={styles.legendRow}>
-          {chartData.legend.map((legendItem, index) => {
-            // Define default colors for each index
-            const defaultColors = ['#1976d2', '#FF9800', '#4CAF50', '#F44336', '#9C27B0'];
-            let color = defaultColors[index % defaultColors.length];
-            
-            // Try to get color from dataset if it exists
-            if (chartData.datasets && 
-                chartData.datasets[index] && 
-                typeof chartData.datasets[index].color === 'function') {
-              color = chartData.datasets[index].color(1);
-            }
-            
-            return (
-              <View key={index} style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: color }]} />
-                <Text style={styles.legendText}>
-                  {legendItem}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      );
-    }
-
-    // Handle datasets array format
-    if (chartData.datasets && Array.isArray(chartData.datasets)) {
-      return (
-        <View style={styles.legendRow}>
-          {chartData.datasets.map((dataset, index) => {
-            const defaultColors = ['#1976d2', '#FF9800', '#4CAF50', '#F44336', '#9C27B0'];
-            let color = defaultColors[index % defaultColors.length];
-            
-            if (dataset && typeof dataset.color === 'function') {
-              color = dataset.color(1);
-            }
-            
-            return (
-              <View key={index} style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: color }]} />
-                <Text style={styles.legendText}>
-                  {dataset?.legend || dataset?.name || `Dataset ${index + 1}`}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      );
-    }
-
-    return null;
-  };
+  // Remove markdown and split into lines
+  const cleaned = content
+    .replace(/\*\*/g, '') // Remove bold markers
+    .replace(/^#{1,6}\s+/gm, '') // Remove headers
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+  
+  return cleaned;
+};
+  
   
 
   // Handle data point selection
@@ -3398,16 +4644,15 @@ const renderCharts = () => {
         <SleepMetricsSummary 
           data={data} 
           darkMode={darkMode}
-          childAge={childData?.age}
-          hasAIConsent={hasAIConsent}
+          theme={theme}
         />
       )}
 
       {activeTab === 'Feeding' && data && (
         <FeedingMetricsSummary 
           data={data}
-          childAge={childData?.age}
-          hasAIConsent={hasAIConsent}
+          darkMode={darkMode}
+          theme={theme}
         />
       )}
 
@@ -3416,8 +4661,8 @@ const renderCharts = () => {
           data={data}
           wetPerDay={parseFloat(data.summary?.find(s => s.key === 'wet')?.avg || 0)}
           bmPerDay={parseFloat(data.summary?.find(s => s.key === 'bm')?.avg || 0)}
-          childAge={childData?.age}
-          hasAIConsent={hasAIConsent}
+          darkMode={darkMode}
+          theme={theme}
         />
       )}
 
@@ -3452,32 +4697,38 @@ const renderCharts = () => {
         </>
       )}
 
-      {activeTab === 'Feeding' && feedingData.length > 0 && hasAIConsent && (
-      <View style={[
-        styles.chartContainer,
-        {
-          backgroundColor: darkMode ? '#1f1f1f' : '#fff',
-          borderColor: darkMode ? '#333' : '#e0e0e0',
-        },
-      ]}>
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
-          Feeding Type Distribution
-        </Text>
-        <FeedingBreakdownPieChart 
-          feedingData={feedingData}
-          darkMode={darkMode}
-          theme={theme}
-        />
-      </View>
-    )}
+      {activeTab === 'Feeding' && feedingData.length > 0 && (
+        <View style={[
+          styles.chartContainer,
+          {
+            backgroundColor: darkMode ? '#1f1f1f' : '#fff',
+            borderColor: darkMode ? '#333' : '#e0e0e0',
+          },
+        ]}>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+            Feeding Type Distribution
+          </Text>
+          <FeedingBreakdownPieChart 
+            feedingData={feedingData}
+            darkMode={darkMode}
+            theme={theme}
+            hasAIConsent={hasAIConsent}
+          />
+        </View>
+      )}
 
         {/* STACKED BAR CHART */}
         {chartType === 'bar' && activeTab === 'Diaper' && data.series && (
-          <StackedBarChart
-            series={data.series}
-            categories={data.options?.xaxis?.categories || []}
-            height={300}
-          />
+          <>
+            <Text style={[styles.chartTitle, { color: theme.textPrimary }]}>
+              Diaper Change Distribution
+            </Text>
+            <StackedBarChart
+              series={data.series}
+              categories={data.options?.xaxis?.categories || []}
+              height={300}
+            />
+          </>
         )}
 
         {/* HEATMAPS - CONDITIONALLY RENDERED PER TAB */}
@@ -3504,11 +4755,16 @@ const renderCharts = () => {
         )}
 
         {activeTab === 'Diaper' && diaperData.length > 0 && (
-          <View style={styles.additionalChartContainer}>
+          <View style={[
+            styles.additionalChartContainer,
+            { backgroundColor: darkMode ? '#1f1f1f' : '#f5f5f5' }
+          ]}>
             <TimeOfDayHeatmap
               data={processDiaperTimeOfDay()}
               title={`Diaper Change Times \n`}
-              color="#00BCD4"
+              color={darkMode ? '#4DD0E1' : '#00BCD4'}
+              darkMode={darkMode}
+              theme={theme}
             />
           </View>
         )}
@@ -3528,7 +4784,7 @@ const renderCharts = () => {
         </Text>
 
       {/* SLEEP DURATION SUMMARY */}
-      <View style={styles.sleepDurationSummary}>
+      {/* <View style={styles.sleepDurationSummary}>
         <View style={[styles.sleepDurationCard, { backgroundColor: darkMode ? '#2a2a2a' : '#E3F2FD' }]}>
           <Ionicons name="moon" size={20} color="#1976d2" />
           <Text style={[styles.sleepDurationLabel, { color: theme.textPrimary }]}>
@@ -3560,7 +4816,7 @@ const renderCharts = () => {
             })()}
           </Text>
         </View>
-      </View>
+      </View> */}
         
       {(() => {
         const totalNightHours = data.breakdown.night.reduce((a, b) => a + b, 0);
@@ -3620,6 +4876,8 @@ const renderCharts = () => {
               <View style={styles.legendGrid}>
                 {pieData.map((item, index) => {
                   const percentage = Math.round((item.hours / totalSleepHours) * 100);
+                  const daysInPeriod = reportRange === 'Weekly' ? 7 : reportRange === 'Monthly' ? 30 : 365;
+                  const avgPerPeriod = (item.hours / daysInPeriod).toFixed(1);
                   
                   return (
                     <TouchableOpacity 
@@ -3628,7 +4886,7 @@ const renderCharts = () => {
                       onPress={() => {
                         Alert.alert(
                           item.name,
-                          `Total Hours: ${item.hours}hrs\nPercentage: ${percentage}%\nAverage per day: ${(item.hours / 7).toFixed(1)}hrs`,
+                          `Total: ${item.hours}hrs over ${reportRange.toLowerCase()} period\nPercentage: ${percentage}%\nDaily Average: ${avgPerPeriod}hrs`,
                           [{ text: 'OK' }]
                         );
                       }}
@@ -3639,7 +4897,7 @@ const renderCharts = () => {
                           {item.name}
                         </Text>
                         <Text style={[styles.legendItemCount, { color: theme.textSecondary, fontSize: 10 }]}>
-                          {item.hours}hrs ({percentage}%)
+                          {item.hours}hrs ({percentage}%) • {avgPerPeriod}hrs/day
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -3651,6 +4909,13 @@ const renderCharts = () => {
         );
       })()}
       </View>
+    )}
+    {activeTab === 'Feeding' && feedingData.some(log => log.weaningMode) && (
+      <WeaningProgressCard 
+        feedingData={feedingData}
+        darkMode={darkMode}
+        theme={theme}
+      />
     )}
     </>
   );
@@ -3750,6 +5015,7 @@ const renderCharts = () => {
               Sleep
             </Text>
           </TouchableOpacity>
+          
           <TouchableOpacity
             style={[styles.tabButton, activeTab === 'Feeding' && [styles.activeTab, { backgroundColor: darkMode ? '#3c3c3c' : '#E3F2FD' }]]}
             onPress={() => setActiveTab('Feeding')}
@@ -3763,6 +5029,7 @@ const renderCharts = () => {
               Feeding
             </Text>
           </TouchableOpacity>
+          
           <TouchableOpacity
             style={[styles.tabButton, activeTab === 'Diaper' && [styles.activeTab, { backgroundColor: darkMode ? '#3c3c3c' : '#E3F2FD' }]]}
             onPress={() => setActiveTab('Diaper')}
@@ -3774,6 +5041,21 @@ const renderCharts = () => {
             />
             <Text style={[styles.tabText, activeTab === 'Diaper' && styles.activeTabText]}>
               Diaper
+            </Text>
+          </TouchableOpacity>
+          
+          {/* NEW: Growth Tab */}
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'Growth' && [styles.activeTab, { backgroundColor: darkMode ? '#3c3c3c' : '#E3F2FD' }]]}
+            onPress={() => setActiveTab('Growth')}
+          >
+            <Ionicons 
+              name="trending-up-outline" 
+              size={20} 
+              color={activeTab === 'Growth' ? '#1976d2' : theme.textSecondary} 
+            />
+            <Text style={[styles.tabText, activeTab === 'Growth' && styles.activeTabText]}>
+              Growth
             </Text>
           </TouchableOpacity>
         </View>
@@ -3792,6 +5074,9 @@ const renderCharts = () => {
             diaperData={diaperData}
             childData={childData}
             AIPoweredSummary={AIPoweredSummary}
+            navigation={navigation}
+            aiRefreshKey={aiRefreshKey}
+            forceAIRefresh={forceAIRefresh}
           />
         ) : (
           <>
@@ -3815,78 +5100,124 @@ const renderCharts = () => {
           </>
         )}
       </ScrollView>
+      
 
-      {reportRange !== 'Overview' && (
-        <ExportReportSection 
-          exportReportAsPDF={exportReportAsPDF} 
-          exportReportAsExcel={exportReportAsExcel}
-          darkMode={darkMode}
-          theme={theme}
-        />
-      )}
+{reportRange !== 'Overview' && (
+  <>
+    <ExportReportSection 
+      exportReportAsPDF={exportReportAsPDF} 
+      exportReportAsExcel={exportReportAsExcel}
+      darkMode={darkMode}
+      theme={theme}
+      hasAIConsent={hasAIConsent}
+      onOpenExportModal={() => setShowExportModal(true)}
+    />
+    
+    <ExportOptionsModal
+      visible={showExportModal}
+      onClose={() => setShowExportModal(false)}
+      onExport={handleExport}
+      darkMode={darkMode}
+      theme={theme}
+      hasAIConsent={hasAIConsent}
+      aiSummaries={currentAISummaries}
+    />
+  </>
+)}
       </SafeAreaView>
     </LinearGradient>
   );
 };
 
-// Add export report functionality
- const ExportReportSection = ({ 
-    exportReportAsPDF, 
-    exportReportAsExcel,
-    darkMode,
-    theme 
-  }) => {
-    return (
-      <View style={[
-        styles.exportContainer,
-        {
-          backgroundColor: darkMode ? '#1f1f1f' : '#fff',
-          borderColor: darkMode ? '#333' : '#e0e0e0'
-        }
-      ]}>
-        <Text style={[styles.exportTitle, { color: theme.textPrimary }]}>
-          Export Report
-        </Text>
-        <View style={styles.exportOptionsRow}>
-          <TouchableOpacity 
-            style={[
-              styles.exportOption,
-              { backgroundColor: darkMode ? '#2c2c2c' : '#f8f8f8' }
-            ]}
-            onPress={exportReportAsPDF}
-          >
-            <AntDesign
-              name="file-pdf"
-              size={18}
-              color="#E53935"
-              style={styles.exportOptionIcon}
-            />
-            <Text style={[styles.exportOptionText, { color: theme.textPrimary }]}>
-              PDF
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[
-              styles.exportOption,
-              { backgroundColor: darkMode ? '#2c2c2c' : '#f8f8f8' }
-            ]}
-            onPress={exportReportAsExcel}
-          >
-            <FontAwesome5
-              name="file-excel"
-              size={18}
-              color="#2E7D32"
-              style={styles.exportOptionIcon}
-            />
-            <Text style={[styles.exportOptionText, { color: theme.textPrimary }]}>
-              Excel
-            </Text>
-          </TouchableOpacity>
+const ExportReportSection = ({ 
+  exportReportAsPDF, 
+  exportReportAsExcel,
+  darkMode,
+  theme,
+  hasAIConsent,
+  onOpenExportModal 
+}) => {
+  return (
+    <View style={[
+      styles.exportContainer,
+      {
+        backgroundColor: darkMode ? '#1f1f1f' : '#fff',
+        borderColor: darkMode ? '#333' : '#e0e0e0'
+      }
+    ]}>
+      <View style={styles.exportHeader}>
+        <View>
+          <Text style={[styles.exportTitle, { color: theme.textPrimary }]}>
+            Export Report
+          </Text>
+          <Text style={[styles.exportSubtitle, { color: theme.textSecondary }]}>
+            Choose what to include in your report
+          </Text>
         </View>
+        {hasAIConsent && (
+          <View style={[styles.aiEnabledBadge, { backgroundColor: darkMode ? '#1a3a52' : '#E3F2FD' }]}>
+            <Ionicons name="sparkles" size={14} color={darkMode ? '#64b5f6' : '#1976d2'} />
+            <Text style={[styles.aiEnabledText, { color: darkMode ? '#64b5f6' : '#1976d2' }]}>
+              AI Ready
+            </Text>
+          </View>
+        )}
       </View>
-    );
-  };
+      
+      <TouchableOpacity
+        style={[
+          styles.exportMainButton,
+          { backgroundColor: darkMode ? '#1a3a52' : '#1976d2' }
+        ]}
+        onPress={onOpenExportModal}
+      >
+        <Ionicons name="download-outline" size={20} color="#fff" />
+        <Text style={styles.exportMainButtonText}>
+          Customize & Export
+        </Text>
+        <Ionicons name="chevron-forward" size={20} color="#fff" />
+      </TouchableOpacity>
+      
+      <View style={styles.exportQuickActions}>
+        <TouchableOpacity
+          style={[
+            styles.quickActionButton,
+            { backgroundColor: darkMode ? '#2a2a2a' : '#f8f8f8' }
+          ]}
+          onPress={() => exportReportAsPDF({
+            format: 'pdf',
+            timeRange: 'weekly',
+            categories: { sleep: true, feeding: true, diaper: true },
+            includeAI: false
+          })}
+        >
+          <AntDesign name="file-pdf" size={16} color="#E53935" />
+          <Text style={[styles.quickActionText, { color: theme.textPrimary }]}>
+            Quick PDF
+          </Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[
+            styles.quickActionButton,
+            { backgroundColor: darkMode ? '#2a2a2a' : '#f8f8f8' }
+          ]}
+          onPress={() => exportReportAsExcel({
+            format: 'excel',
+            timeRange: 'weekly',
+            categories: { sleep: true, feeding: true, diaper: true },
+            includeAI: false
+          })}
+        >
+          <FontAwesome5 name="file-excel" size={16} color="#2E7D32" />
+          <Text style={[styles.quickActionText, { color: theme.textPrimary }]}>
+            Quick Excel
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
 
 
 
@@ -5301,6 +6632,202 @@ aiNumberedTitle: {
   fontSize: 14,
   fontWeight: '600',
   lineHeight: 20,
+},
+exportContainer: {
+  backgroundColor: '#fff',
+  borderRadius: 15,
+  padding: 15,
+  marginTop: 10,
+  marginBottom: 30,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 3,
+  elevation: 3,
+  borderWidth: 1,
+},
+exportHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  marginBottom: 15,
+},
+exportTitle: {
+  fontSize: 18,
+  fontWeight: '700',
+  marginBottom: 4,
+},
+exportSubtitle: {
+  fontSize: 13,
+  fontStyle: 'italic',
+},
+aiEnabledBadge: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+  borderRadius: 12,
+  gap: 6,
+},
+aiEnabledText: {
+  fontSize: 12,
+  fontWeight: '600',
+},
+exportMainButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  paddingVertical: 16,
+  paddingHorizontal: 20,
+  borderRadius: 12,
+  gap: 10,
+  marginBottom: 12,
+  shadowColor: '#1976d2',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.3,
+  shadowRadius: 4,
+  elevation: 3,
+},
+exportMainButtonText: {
+  color: '#fff',
+  fontSize: 16,
+  fontWeight: '700',
+},
+exportQuickActions: {
+  flexDirection: 'row',
+  gap: 10,
+},
+quickActionButton: {
+  flex: 1,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 12,
+  borderRadius: 8,
+  gap: 8,
+},
+quickActionText: {
+  fontSize: 13,
+  fontWeight: '600',
+},
+weaningHeader: {
+  marginBottom: 15,
+},
+weaningSubtitle: {
+  fontSize: 13,
+  fontStyle: 'italic',
+  marginTop: 4,
+},
+progressBarContainer: {
+  height: 40,
+  borderRadius: 20,
+  overflow: 'hidden',
+  marginBottom: 15,
+  position: 'relative',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+progressBarFill: {
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  bottom: 0,
+  borderRadius: 20,
+},
+progressBarText: {
+  fontSize: 14,
+  fontWeight: '700',
+  zIndex: 1,
+},
+weaningStatsGrid: {
+  flexDirection: 'row',
+  gap: 10,
+  marginBottom: 15,
+},
+weaningStat: {
+  flex: 1,
+  padding: 12,
+  borderRadius: 10,
+  alignItems: 'center',
+},
+weaningStatLabel: {
+  fontSize: 11,
+  marginBottom: 6,
+},
+weaningStatValue: {
+  fontSize: 18,
+  fontWeight: '700',
+},
+weaningTimeline: {
+  marginBottom: 15,
+},
+timelineTitle: {
+  fontSize: 14,
+  fontWeight: '600',
+  marginBottom: 10,
+},
+timelineEntry: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginBottom: 10,
+  gap: 12,
+},
+timelineDot: {
+  width: 10,
+  height: 10,
+  borderRadius: 5,
+},
+timelineDate: {
+  fontSize: 11,
+},
+timelineRatio: {
+  fontSize: 14,
+  fontWeight: '600',
+},
+weaningGuidanceBox: {
+  padding: 12,
+  borderRadius: 10,
+  borderLeftWidth: 3,
+  borderLeftColor: '#4CAF50',
+},
+guidanceText: {
+  fontSize: 13,
+  lineHeight: 20,
+},
+sleepBreakdownItem: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  borderRadius: 10,
+  padding: 12,
+  borderWidth: 1,
+},
+calculateCaloriesButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingHorizontal: 16,
+  paddingVertical: 10,
+  borderRadius: 20,
+  gap: 8,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.2,
+  shadowRadius: 3,
+  elevation: 3,
+},
+calculateCaloriesButtonText: {
+  color: '#fff',
+  fontSize: 13,
+  fontWeight: '600',
+},
+calorieLoadingContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 10,
+  paddingVertical: 10,
+},
+calorieLoadingText: {
+  fontSize: 13,
+  fontStyle: 'italic',
 },
 });
 

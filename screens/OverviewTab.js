@@ -38,10 +38,12 @@ const OverviewTab = ({
   feedingData,
   diaperData,
   childData,
-  AIPoweredSummary 
+  AIPoweredSummary,
+  navigation 
 }) => {
   const [selectedDate, setSelectedDate] = useState('');
   const [markedDates, setMarkedDates] = useState({});
+  const [initialLoading, setInitialLoading] = useState(true);
   const [dayLogs, setDayLogs] = useState([]);
   const [isLoadingCalendar, setIsLoadingCalendar] = useState(true);
   const [isLoadingDay, setIsLoadingDay] = useState(false);
@@ -49,16 +51,132 @@ const OverviewTab = ({
   const [showRangeModal, setShowRangeModal] = useState(false);
   const [expandedLogId, setExpandedLogId] = useState(null);
   const [displayedLogsCount, setDisplayedLogsCount] = useState(10);
-  const [aiRefreshKey, setAiRefreshKey] = useState(0);
+const [aiRefreshKey, setAiRefreshKey] = useState(0);
+const [forceAIRefresh, setForceAIRefresh] = useState(false);
+
 const handleRefreshAI = () => {
-    setAiRefreshKey(prevKey => prevKey + 1);
-  };
+  console.log('🔄 Refreshing AI insights from Overview Tab...');
+  
+  // Increment the key to force remount
+  setAiRefreshKey(prevKey => {
+    const newKey = prevKey + 1;
+    console.log('📊 New AI refresh key:', newKey);
+    return newKey;
+  });
+
+  // Set forceRefresh to true
+  setForceAIRefresh(true);
+  
+  // Reset after a delay to allow the component to detect the change
+  setTimeout(() => {
+    console.log('✅ Resetting forceRefresh flag');
+    setForceAIRefresh(false);
+  }, 500);
+};
 
   useEffect(() => {
     if (childId) {
-      loadCalendarData();
+      loadCalendarData().finally(() => setInitialLoading(false));
     }
   }, [childId]);
+
+  const canModifyLog = (log) => {
+  return true;
+};
+
+const handleDeleteLog = async (log) => {
+  Alert.alert(
+    'Delete Log',
+    'Are you sure you want to delete this log?',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const { deleteDoc, doc } = await import('firebase/firestore');
+            await deleteDoc(doc(db, log.collection, log.id));
+            Alert.alert('Success', 'Log deleted successfully');
+            loadDayLogs(selectedDate);
+          } catch (error) {
+            console.error('Error deleting log:', error);
+            Alert.alert('Error', 'Failed to delete log');
+          }
+        }
+      }
+    ]
+  );
+};
+
+const handleEditLog = async (log) => {
+  if (!navigation) {
+    Alert.alert('Error', 'Navigation not available');
+    return;
+  }
+  
+  try {
+    // Fetch the full log data from Firestore
+    const { getDoc, doc } = await import('firebase/firestore');
+    const logDoc = await getDoc(doc(db, log.collection, log.id));
+    
+    if (!logDoc.exists()) {
+      Alert.alert('Error', 'Log not found');
+      return;
+    }
+    
+    const logData = logDoc.data();
+    
+    // Navigate to appropriate form with existing data
+    switch (log.collection) {
+      case 'feedLogs':
+        navigation.navigate('FeedingForm', { 
+          childId, 
+          name, 
+          editingLogId: log.id,
+          existingData: {
+            feedType: logData.feedType,
+            amount: logData.amount,
+            amountUnit: logData.amountUnit,
+            notes: logData.notes,
+            timestamp: logData.timestamp?.toDate(),
+          }
+        });
+        break;
+      case 'diaperLogs':
+        navigation.navigate('DiaperChangeForm', { 
+          childId, 
+          name, 
+          editingLogId: log.id,
+          existingData: {
+            stoolType: logData.stoolType,
+            time: logData.time?.toDate(),
+            notes: logData.notes,
+          }
+        });
+        break;
+      case 'sleepLogs':
+        navigation.navigate('SleepingForm', { 
+          childId, 
+          name, 
+          editingLogId: log.id,
+          existingData: {
+            sleepType: logData.sleepType,
+            duration: logData.duration,
+            timestamp: logData.timestamp?.toDate(),
+            incomplete: logData.incomplete,
+            notes: logData.notes,
+          }
+        });
+        break;
+      default:
+        Alert.alert('Error', 'Unknown log type');
+    }
+  } catch (error) {
+    console.error('Error fetching log data:', error);
+    Alert.alert('Error', 'Failed to load log data');
+  }
+};
 
 const [calendarCache, setCalendarCache] = useState(null);
 const [cacheTimestamp, setCacheTimestamp] = useState(null);
@@ -101,7 +219,11 @@ const loadCalendarData = async (forceRefresh = false) => {
         const data = doc.data();
         const timestamp = data[timeField]?.toDate();
         if (timestamp) {
-          const dateStr = timestamp.toISOString().split('T')[0];
+          const year = timestamp.getFullYear();
+          const month = String(timestamp.getMonth() + 1).padStart(2, '0');
+          const day = String(timestamp.getDate()).padStart(2, '0');
+          const dateStr = `${year}-${month}-${day}`;
+          
           if (!marked[dateStr]) {
             marked[dateStr] = { marked: true, dotColor: darkMode ? '#64b5f6' : '#81D4FA' };
           }
@@ -129,11 +251,10 @@ const loadCalendarData = async (forceRefresh = false) => {
         setIsLoadingDay(true);
         setDisplayedLogsCount(10);
       }
-      
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
+
+      const [year, month, day] = date.split('-').map(Number);
+      const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
+      const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
 
       const allLogs = [];
 
@@ -156,6 +277,7 @@ const loadCalendarData = async (forceRefresh = false) => {
           amount: data.amount ? `${data.amount} ${data.amountUnit || ''}` : '',
           notes: data.notes || '',
           time: data.timestamp?.toDate(),
+          collection: 'feedLogs',
         });
       });
 
@@ -176,6 +298,7 @@ const loadCalendarData = async (forceRefresh = false) => {
           icon: require('../assets/diaper.png'),
           subtype: data.stoolType,
           time: data.time?.toDate(),
+          collection: 'diaperLogs',
         });
       });
 
@@ -201,6 +324,7 @@ const loadCalendarData = async (forceRefresh = false) => {
           duration: `${hours > 0 ? `${hours}h ` : ''}${mins}m`,
           incomplete: data.incomplete || false,
           time: data.timestamp?.toDate(),
+          collection: 'sleepLogs',
         });
       });
 
@@ -244,7 +368,9 @@ const loadCalendarData = async (forceRefresh = false) => {
   };
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    
     return date.toLocaleDateString('en-US', { 
       weekday: 'long', 
       year: 'numeric', 
@@ -273,64 +399,67 @@ const loadCalendarData = async (forceRefresh = false) => {
   contentContainerStyle={styles.contentContainer} 
 >
   {/* AI Insights Section - With Refresh Button */}
-  <View style={[
-    styles.aiInsightSection, 
-    { 
-      backgroundColor: darkMode ? '#1f1f1f' : '#fff',
-      borderColor: darkMode ? '#333' : '#e0e0e0'
-    }
-  ]}>
-    <View style={styles.sectionHeader}>
-      <Ionicons name="sparkles" size={20} color={darkMode ? '#64b5f6' : '#1976d2'} />
-      <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>AI Powered Summary</Text>
-      
-      <View style={styles.aiControlButtons}>
-        {/* Range Selector Button (using existing state/modal logic) */}
-        <TouchableOpacity
-          style={[
-            styles.rangeButton,
-            { backgroundColor: darkMode ? '#333' : '#f0f0f0' }
-          ]}
-          onPress={() => setShowRangeModal(true)}
-        >
-          <Text style={[styles.rangeButtonText, { color: theme.textSecondary }]}>
-            {aiInsightRange}
-          </Text>
-          <Ionicons name="chevron-down" size={16} color={theme.textSecondary} />
-        </TouchableOpacity>
+    <View style={[
+      styles.aiInsightSection, 
+      { 
+        backgroundColor: darkMode ? '#1f1f1f' : '#fff',
+        borderColor: darkMode ? '#333' : '#e0e0e0'
+      }
+    ]}>
+      <View style={styles.sectionHeader}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <Ionicons name="sparkles" size={20} color={darkMode ? '#64b5f6' : '#1976d2'} />
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>AI Powered Summary</Text>
+        </View>
+        
+        <View style={styles.aiControlButtons}>
+          {/* Range Selector Button */}
+          <TouchableOpacity
+            style={[
+              styles.rangeButton,
+              { backgroundColor: darkMode ? '#333' : '#f0f0f0' }
+            ]}
+            onPress={() => setShowRangeModal(true)}
+          >
+            <Text style={[styles.rangeButtonText, { color: theme.textSecondary }]}>
+              {aiInsightRange}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={theme.textSecondary} />
+          </TouchableOpacity>
 
-        {/* Refresh Button - THIS IS THE NEW ELEMENT */}
-        <TouchableOpacity
-          style={[
-            styles.refreshButton,
-            { backgroundColor: darkMode ? '#333' : '#f0f0f0' }
-          ]}
-          onPress={handleRefreshAI}
-        >
-          <Ionicons name="refresh" size={20} color={darkMode ? '#64b5f6' : '#1976d2'} />
-        </TouchableOpacity>
+          {/* Refresh Button */}
+          <TouchableOpacity
+            style={[
+              styles.refreshButton,
+              { backgroundColor: darkMode ? '#333' : '#f0f0f0' }
+            ]}
+            onPress={handleRefreshAI}
+          >
+            <Ionicons name="refresh" size={20} color={darkMode ? '#64b5f6' : '#1976d2'} />
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
 
-    {/* Render the AIPoweredSummary component */}
-    {childId && childData && (
-      <AIPoweredSummary 
-        key={aiRefreshKey} // CRUCIAL: Forces the component to re-fetch/re-render
-        childId={childId}
-        childAge={childData?.age} 
-        childWeight={childData?.weight} 
-        childHeight={childData?.height} 
-        sleepData={sleepData || []}
-        feedingData={feedingData || []}
-        diaperData={diaperData || []}
-        reportRange={aiInsightRange} // Uses 'Weekly', 'Monthly', or 'Annual'
-        activeTab={'Overall'} // Fixed context for Overview
-        darkMode={darkMode}
-        theme={theme}
-        isOverviewMode={true} // Flag for compact rendering if needed
-      />
-    )}
-  </View>
+      {/* Render the AIPoweredSummary component */}
+      {childId && childData && (
+        <AIPoweredSummary 
+          key={aiRefreshKey}
+          childId={childId}
+          childAge={childData?.age} 
+          childWeight={childData?.weight} 
+          childHeight={childData?.height} 
+          sleepData={sleepData || []}
+          feedingData={feedingData || []}
+          diaperData={diaperData || []}
+          reportRange={aiInsightRange}
+          activeTab={'Overall'}
+          darkMode={darkMode}
+          theme={theme}
+          isOverviewMode={true}
+          forceRefresh={forceAIRefresh} 
+        />
+      )}
+    </View>
 
       {/* Range Selection Modal */}
       <Modal
@@ -395,9 +524,12 @@ const loadCalendarData = async (forceRefresh = false) => {
           </Text>
         </View>
 
-        {isLoadingCalendar ? (
+        {initialLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={darkMode ? '#64b5f6' : '#1976d2'} />
+            <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
+              Loading calendar...
+            </Text>
           </View>
         ) : (
           <Calendar
@@ -427,114 +559,144 @@ const loadCalendarData = async (forceRefresh = false) => {
       </View>
 
       {/* Selected Day Logs */}
-      {selectedDate && (
-        <View style={[
-          styles.logsSection,
-          { 
-            backgroundColor: darkMode ? '#1f1f1f' : '#fff',
-            borderColor: darkMode ? '#333' : '#e0e0e0'
-          }
-        ]}>
-          <Text style={[styles.logsTitle, { color: theme.textPrimary }]}>
-            {formatDate(selectedDate)}
-          </Text>
+            {selectedDate && (
+              <View style={[
+                styles.logsSection,
+                { 
+                  backgroundColor: darkMode ? '#1f1f1f' : '#fff',
+                  borderColor: darkMode ? '#333' : '#e0e0e0'
+                }
+              ]}>
+                <Text style={[styles.logsTitle, { color: theme.textPrimary }]}>
+                  {formatDate(selectedDate)}
+                </Text>
 
-          {isLoadingDay ? (
-            <ActivityIndicator 
-              size="small" 
-              color={darkMode ? '#64b5f6' : '#1976d2'} 
-              style={{ marginVertical: 20 }} 
-            />
-          ) : displayedLogs.length > 0 ? (
-            <>
-              {displayedLogs.map((log, index) => (
-                <View 
-                  key={`${log.id}-${index}`} 
-                  style={[
-                    styles.logItem,
-                    { borderBottomColor: darkMode ? '#333' : '#E0E0E0' }
-                  ]}
-                >
-                  <View style={styles.logIconContainer}>
-                    <LinearGradient
-                      colors={getActivityGradient(log.type)}
-                      style={styles.logIconGradient}
-                    >
-                      <Image source={log.icon} style={styles.logIcon} />
-                    </LinearGradient>
-                  </View>
-
-                  <View style={styles.logContent}>
-                    <Text style={[styles.logType, { color: theme.textPrimary }]}>
-                      {log.type}
-                    </Text>
-                    <Text style={[styles.logTime, { color: theme.textSecondary }]}>
-                      {formatTime(log.time)}
-                    </Text>
-                    {log.subtype && (
-                      <Text style={[styles.logSubtext, { color: darkMode ? '#90A4AE' : '#A0A0A0' }]}>
-                        {log.incomplete && '⏰ Still sleeping'}
-                        {!log.incomplete && log.subtype}
-                      </Text>
-                    )}
-                    {log.duration && !log.incomplete && (
-                      <Text style={[styles.logSubtext, { color: darkMode ? '#90A4AE' : '#A0A0A0' }]}>
-                        Duration: {log.duration}
-                      </Text>
-                    )}
-                    {log.amount && (
-                      <Text style={[styles.logSubtext, { color: darkMode ? '#90A4AE' : '#A0A0A0' }]}>
-                        Amount: {log.amount}
-                      </Text>
-                    )}
-                    {log.notes && (
-                      <TouchableOpacity
-                        onPress={() => setExpandedLogId(expandedLogId === log.id ? null : log.id)}
-                        activeOpacity={0.7}
+                {isLoadingDay ? (
+                  <ActivityIndicator 
+                    size="small" 
+                    color={darkMode ? '#64b5f6' : '#1976d2'} 
+                    style={{ marginVertical: 20 }} 
+                  />
+                ) : displayedLogs.length > 0 ? (
+                  <>
+                    {displayedLogs.map((log, index) => (
+                      <View 
+                        key={`${log.id}-${index}`} 
+                        style={[
+                          styles.logItem,
+                          { borderBottomColor: darkMode ? '#333' : '#E0E0E0' }
+                        ]}
                       >
-                        <Text 
-                          style={[
-                            styles.logNotes, 
-                            { color: darkMode ? '#81D4FA' : '#2196F3' }
-                          ]}
-                          numberOfLines={expandedLogId === log.id ? undefined : 2}
-                        >
-                          📝 {log.notes}
+                        <View style={styles.logIconContainer}>
+                          <LinearGradient
+                            colors={getActivityGradient(log.type)}
+                            style={styles.logIconGradient}
+                          >
+                            <Image source={log.icon} style={styles.logIcon} />
+                          </LinearGradient>
+                        </View>
+
+                        <View style={styles.logContent}>
+                          <View style={styles.logHeaderRow}>
+                            <Text style={[styles.logType, { color: theme.textPrimary }]}>
+                              {log.type}
+                            </Text>
+                            {canModifyLog(log) && (
+                              <View style={styles.logActions}>
+                                {/* ⭐ UPDATED: Pass log directly */}
+                                <TouchableOpacity
+                                  onPress={() => handleEditLog(log)}
+                                  style={styles.logActionButton}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons 
+                                    name="create-outline" 
+                                    size={18} 
+                                    color={darkMode ? '#64B5F6' : '#2196F3'} 
+                                  />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={() => handleDeleteLog(log)}
+                                  style={styles.logActionButton}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons 
+                                    name="trash-outline" 
+                                    size={18} 
+                                    color={darkMode ? '#EF5350' : '#F44336'} 
+                                  />
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </View>
+                          
+                          {/* Rest of log details */}
+                          <Text style={[styles.logTime, { color: theme.textSecondary }]}>
+                            {formatTime(log.time)}
+                          </Text>
+                          {log.subtype && (
+                            <Text style={[styles.logSubtext, { color: darkMode ? '#90A4AE' : '#A0A0A0' }]}>
+                              {log.incomplete && '⏰ Still sleeping'}
+                              {!log.incomplete && log.subtype}
+                            </Text>
+                          )}
+                          {log.duration && !log.incomplete && (
+                            <Text style={[styles.logSubtext, { color: darkMode ? '#90A4AE' : '#A0A0A0' }]}>
+                              Duration: {log.duration}
+                            </Text>
+                          )}
+                          {log.amount && (
+                            <Text style={[styles.logSubtext, { color: darkMode ? '#90A4AE' : '#A0A0A0' }]}>
+                              Amount: {log.amount}
+                            </Text>
+                          )}
+                          {log.notes && (
+                            <TouchableOpacity
+                              onPress={() => setExpandedLogId(expandedLogId === log.id ? null : log.id)}
+                              activeOpacity={0.7}
+                            >
+                              <Text 
+                                style={[
+                                  styles.logNotes, 
+                                  { color: darkMode ? '#81D4FA' : '#2196F3' }
+                                ]}
+                                numberOfLines={expandedLogId === log.id ? undefined : 2}
+                              >
+                                📝 {log.notes}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    ))}
+                    {hasMoreLogs && (
+                      <TouchableOpacity 
+                        style={[
+                          styles.loadMoreButton,
+                          { backgroundColor: darkMode ? '#2c2c2c' : '#f0f0f0' }
+                        ]}
+                        onPress={handleLoadMore}
+                      >
+                        <Text style={[styles.loadMoreText, { color: theme.textPrimary }]}>
+                          Load More ({dayLogs.length - displayedLogsCount} remaining)
                         </Text>
+                        <Ionicons name="chevron-down" size={16} color={theme.textPrimary} />
                       </TouchableOpacity>
                     )}
+                  </>
+                ) : (
+                  <View style={styles.noLogsContainer}>
+                    <Ionicons name="calendar-outline" size={40} color={darkMode ? '#555' : '#ccc'} />
+                    <Text style={[styles.noLogsText, { color: theme.textSecondary }]}>
+                      No activities logged on this day
+                    </Text>
                   </View>
-                </View>
-              ))}
-
-              {hasMoreLogs && (
-                <TouchableOpacity 
-                  style={[
-                    styles.loadMoreButton,
-                    { backgroundColor: darkMode ? '#2c2c2c' : '#f0f0f0' }
-                  ]}
-                  onPress={handleLoadMore}
-                >
-                  <Text style={[styles.loadMoreText, { color: theme.textPrimary }]}>
-                    Load More ({dayLogs.length - displayedLogsCount} remaining)
-                  </Text>
-                  <Ionicons name="chevron-down" size={16} color={theme.textPrimary} />
-                </TouchableOpacity>
-              )}
-            </>
-          ) : (
-            <View style={styles.noLogsContainer}>
-              <Ionicons name="calendar-outline" size={40} color={darkMode ? '#555' : '#ccc'} />
-              <Text style={[styles.noLogsText, { color: theme.textSecondary }]}>
-                No activities logged on this day
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
-    </ScrollView>
-  );
-};
+                )}
+              </View>
+            )}
+          </ScrollView>
+        );
+      };
 
 const styles = StyleSheet.create({
   container: {
@@ -780,9 +942,13 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 16,
+    gap: 8,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+    justifyContent: 'space-between',
   },
   sectionTitle: {
     fontSize: 16,
@@ -813,6 +979,23 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  logHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  logActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  logActionButton: {
+    padding: 4,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 14,
   },
 });
 

@@ -22,8 +22,8 @@ import { RefreshCcw } from 'lucide-react-native';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import * as Network from 'expo-network';
 import { Keyboard, InputAccessoryView, Button } from 'react-native'; // iOS accessory
-
-
+import { FileText } from 'lucide-react-native';
+import { useSystemColorScheme } from '../screens/DarkMode';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -767,8 +767,8 @@ const promptDisableMfa = async () => {
 
           {/* ---------- 4) Weekly Digest ---------- */}
           <SectionTitle icon={<Bell size={18} color={currentTheme.textPrimary} />} text="Notifications" color={currentTheme.textPrimary}/>
-          <Card darkMode={darkMode}> 
-            <View style={styles.row}>
+          {/* <Card darkMode={darkMode}>  */}
+            {/* <View style={styles.row}>
               <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Weekly Digest Notifications</Text>
               <Switch
                 value={weeklyDigest}
@@ -816,10 +816,10 @@ const promptDisableMfa = async () => {
                   }
                 }}
               />
-            </View>
+            </View> */}
 
             {/* Inline test button when enabled */}
-            {weeklyDigest && (
+            {/* {weeklyDigest && (
               <TouchableOpacity
                 onPress={testNotifId ? cancelTestNotification : sendTestNotification}
                 activeOpacity={0.9}
@@ -835,10 +835,10 @@ const promptDisableMfa = async () => {
                 </LinearGradient>
               </TouchableOpacity>
             )}
-          </Card>
+          </Card> */}
 
           {/* ---------- 5) Digest Controls (Collapsible) ---------- */}
-         <Card darkMode={darkMode}> 
+         {/* <Card darkMode={darkMode}> 
             <TouchableOpacity onPress={toggleDigestOpen} style={styles.rowNav} activeOpacity={0.8}>
               <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Digest Controls</Text>
               {digestOpen ? (
@@ -869,7 +869,7 @@ const promptDisableMfa = async () => {
                 </TouchableOpacity>
               </View>
             )}
-          </Card>
+          </Card> */}
 
 			{/* ---------- Reminders Button (Styled) ---------- */}
 			<Card darkMode={darkMode}> 
@@ -922,6 +922,30 @@ const promptDisableMfa = async () => {
               activeOpacity={0.8}
             >
               <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>Change Password</Text>
+              <ChevronRight size={18} color={currentTheme.textSecondary} />
+            </TouchableOpacity>
+          </Card>
+
+          {/* ---------- Privacy & Data Usage ---------- */}
+          <SectionTitle 
+            icon={<FileText size={18} color={currentTheme.textPrimary} />} 
+            text="Privacy & Data" 
+            color={currentTheme.textPrimary}
+          />
+          <Card darkMode={darkMode}> 
+            <TouchableOpacity
+              onPress={() => navigation.navigate('PrivacyAgreement')}
+              style={styles.rowNav}
+              activeOpacity={0.8}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowText, { color: currentTheme.textPrimary }]}>
+                  Privacy & Data Usage
+                </Text>
+                <Text style={[styles.rowSubtext, { color: currentTheme.textMuted }]}>
+                  How your data is used and shared
+                </Text>
+              </View>
               <ChevronRight size={18} color={currentTheme.textSecondary} />
             </TouchableOpacity>
           </Card>
@@ -1181,5 +1205,10 @@ tourButtonText: {
   fontWeight: '700',
   fontSize: 15,
   letterSpacing: 0.3,
+},
+rowSubtext: {
+  fontSize: 12,
+  marginTop: 2,
+  lineHeight: 16,
 },
 });

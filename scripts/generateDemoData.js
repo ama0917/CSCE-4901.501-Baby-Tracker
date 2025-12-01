@@ -3,7 +3,7 @@ import { db } from '../firebaseConfig.js';
 import { collection, addDoc, Timestamp } from 'firebase/firestore';
 
 // CONFIGURATION
-const CHILD_ID = 'SdQUGpkbTRmKa7NXbI3D'; // Replace with actual child ID (found in firebase)
+const CHILD_ID = 'XVVwR2eGNgz8JavMKBce'; // Replace with actual child ID (found in firebase)
 const USER_ID = 'CJTaD4VxzSZpBLcaAuzFC1Pyw0x1';   // Replace with actual user ID (found in firebase)
 const END_DATE = new Date(); // Today
 const START_DATE = new Date(END_DATE);

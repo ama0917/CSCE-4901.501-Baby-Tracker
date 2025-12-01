@@ -858,89 +858,89 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
             </View>
           )}
 
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : '#2e3a59' }]}>
-                Quick Actions
-              </Text>
-              <Ionicons name="flash" size={20} color={darkMode ? '#fff' : '#2E3A59'} />
-            </View>
+        {/* Quick Actions Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: darkMode ? '#fff' : '#2e3a59' }]}>
+              Quick Actions
+            </Text>
+            <Ionicons name="flash" size={20} color={darkMode ? '#fff' : '#2E3A59'} />
+          </View>
 
-            <View style={[styles.actionGridCard]}>
-              <View style={styles.actionButtonsContainerGrid}> 
-                
-                {/* Reminders button */}
-                <TouchableOpacity
-                  style={styles.actionButtonGrid}
-                  onPress={() => navigation.navigate('RemindersScreen', { childId, name })}
-                  activeOpacity={0.8}
+          <View style={styles.actionGridContainer}>
+            {/* Reminders button */}
+            <TouchableOpacity
+              style={styles.actionButtonGrid}
+              onPress={() => navigation.navigate('RemindersScreen', { childId, name })}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={darkMode ? ['#ff6a00', '#ee0979'] : ['#FFB74D', '#FF9800']}
+                style={styles.actionButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Bell size={18} color="#fff" strokeWidth={2} />
+                <Text style={styles.actionButtonText}>Reminders</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            {/* Memories button - only if has parent access */}
+            {hasParentAccess && (
+              <TouchableOpacity
+                style={styles.actionButtonGrid}
+                onPress={() => navigation.navigate('MemoriesScreen', { childId, name })}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={darkMode ? ['#E1BEE7', '#CE93D8'] : ['#E1BEE7', '#FFCDD2']}
+                  style={styles.actionButtonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
                 >
-                  <LinearGradient
-                    colors={darkMode ? ['#ff6a00', '#ee0979'] : ['#FFB74D', '#FF9800']}
-                    style={styles.actionButtonGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  >
-                    <Bell size={18} color="#fff" strokeWidth={2} />
-                    <Text style={styles.actionButtonText}>Reminders</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
+                  <ImageIcon size={18} color="#fff" strokeWidth={2} />
+                  <Text style={styles.actionButtonText}>Memories</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
 
-                {/* Memories button */}
-                {hasParentAccess && (
-                  <TouchableOpacity
-                    style={styles.actionButtonGrid}
-                    onPress={() => navigation.navigate('MemoriesScreen', { childId, name })}
-                    activeOpacity={0.8}
-                  >
-                    <LinearGradient
-                      colors={darkMode ? ['#E1BEE7', '#CE93D8'] : ['#E1BEE7', '#FFCDD2']}
-                      style={styles.actionButtonGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                    >
-                      <ImageIcon size={18} color="#fff" strokeWidth={2} />
-                      <Text style={styles.actionButtonText}>Memories</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                )}
-
-                {/* Pediatrician Finder button */}
-                {hasParentAccess && (
-                  <TouchableOpacity
-                    style={styles.actionButtonGrid}
-                    onPress={() => navigation.navigate('PediatricianFinder')}
-                    activeOpacity={0.8}
-                  >
-                    <LinearGradient
-                      colors={darkMode ? ['#e14c2bff', '#de4040ff']: ['#ed7e65ff', '#f16767ff']}
-                      style={styles.actionButtonGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                    >
-                      <Ionicons name="medical" size={18} color="#fff" strokeWidth={2} />
-                      <Text style={styles.actionButtonText}>Find Pediatrician</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                )}
-
-                {/* Lullaby button */}
-                {/* <TouchableOpacity
-                  style={styles.actionButtonGrid}
-                  onPress={() => navigation.navigate('LullabyScreen', { childId, name })}
-                  activeOpacity={0.8}
+            {/* Pediatrician Finder button - only if has parent access */}
+            {hasParentAccess && (
+              <TouchableOpacity
+                style={styles.actionButtonGrid}
+                onPress={() => navigation.navigate('PediatricianFinder')}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={darkMode ? ['#e14c2bff', '#de4040ff']: ['#ed7e65ff', '#f16767ff']}
+                  style={styles.actionButtonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
                 >
-                  <LinearGradient
-                    colors={darkMode ? ['#9C27B0', '#7B1FA2'] : ['#BA68C8', '#AB47BC']}
-                    style={styles.actionButtonGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  >
-                    <Ionicons name="moon" size={18} color="#fff" strokeWidth={2} />
-                    <Text style={styles.actionButtonText}>Lullabies</Text>
-                  </LinearGradient>
-                </TouchableOpacity> */}
-              </View>
-            </View>
+                  <Ionicons name="medical" size={18} color="#fff" />
+                  <Text style={styles.actionButtonText}>Find Pediatrician</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+
+            {/* Lullaby button - uncomment if you want to add it back */}
+            {/* <TouchableOpacity
+              style={styles.actionButtonGrid}
+              onPress={() => navigation.navigate('LullabyScreen', { childId, name })}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={darkMode ? ['#9C27B0', '#7B1FA2'] : ['#BA68C8', '#AB47BC']}
+                style={styles.actionButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Ionicons name="moon" size={18} color="#fff" />
+                <Text style={styles.actionButtonText}>Lullabies</Text>
+              </LinearGradient>
+            </TouchableOpacity> */}
+          </View>
+        </View>
 
           {/* History */}
           <View style={styles.section}>
@@ -1194,27 +1194,22 @@ const styles = StyleSheet.create({
      marginBottom: 20,
      flexWrap: 'wrap',
      },
-  actionButton:
-   { flex: 1, 
-    marginHorizontal: 5, 
-    borderRadius: 20, 
-    elevation: 6,
-    marginBottom: 10,
-    minWidth: '48%',
+  actionButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    minHeight: 56,
   },
-  actionButtonGradient:
-   { flexDirection: 'row',
-     alignItems: 'center', 
-     justifyContent: 'center',
-      paddingVertical: 14, 
-      borderRadius: 20 
-    },
-  actionButtonText: 
-  { 
-    color: '#fff', 
-    fontWeight: '600', 
-    fontSize: 15, 
-    marginLeft: 8 
+  actionButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+    marginLeft: 8,
+    textAlign: 'center',
+    flexShrink: 1,
   },
   historyContainer: 
   { borderRadius: 24, 
@@ -1602,27 +1597,22 @@ featuredSubtitle: {
   fontWeight: '600',
   lineHeight: 18,
 },
-actionGridCard: {
-  borderRadius: 24, 
-  padding: 10,
-  elevation: 8,
-  marginBottom: 30, 
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.1,
-  shadowRadius: 6,
-},
-actionButtonsContainerGrid: { 
-  flexDirection: 'row', 
-  flexWrap: 'wrap',
-  justifyContent: 'space-between',
-  marginHorizontal: -5,
-},
+  actionGridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    gap: 10,
+  },
 actionButtonGrid: {
-  minWidth: '47%',
-  marginHorizontal: 5,
-  borderRadius: 20, 
-  elevation: 0,
-  marginBottom: 10,
+  flex: 1,
+  minWidth: (width - 70) / 2,
+  maxWidth: '48%',
+  borderRadius: 20,
+  elevation: 6,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.2,
+  shadowRadius: 4,
+  marginBottom: 0,
 },
 });

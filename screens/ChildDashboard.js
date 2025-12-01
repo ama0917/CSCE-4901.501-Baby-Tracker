@@ -867,39 +867,39 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
             <Ionicons name="flash" size={20} color={darkMode ? '#fff' : '#2E3A59'} />
           </View>
 
-          <View style={styles.actionGridContainer}>
+          <View style={styles.actionRowContainer}>
             {/* Reminders button */}
             <TouchableOpacity
-              style={styles.actionButtonGrid}
+              style={styles.actionButtonRow}
               onPress={() => navigation.navigate('RemindersScreen', { childId, name })}
               activeOpacity={0.8}
             >
               <LinearGradient
                 colors={darkMode ? ['#ff6a00', '#ee0979'] : ['#FFB74D', '#FF9800']}
-                style={styles.actionButtonGradient}
+                style={styles.actionButtonRowGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
               >
-                <Bell size={18} color="#fff" strokeWidth={2} />
-                <Text style={styles.actionButtonText}>Reminders</Text>
+                <Bell size={20} color="#fff" strokeWidth={2} />
+                <Text style={styles.actionButtonRowText}>Reminders</Text>
               </LinearGradient>
             </TouchableOpacity>
 
             {/* Memories button - only if has parent access */}
             {hasParentAccess && (
               <TouchableOpacity
-                style={styles.actionButtonGrid}
+                style={styles.actionButtonRow}
                 onPress={() => navigation.navigate('MemoriesScreen', { childId, name })}
                 activeOpacity={0.8}
               >
                 <LinearGradient
                   colors={darkMode ? ['#E1BEE7', '#CE93D8'] : ['#E1BEE7', '#FFCDD2']}
-                  style={styles.actionButtonGradient}
+                  style={styles.actionButtonRowGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                 >
-                  <ImageIcon size={18} color="#fff" strokeWidth={2} />
-                  <Text style={styles.actionButtonText}>Memories</Text>
+                  <ImageIcon size={20} color="#fff" strokeWidth={2} />
+                  <Text style={styles.actionButtonRowText}>Memories</Text>
                 </LinearGradient>
               </TouchableOpacity>
             )}
@@ -907,38 +907,21 @@ const safe = (v, placeholder='—') => (v === 0 || v ? String(v) : placeholder);
             {/* Pediatrician Finder button - only if has parent access */}
             {hasParentAccess && (
               <TouchableOpacity
-                style={styles.actionButtonGrid}
+                style={styles.actionButtonRow}
                 onPress={() => navigation.navigate('PediatricianFinder')}
                 activeOpacity={0.8}
               >
                 <LinearGradient
                   colors={darkMode ? ['#e14c2bff', '#de4040ff']: ['#ed7e65ff', '#f16767ff']}
-                  style={styles.actionButtonGradient}
+                  style={styles.actionButtonRowGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                 >
-                  <Ionicons name="medical" size={18} color="#fff" />
-                  <Text style={styles.actionButtonText}>Find Pediatrician</Text>
+                  <Ionicons name="medical" size={20} color="#fff" />
+                  <Text style={styles.actionButtonRowText}>Find Pediatrician</Text>
                 </LinearGradient>
               </TouchableOpacity>
             )}
-
-            {/* Lullaby button - uncomment if you want to add it back */}
-            {/* <TouchableOpacity
-              style={styles.actionButtonGrid}
-              onPress={() => navigation.navigate('LullabyScreen', { childId, name })}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={darkMode ? ['#9C27B0', '#7B1FA2'] : ['#BA68C8', '#AB47BC']}
-                style={styles.actionButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Ionicons name="moon" size={18} color="#fff" />
-                <Text style={styles.actionButtonText}>Lullabies</Text>
-              </LinearGradient>
-            </TouchableOpacity> */}
           </View>
         </View>
 
@@ -1597,16 +1580,13 @@ featuredSubtitle: {
   fontWeight: '600',
   lineHeight: 18,
 },
-  actionGridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-    gap: 10,
-  },
+actionGridContainer: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  gap: 10,
+},
 actionButtonGrid: {
   flex: 1,
-  minWidth: (width - 70) / 2,
-  maxWidth: '48%',
   borderRadius: 20,
   elevation: 6,
   shadowColor: '#000',
@@ -1614,5 +1594,48 @@ actionButtonGrid: {
   shadowOpacity: 0.2,
   shadowRadius: 4,
   marginBottom: 0,
+},
+actionScrollContainer: {
+  gap: 10,
+  paddingRight: 10,
+},
+actionButtonScrollable: {
+  width: (width - 50) / 2.5,
+  borderRadius: 20,
+  elevation: 6,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.2,
+  shadowRadius: 4,
+},
+
+actionRowContainer: {
+  gap: 12,
+},
+actionButtonRow: {
+  width: '100%',
+  borderRadius: 20,
+  elevation: 6,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.2,
+  shadowRadius: 4,
+  overflow: 'hidden',
+},
+actionButtonRowGradient: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 16,
+  paddingHorizontal: 16,
+  borderRadius: 20,
+  minHeight: 40,
+  gap: 12,
+},
+actionButtonRowText: {
+  color: '#fff',
+  fontWeight: '700',
+  fontSize: 16,
+  letterSpacing: 0.3,
 },
 });
